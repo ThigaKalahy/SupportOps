@@ -147,7 +147,9 @@ pnpm user:password       # redefinir senha de usuário
 pnpm lint && pnpm typecheck
 ```
 
-No build da Vercel: `prisma migrate deploy && next build`.
+Os scripts `db:*` rodam o Prisma CLI com `node --env-file=.env.local` (o CLI só lê `.env` sozinho; as credenciais ficam no `.env.local`, padrão do Next). Sem biblioteca extra.
+
+No build da Vercel: `prisma migrate deploy && next build` — chamando o Prisma direto, sem `--env-file`, porque lá as variáveis vêm do painel da Vercel e não existe `.env.local`.
 
 ## Padrões de frontend
 
@@ -245,6 +247,12 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Oito rotas com PageHeader e EmptyState de direção: `/`, `/team`, `/agreements`, `/priority-validations`, `/dailies`, `/records`, `/development`, `/settings`. Textos em `labels.pages`.
 - 404 global em pt-BR (`src/app/not-found.tsx`).
 - DataTable: colunas aceitam `hideBelow: "lg" | "xl"` para sair em telas médias; a tabela agora ocupa 100% do contêiner e encolhe.
+
+**P3 — Schema Prisma**
+- `prisma/schema.prisma` com todas as entidades do prompt do P3 (Prisma 6.19, PostgreSQL no Neon `sa-east-1`), comentários `///` nas de intenção não óbvia. Primeira migration `init` aplicada no branch `main` do Neon.
+- Regras no banco, por SQL manual na migration `init` (testadas contra o Neon): `PriorityValidation` exige `reasonId` fora de MAINTAINED, exige prioridade/rank do supervisor fora de RETURNED e exige outcome coerente com os rank snapshots; `AgreementCheckin` exige `blockerText` não vazio em PARTIAL/NOT_DONE; `MentorshipLink` proíbe mentor = mentorado; `MetricResult.sampleSize >= 0`; trigger torna `Agreement.originalDueDate` imutável (D17). Índice GIN em `TimelineEvent.tags`, declarado também no schema (`type: Gin`).
+- `src/server/db.ts`: singleton com `db` (leituras de TeamMember, Agreement, OneOnOne, Feedback, Note, PriorityValidation e DevelopmentPlan escondem `deletedAt` automaticamente; `include` aninhado precisa filtrar à mão) e `dbIncludingDeleted` (sem filtro, uso explícito).
+- Scripts: `db:generate`, `db:validate`, `db:push`, `db:migrate`, `db:migrate:deploy`, `db:seed` (o seed em si é do P4), `db:studio`; `postinstall` roda `prisma generate`.
 
 ## Backlog de curto prazo
 

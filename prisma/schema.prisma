@@ -1,0 +1,981 @@
+// Prontuário — modelo de dados.
+//
+// Convenções:
+// - Datas de negócio (um dia do calendário, sem hora) usam @db.Date.
+// - Instantes usam @db.Timestamptz.
+// - Código e schema em inglês; rótulos em pt-BR vivem em src/lib/labels.ts (D6).
+// - Regras que o Prisma não expressa (CHECK, GIN, trigger) estão na migration
+//   inicial, em SQL manual, e são citadas nos comentários de cada model.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ═══════════════════════════ ENUMS ═══════════════════════════
+
+enum Role {
+  OWNER
+  /// Reservado para quando outro gestor tiver o próprio time. Não usado no MVP.
+  MANAGER
+  VIEWER
+}
+
+/// D4: existe desde a primeira migration. Padrão PRIVATE em todo registro.
+enum Visibility {
+  PRIVATE
+  SHARED
+}
+
+enum MemberStatus {
+  ACTIVE
+  ON_LEAVE
+  OFFBOARDING
+  INACTIVE
+}
+
+enum TraitKind {
+  STRENGTH
+  DEVELOPMENT
+}
+
+enum MemberChangeType {
+  SENIORITY
+  POSITION
+  STATUS
+  RESPONSIBILITY
+}
+
+enum AgreementOrigin {
+  DAILY
+  ONE_ON_ONE
+  FEEDBACK
+  MEETING
+  INCIDENT
+  MANAGER
+  OTHER
+}
+
+/// Prioridade de COMBINADO. Não confundir com PriorityLevel, que é a escala de
+/// prioridade de CHAMADO (D13).
+enum AgreementPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+/// Exatamente quatro valores. NÃO existe OVERDUE: vencido é derivado em query
+/// (dueDate < hoje AND status IN (OPEN, IN_PROGRESS)), nunca persistido (D9).
+enum AgreementStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+/// D18: separa cumprimento bruto de ajustado. "Aguardando cliente" (EXTERNAL)
+/// e "falta de informação" (INTERNAL) não pesam igual contra a pessoa.
+enum BlockerCategory {
+  EXTERNAL
+  INTERNAL
+  CAPACITY
+}
+
+enum CheckinOutcome {
+  DONE
+  PARTIAL
+  NOT_DONE
+}
+
+enum FeedbackCategory {
+  RECOGNITION
+  DEVELOPMENT
+  BEHAVIOR
+  TECHNICAL
+  PERFORMANCE
+  FORMAL
+}
+
+/// Persistido, não derivado (D14). RETURNED é ação explícita do supervisor.
+enum ValidationOutcome {
+  MAINTAINED
+  RAISED
+  LOWERED
+  RETURNED
+}
+
+enum DevelopmentPlanStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  DONE
+  CANCELLED
+}
+
+enum ActionOwnerType {
+  MEMBER
+  MANAGER
+  MENTOR
+}
+
+/// O prompt do P3 não define os valores; espelha AgreementStatus.
+enum DevelopmentActionStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum MetricDirection {
+  HIGHER_IS_BETTER
+  LOWER_IS_BETTER
+}
+
+enum TimelineEventType {
+  DAILY
+  FEEDBACK
+  ONE_ON_ONE
+  RECOGNITION
+  INCIDENT
+  AGREEMENT
+  AGREEMENT_DONE
+  ROLE_CHANGE
+  SENIORITY_CHANGE
+  DEVELOPMENT
+  NOTE
+}
+
+// ═══════════════════════ TENANCY E ACESSO ═══════════════════════
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  users                   User[]
+  teams                   Team[]
+  auditLogs               AuditLog[]
+  seniorities             Seniority[]
+  responsibilities        Responsibility[]
+  blockerReasons          BlockerReason[]
+  priorityLevels          PriorityLevel[]
+  reclassificationReasons ReclassificationReason[]
+  ticketUrlPatterns       TicketUrlPattern[]
+  priorityValidations     PriorityValidation[]
+  competencies            Competency[]
+  metricDefinitions       MetricDefinition[]
+  scoreDefinitions        ScoreDefinition[]
+}
+
+/// Quem autentica: o gestor (OWNER) e o superior dele (VIEWER). Os analistas
+/// NÃO são User — são TeamMember e nunca autenticam (D1).
+/// Login por e-mail + senha (Credentials, sessão JWT). Sem Account, Session ou
+/// VerificationToken; sem cadastro público, convite ou recuperação de senha.
+/// Contas são criadas só por `pnpm user:create`.
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  name                String
+  image               String?
+  role                Role
+  organizationId      String
+  /// Hash bcryptjs (cost 12). Nunca a senha em texto.
+  passwordHash        String?
+  passwordUpdatedAt   DateTime? @db.Timestamptz
+  lastLoginAt         DateTime? @db.Timestamptz
+  /// 5 falhas seguidas bloqueiam a conta por 15 minutos (lockedUntil).
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime? @db.Timestamptz
+  createdAt           DateTime  @default(now()) @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  managedTeams        Team[]
+  auditLogs           AuditLog[]
+  memberChanges       MemberChange[]
+  dailies             Daily[]
+  agreements          Agreement[]
+  agreementCheckins   AgreementCheckin[]
+  oneOnOnes           OneOnOne[]
+  feedbacks           Feedback[]
+  notes               Note[]
+  priorityValidations PriorityValidation[]
+  timelineEvents      TimelineEvent[]
+
+  @@index([organizationId])
+}
+
+model Team {
+  id             String @id @default(cuid())
+  organizationId String
+  name           String
+  managerUserId  String
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  manager      User         @relation(fields: [managerUserId], references: [id])
+
+  members TeamMember[]
+  dailies Daily[]
+
+  @@index([organizationId])
+}
+
+/// Toda escrita grava uma entrada, sem exceção — inclusive /settings e toda
+/// tentativa de login (sucesso ou falha).
+/// userId e entityId são opcionais porque a tentativa de login com e-mail
+/// inexistente não tem usuário nem entidade a que se referir.
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String
+  entity         String
+  entityId       String?
+  before         Json?
+  after          Json?
+  at             DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, at(sort: Desc)])
+  @@index([entity, entityId])
+  @@index([userId, at(sort: Desc)])
+}
+
+// ═══════════════════════════ PESSOAS ═══════════════════════════
+
+/// Tabela, não enum (D3): o produto vai ganhar níveis como "Especialista" ou
+/// "Tech Lead", e alterar enum no Postgres é doloroso. `order` define a
+/// progressão (próxima senioridade = order + 1).
+model Seniority {
+  id             String @id @default(cuid())
+  organizationId String
+  key            String
+  label          String
+  order          Int
+
+  organization Organization            @relation(fields: [organizationId], references: [id])
+  members      TeamMember[]
+  expectations CompetencyExpectation[]
+
+  @@unique([organizationId, key])
+  @@unique([organizationId, order])
+}
+
+/// Analista do time. NÃO é User: não autentica, não tem sessão nem convite (D1).
+/// Desativar = status INACTIVE + deletedAt; nunca apagar fisicamente (D10).
+model TeamMember {
+  id             String       @id @default(cuid())
+  teamId         String
+  fullName       String
+  preferredName  String
+  email          String?
+  position       String
+  seniorityId    String
+  joinedAt       DateTime     @db.Date
+  status         MemberStatus @default(ACTIVE)
+  /// Semente determinística da cor do avatar de iniciais.
+  avatarSeed     String
+  /// Resumo gerencial editável no perfil.
+  managerSummary String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz
+  updatedAt      DateTime     @updatedAt @db.Timestamptz
+  deletedAt      DateTime?    @db.Timestamptz
+
+  team      Team      @relation(fields: [teamId], references: [id])
+  seniority Seniority @relation(fields: [seniorityId], references: [id])
+
+  traits                 MemberTrait[]
+  changes                MemberChange[]
+  responsibilities       MemberResponsibility[]
+  mentoring              MentorshipLink[]       @relation("Mentor")
+  mentoredBy             MentorshipLink[]       @relation("Mentee")
+  dailyParticipations    DailyParticipant[]
+  agreements             Agreement[]
+  agreementParticipation AgreementParticipant[]
+  oneOnOnes              OneOnOne[]
+  feedbacks              Feedback[]
+  notes                  Note[]
+  priorityValidations    PriorityValidation[]
+  competencies           MemberCompetency[]
+  developmentPlans       DevelopmentPlan[]
+  ownedActions           DevelopmentAction[]
+  metricResults          MetricResult[]
+  scoreResults           ScoreResult[]
+  timelineEvents         TimelineEvent[]
+
+  @@index([teamId, status])
+  @@index([seniorityId])
+}
+
+/// Pontos fortes e de desenvolvimento numa tabela só, separados por `kind`.
+/// Métrica operacional nunca escreve aqui (princípio "Métrica não é avaliação").
+model MemberTrait {
+  id         String    @id @default(cuid())
+  memberId   String
+  kind       TraitKind
+  text       String
+  observedAt DateTime  @db.Date
+  isActive   Boolean   @default(true)
+
+  member TeamMember @relation(fields: [memberId], references: [id])
+
+  @@index([memberId, kind, isActive])
+}
+
+/// Evento de carreira (senioridade, cargo, status, responsabilidade) com motivo
+/// obrigatório. Não é edição silenciosa de cadastro: gera TimelineEvent.
+/// fromValue é opcional: a primeira atribuição não tem valor anterior.
+model MemberChange {
+  id           String           @id @default(cuid())
+  memberId     String
+  changeType   MemberChangeType
+  fromValue    String?
+  toValue      String
+  effectiveAt  DateTime         @db.Date
+  reason       String
+  authorUserId String
+
+  member         TeamMember      @relation(fields: [memberId], references: [id])
+  author         User            @relation(fields: [authorUserId], references: [id])
+  timelineEvents TimelineEvent[]
+
+  @@index([memberId, effectiveAt(sort: Desc)])
+}
+
+model Responsibility {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  members      MemberResponsibility[]
+
+  @@unique([organizationId, name])
+}
+
+/// Atribuição datada. A chave inclui assignedAt para a mesma responsabilidade
+/// poder voltar à pessoa depois de encerrada (endedAt).
+model MemberResponsibility {
+  memberId         String
+  responsibilityId String
+  isPrimary        Boolean   @default(false)
+  assignedAt       DateTime  @db.Date
+  endedAt          DateTime? @db.Date
+
+  member         TeamMember     @relation(fields: [memberId], references: [id])
+  responsibility Responsibility @relation(fields: [responsibilityId], references: [id])
+
+  @@id([memberId, responsibilityId, assignedAt])
+  @@index([responsibilityId])
+}
+
+/// Vínculo temporário e por competência — responde "como os Plenos estão
+/// ajudando os Juniors" sem virar organograma. CHECK no banco: mentor ≠ mentorado.
+model MentorshipLink {
+  id             String    @id @default(cuid())
+  mentorMemberId String
+  menteeMemberId String
+  competencyId   String?
+  startedAt      DateTime  @db.Date
+  endedAt        DateTime? @db.Date
+  note           String?
+
+  mentor     TeamMember  @relation("Mentor", fields: [mentorMemberId], references: [id])
+  mentee     TeamMember  @relation("Mentee", fields: [menteeMemberId], references: [id])
+  competency Competency? @relation(fields: [competencyId], references: [id])
+
+  @@index([mentorMemberId])
+  @@index([menteeMemberId])
+}
+
+// ═══════════════════════════ REGISTROS ═══════════════════════════
+
+model Daily {
+  id           String   @id @default(cuid())
+  teamId       String
+  date         DateTime @db.Date
+  summary      String?
+  decisions    String?
+  authorUserId String
+  createdAt    DateTime @default(now()) @db.Timestamptz
+
+  team   Team @relation(fields: [teamId], references: [id])
+  author User @relation(fields: [authorUserId], references: [id])
+
+  participants      DailyParticipant[]
+  sourcedAgreements Agreement[]
+  checkins          AgreementCheckin[]
+  timelineEvents    TimelineEvent[]
+
+  @@index([teamId, date(sort: Desc)])
+}
+
+/// Participação de cada pessoa na daily. Absorve o antigo "DailyNote": nota e
+/// impeditivo da pessoa no dia ficam aqui, sem tabela separada.
+model DailyParticipant {
+  dailyId  String
+  memberId String
+  present  Boolean @default(true)
+  note     String?
+  blocker  String?
+
+  daily  Daily      @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  member TeamMember @relation(fields: [memberId], references: [id])
+
+  @@id([dailyId, memberId])
+  @@index([memberId])
+}
+
+/// Combinado com uma pessoa.
+///
+/// originalDueDate é gravado na criação e NUNCA alterado (D17) — um trigger no
+/// banco rejeita qualquer UPDATE que o mude. dueDate é o prazo corrente e muda
+/// a cada reagendamento (D12). Sem essa separação todo combinado arrastado
+/// pareceria cumprido no prazo.
+///
+/// Substituir (em vez de reagendar): o antigo vai para CANCELLED e o novo
+/// nasce com replacesAgreementId apontando para ele.
+///
+/// completedAt é data de negócio: a data da daily em que foi dado como feito.
+model Agreement {
+  id                  String            @id @default(cuid())
+  memberId            String
+  title               String
+  description         String?
+  origin              AgreementOrigin
+  sourceDailyId       String?
+  sourceOneOnOneId    String?
+  sourceFeedbackId    String?
+  createdAt           DateTime          @default(now()) @db.Timestamptz
+  originalDueDate     DateTime          @db.Date
+  dueDate             DateTime          @db.Date
+  priority            AgreementPriority @default(NORMAL)
+  status              AgreementStatus   @default(OPEN)
+  completedAt         DateTime?         @db.Date
+  outcome             String?
+  managerNote         String?
+  replacesAgreementId String?           @unique
+  authorUserId        String
+  updatedAt           DateTime          @updatedAt @db.Timestamptz
+  deletedAt           DateTime?         @db.Timestamptz
+
+  member         TeamMember @relation(fields: [memberId], references: [id])
+  author         User       @relation(fields: [authorUserId], references: [id])
+  sourceDaily    Daily?     @relation(fields: [sourceDailyId], references: [id])
+  sourceOneOnOne OneOnOne?  @relation(fields: [sourceOneOnOneId], references: [id])
+  sourceFeedback Feedback?  @relation(fields: [sourceFeedbackId], references: [id])
+
+  /// Combinado que este substituiu (o antigo, agora CANCELLED).
+  replaces   Agreement? @relation("AgreementReplacement", fields: [replacesAgreementId], references: [id])
+  /// Combinado que substituiu este.
+  replacedBy Agreement? @relation("AgreementReplacement")
+
+  participants   AgreementParticipant[]
+  checkins       AgreementCheckin[]
+  timelineEvents TimelineEvent[]
+
+  @@index([memberId, originalDueDate])
+  @@index([status, dueDate])
+  @@index([sourceDailyId])
+}
+
+model AgreementParticipant {
+  agreementId String
+  memberId    String
+
+  agreement Agreement  @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  member    TeamMember @relation(fields: [memberId], references: [id])
+
+  @@id([agreementId, memberId])
+  @@index([memberId])
+}
+
+/// Motivo de impeditivo, com categoria (D18). Configurável em /settings.
+model BlockerReason {
+  id             String          @id @default(cuid())
+  organizationId String
+  label          String
+  category       BlockerCategory
+  isActive       Boolean         @default(true)
+  order          Int
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  checkins     AgreementCheckin[]
+
+  @@index([organizationId, order])
+}
+
+/// Cada revisão de um combinado numa daily (D11). Um combinado arrastado 4x é
+/// problema diferente de um arrastado 1x — sem esta tabela o arrasto é invisível.
+/// Reagendar grava newDueDate aqui e estende Agreement.dueDate (D12).
+/// CHECK no banco: blockerText obrigatório (não vazio) quando outcome é
+/// PARTIAL ou NOT_DONE.
+model AgreementCheckin {
+  id              String         @id @default(cuid())
+  agreementId     String
+  dailyId         String
+  outcome         CheckinOutcome
+  blockerText     String?
+  blockerReasonId String?
+  newDueDate      DateTime?      @db.Date
+  authorUserId    String
+  createdAt       DateTime       @default(now()) @db.Timestamptz
+
+  agreement     Agreement      @relation(fields: [agreementId], references: [id])
+  daily         Daily          @relation(fields: [dailyId], references: [id])
+  blockerReason BlockerReason? @relation(fields: [blockerReasonId], references: [id])
+  author        User           @relation(fields: [authorUserId], references: [id])
+
+  @@index([agreementId, createdAt])
+  @@index([dailyId])
+}
+
+/// 1:1. Nasce PRIVATE. Mudar a visibilidade atualiza a TimelineEvent espelho
+/// na mesma transação (src/server/timeline.ts).
+model OneOnOne {
+  id                String     @id @default(cuid())
+  memberId          String
+  date              DateTime   @db.Date
+  durationMinutes   Int?
+  topics            String?
+  memberPerception  String?
+  managerPerception String?
+  wins              String?
+  difficulties      String?
+  development       String?
+  nextReviewAt      DateTime?  @db.Date
+  visibility        Visibility @default(PRIVATE)
+  authorUserId      String
+  createdAt         DateTime   @default(now()) @db.Timestamptz
+  updatedAt         DateTime   @updatedAt @db.Timestamptz
+  deletedAt         DateTime?  @db.Timestamptz
+
+  member TeamMember @relation(fields: [memberId], references: [id])
+  author User       @relation(fields: [authorUserId], references: [id])
+
+  sourcedAgreements Agreement[]
+  timelineEvents    TimelineEvent[]
+
+  @@index([memberId, date(sort: Desc)])
+}
+
+/// Feedback no modelo SCI (contexto, comportamento, impacto) + orientação.
+/// Nasce PRIVATE no banco; o formulário de RECOGNITION sugere SHARED, sem impor.
+model Feedback {
+  id           String           @id @default(cuid())
+  memberId     String
+  date         DateTime         @db.Date
+  category     FeedbackCategory
+  context      String?
+  behavior     String
+  impact       String?
+  guidance     String?
+  followUpAt   DateTime?        @db.Date
+  visibility   Visibility       @default(PRIVATE)
+  authorUserId String
+  createdAt    DateTime         @default(now()) @db.Timestamptz
+  updatedAt    DateTime         @updatedAt @db.Timestamptz
+  deletedAt    DateTime?        @db.Timestamptz
+
+  member TeamMember @relation(fields: [memberId], references: [id])
+  author User       @relation(fields: [authorUserId], references: [id])
+
+  sourcedAgreements Agreement[]
+  timelineEvents    TimelineEvent[]
+
+  @@index([memberId, date(sort: Desc)])
+  @@index([followUpAt])
+}
+
+/// Anotação gerencial ou ocorrência. Nasce PRIVATE.
+model Note {
+  id           String     @id @default(cuid())
+  memberId     String
+  occurredAt   DateTime   @db.Timestamptz
+  title        String
+  body         String
+  visibility   Visibility @default(PRIVATE)
+  authorUserId String
+  createdAt    DateTime   @default(now()) @db.Timestamptz
+  updatedAt    DateTime   @updatedAt @db.Timestamptz
+  deletedAt    DateTime?  @db.Timestamptz
+
+  member TeamMember @relation(fields: [memberId], references: [id])
+  author User       @relation(fields: [authorUserId], references: [id])
+
+  timelineEvents TimelineEvent[]
+
+  @@index([memberId, occurredAt(sort: Desc)])
+}
+
+// ═══════════════════ VALIDAÇÃO DE PRIORIDADE ═══════════════════
+
+/// Escala de prioridade de CHAMADO (helpdesk). Separada de AgreementPriority,
+/// que é prioridade de combinado (D13). rank maior = mais prioritário.
+/// Reordenar a escala não reescreve validações passadas: elas guardam o rank
+/// do momento (PriorityValidation.*RankSnapshot).
+model PriorityLevel {
+  id             String  @id @default(cuid())
+  organizationId String
+  key            String
+  label          String
+  rank           Int
+  color          String?
+  isActive       Boolean @default(true)
+
+  organization          Organization         @relation(fields: [organizationId], references: [id])
+  analystValidations    PriorityValidation[] @relation("AnalystPriority")
+  supervisorValidations PriorityValidation[] @relation("SupervisorPriority")
+
+  @@unique([organizationId, key])
+}
+
+model ReclassificationReason {
+  id             String  @id @default(cuid())
+  organizationId String
+  label          String
+  isActive       Boolean @default(true)
+  order          Int
+
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  validations  PriorityValidation[]
+
+  @@index([organizationId, order])
+}
+
+/// Padrão para extrair o ID do chamado da URL colada. Aplicados em ordem
+/// (`order`); o primeiro que casar vence. `captureGroup` é o grupo do regex
+/// que contém o ID.
+model TicketUrlPattern {
+  id             String  @id @default(cuid())
+  organizationId String
+  label          String
+  regex          String
+  captureGroup   Int     @default(1)
+  isActive       Boolean @default(true)
+  order          Int
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, order])
+}
+
+/// Validação da prioridade que o analista deu a um chamado.
+///
+/// outcome é PERSISTIDO junto com os dois rank snapshots (D14): é fato
+/// histórico de uma decisão, não estado derivado do tempo — por isso não
+/// conflita com D9. Reordenar PriorityLevel em /settings não muda o passado.
+///
+/// RETURNED é ação explícita (devolvido para reanálise) e dispensa a prioridade
+/// do supervisor. Não escreve TimelineEvent (D15).
+///
+/// CHECKs no banco:
+/// - reasonId obrigatório quando outcome ≠ MAINTAINED;
+/// - fora de RETURNED, prioridade e rank do supervisor são obrigatórios;
+/// - outcome coerente com os snapshots (MAINTAINED =, RAISED >, LOWERED <).
+model PriorityValidation {
+  id                     String            @id @default(cuid())
+  organizationId         String
+  ticketUrl              String
+  /// ID do chamado extraído da URL (ou digitado, se nenhum padrão casou).
+  ticketRef              String
+  memberId               String
+  analystPriorityId      String
+  supervisorPriorityId   String?
+  analystRankSnapshot    Int
+  supervisorRankSnapshot Int?
+  outcome                ValidationOutcome
+  reasonId               String?
+  reasonOther            String?
+  note                   String?
+  validatedAt            DateTime          @db.Timestamptz
+  validatedByUserId      String
+  createdAt              DateTime          @default(now()) @db.Timestamptz
+  updatedAt              DateTime          @updatedAt @db.Timestamptz
+  deletedAt              DateTime?         @db.Timestamptz
+
+  organization       Organization            @relation(fields: [organizationId], references: [id])
+  member             TeamMember              @relation(fields: [memberId], references: [id])
+  analystPriority    PriorityLevel           @relation("AnalystPriority", fields: [analystPriorityId], references: [id])
+  supervisorPriority PriorityLevel?          @relation("SupervisorPriority", fields: [supervisorPriorityId], references: [id])
+  reason             ReclassificationReason? @relation(fields: [reasonId], references: [id])
+  validatedBy        User                    @relation(fields: [validatedByUserId], references: [id])
+
+  @@index([organizationId, validatedAt])
+  @@index([memberId, validatedAt])
+  @@index([reasonId])
+  @@index([outcome, validatedAt])
+  @@index([ticketRef])
+}
+
+// ═══════════════════════ DESENVOLVIMENTO ═══════════════════════
+
+model Competency {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  category       String?
+  isActive       Boolean @default(true)
+
+  organization     Organization            @relation(fields: [organizationId], references: [id])
+  expectations     CompetencyExpectation[]
+  memberLevels     MemberCompetency[]
+  developmentPlans DevelopmentPlan[]
+  mentorships      MentorshipLink[]
+
+  @@unique([organizationId, name])
+}
+
+/// Nível esperado de uma competência para cada senioridade — o esqueleto da
+/// matriz de competências. Base do alerta informativo de prontidão.
+model CompetencyExpectation {
+  competencyId  String
+  seniorityId   String
+  expectedLevel Int
+  descriptor    String?
+
+  competency Competency @relation(fields: [competencyId], references: [id])
+  seniority  Seniority  @relation(fields: [seniorityId], references: [id])
+
+  @@id([competencyId, seniorityId])
+}
+
+/// Nível atual de uma pessoa numa competência (uma linha por par pessoa ×
+/// competência; reavaliar atualiza a linha e a data).
+model MemberCompetency {
+  memberId     String
+  competencyId String
+  currentLevel Int
+  targetLevel  Int?
+  assessedAt   DateTime @db.Date
+  evidence     String?
+
+  member     TeamMember @relation(fields: [memberId], references: [id])
+  competency Competency @relation(fields: [competencyId], references: [id])
+
+  @@id([memberId, competencyId])
+  @@index([competencyId])
+}
+
+/// PDI. lastReviewedAt alimenta o alerta "PDI parado" — plano sem
+/// acompanhamento é plano morto.
+model DevelopmentPlan {
+  id               String                @id @default(cuid())
+  memberId         String
+  competencyId     String?
+  currentSituation String
+  objective        String
+  expectedEvidence String?
+  status           DevelopmentPlanStatus @default(DRAFT)
+  startedAt        DateTime              @db.Date
+  dueDate          DateTime?             @db.Date
+  completedAt      DateTime?             @db.Date
+  progressNote     String?
+  lastReviewedAt   DateTime?             @db.Timestamptz
+  createdAt        DateTime              @default(now()) @db.Timestamptz
+  updatedAt        DateTime              @updatedAt @db.Timestamptz
+  deletedAt        DateTime?             @db.Timestamptz
+
+  member     TeamMember  @relation(fields: [memberId], references: [id])
+  competency Competency? @relation(fields: [competencyId], references: [id])
+
+  actions        DevelopmentAction[]
+  timelineEvents TimelineEvent[]
+
+  @@index([memberId, status])
+  @@index([status, lastReviewedAt])
+}
+
+/// Ação de um PDI. ownerMemberId preenchido quando o responsável é a própria
+/// pessoa ou um mentor (TeamMember); vazio quando é o gestor.
+model DevelopmentAction {
+  id            String                  @id @default(cuid())
+  planId        String
+  description   String
+  ownerType     ActionOwnerType
+  ownerMemberId String?
+  dueDate       DateTime?               @db.Date
+  status        DevelopmentActionStatus @default(OPEN)
+  completedAt   DateTime?               @db.Date
+  followUpNote  String?
+
+  plan        DevelopmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  ownerMember TeamMember?     @relation(fields: [ownerMemberId], references: [id])
+
+  @@index([planId])
+}
+
+// ═══════════════ MÉTRICAS E SCORE (arquitetura apenas) ═══════════════
+//
+// Métrica não é avaliação: nada aqui escreve em TimelineEvent, altera
+// MemberTrait ou aparece na mesma superfície de um feedback. Nenhuma fórmula de
+// score no MVP (D5) — só o esquema, os pesos e o breakdown explicável.
+
+model MetricDefinition {
+  id             String          @id @default(cuid())
+  organizationId String
+  key            String
+  label          String
+  unit           String?
+  direction      MetricDirection
+  /// Sistema de origem (ex.: helpdesk). Importação fora do MVP.
+  sourceSystem   String?
+  isActive       Boolean         @default(true)
+
+  organization          Organization           @relation(fields: [organizationId], references: [id])
+  results               MetricResult[]
+  scoreComponents       ScoreComponent[]
+  scoreResultComponents ScoreResultComponent[]
+
+  @@unique([organizationId, key])
+}
+
+/// Valor de uma métrica para uma pessoa num período.
+/// sampleSize é obrigatório (CHECK ≥ 0): "Número sem cobertura é mentira" —
+/// CSAT 4,8 com 6 avaliações não é CSAT 4,8, e nenhuma métrica é exibida sem
+/// a cobertura ao lado.
+model MetricResult {
+  id                 String   @id @default(cuid())
+  memberId           String
+  metricDefinitionId String
+  periodStart        DateTime @db.Date
+  periodEnd          DateTime @db.Date
+  value              Float
+  sampleSize         Int
+  importedAt         DateTime @default(now()) @db.Timestamptz
+  sourceRef          String?
+
+  member           TeamMember       @relation(fields: [memberId], references: [id])
+  metricDefinition MetricDefinition @relation(fields: [metricDefinitionId], references: [id])
+
+  @@unique([memberId, metricDefinitionId, periodStart, periodEnd])
+  @@index([metricDefinitionId, periodStart])
+}
+
+/// Definição versionada de score: alterar pesos cria nova versão em vez de
+/// reescrever resultados antigos.
+model ScoreDefinition {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  version        Int
+  isActive       Boolean  @default(false)
+  notes          String?
+  createdAt      DateTime @default(now()) @db.Timestamptz
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  components   ScoreComponent[]
+  results      ScoreResult[]
+
+  @@unique([organizationId, name, version])
+}
+
+model ScoreComponent {
+  scoreDefinitionId  String
+  metricDefinitionId String
+  weight             Float
+  normalizationMin   Float
+  normalizationMax   Float
+
+  scoreDefinition  ScoreDefinition  @relation(fields: [scoreDefinitionId], references: [id], onDelete: Cascade)
+  metricDefinition MetricDefinition @relation(fields: [metricDefinitionId], references: [id])
+
+  @@id([scoreDefinitionId, metricDefinitionId])
+}
+
+model ScoreResult {
+  id                String   @id @default(cuid())
+  memberId          String
+  scoreDefinitionId String
+  periodStart       DateTime @db.Date
+  periodEnd         DateTime @db.Date
+  value             Float
+  computedAt        DateTime @default(now()) @db.Timestamptz
+
+  member          TeamMember             @relation(fields: [memberId], references: [id])
+  scoreDefinition ScoreDefinition        @relation(fields: [scoreDefinitionId], references: [id])
+  components      ScoreResultComponent[]
+
+  @@index([memberId, periodStart])
+}
+
+/// Breakdown de cada score: valor bruto, normalizado, peso e contribuição de
+/// cada métrica. NÃO é redundante — é o que impede o score de virar
+/// caixa-preta. Todo score exibido precisa poder ser aberto até aqui.
+model ScoreResultComponent {
+  scoreResultId      String
+  metricDefinitionId String
+  rawValue           Float
+  normalizedValue    Float
+  weight             Float
+  contribution       Float
+
+  scoreResult      ScoreResult      @relation(fields: [scoreResultId], references: [id], onDelete: Cascade)
+  metricDefinition MetricDefinition @relation(fields: [metricDefinitionId], references: [id])
+
+  @@id([scoreResultId, metricDefinitionId])
+}
+
+// ═══════════════════════════ TIMELINE ═══════════════════════════
+
+/// Índice denormalizado, NUNCA fonte de verdade (D2). Cada linha espelha um
+/// registro concreto (Agreement, OneOnOne, Feedback, Daily, Note,
+/// DevelopmentPlan, MemberChange) e é escrita na mesma transação que ele.
+///
+/// - Único escritor: src/server/timeline.ts.
+/// - visibility SEMPRE espelha a do registro de origem. Linha SHARED apontando
+///   para registro PRIVATE é vazamento e bug crítico.
+/// - PriorityValidation e métricas NÃO geram linha aqui (D15, D5).
+/// - tags é text[] nativo com índice GIN; sem tabela de tags. O índice é
+///   declarado aqui (type: Gin) para o Prisma não tentar removê-lo em toda
+///   migration futura.
+/// - Apagar o registro de origem apaga a linha-espelho (onDelete: Cascade).
+model TimelineEvent {
+  id                String            @id @default(cuid())
+  memberId          String
+  occurredAt        DateTime          @db.Timestamptz
+  type              TimelineEventType
+  title             String
+  summary           String?
+  authorUserId      String
+  visibility        Visibility        @default(PRIVATE)
+  tags              String[]          @default([])
+  agreementId       String?
+  oneOnOneId        String?
+  feedbackId        String?
+  dailyId           String?
+  noteId            String?
+  developmentPlanId String?
+  memberChangeId    String?
+  createdAt         DateTime          @default(now()) @db.Timestamptz
+
+  member          TeamMember       @relation(fields: [memberId], references: [id])
+  author          User             @relation(fields: [authorUserId], references: [id])
+  agreement       Agreement?       @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  oneOnOne        OneOnOne?        @relation(fields: [oneOnOneId], references: [id], onDelete: Cascade)
+  feedback        Feedback?        @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  daily           Daily?           @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  note            Note?            @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  developmentPlan DevelopmentPlan? @relation(fields: [developmentPlanId], references: [id], onDelete: Cascade)
+  memberChange    MemberChange?    @relation(fields: [memberChangeId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, occurredAt(sort: Desc)])
+  @@index([type])
+  @@index([agreementId])
+  @@index([oneOnOneId])
+  @@index([feedbackId])
+  @@index([noteId])
+  @@index([tags], type: Gin, map: "TimelineEvent_tags_idx")
+}
