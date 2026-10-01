@@ -16,7 +16,7 @@ Deliberadamente **não** usamos o creme quente `#F4F1EA` + serifa editorial + ac
 --surface-sunken:  #F4F5F7   hover de linha, cabeçalho de tabela, estado vazio
 --ink:             #16181D   texto primário (nunca #000)
 --ink-secondary:   #5C6270   rótulos, metadados
---ink-tertiary:    #8A909E   placeholder, texto desabilitado
+--ink-tertiary:    #8A909E   placeholder, texto desabilitado, marcador de ausência (—). Nunca texto que precise ser lido (contraste 3,2:1)
 --line:            #E4E6EB   toda borda e divisor — 1px
 --line-strong:     #CDD1D9   separador de seção, foco
 --accent:          #2C4A7C   azul-tinta. Ação primária e seleção. Único acento não semântico
@@ -28,13 +28,20 @@ Deliberadamente **não** usamos o creme quente `#F4F1EA` + serifa editorial + ac
 A cor comunica **apenas** estado e prioridade — nunca decora.
 
 ```
---calm:       #4B7A5A  /  wash #EDF3EF   concluído, em dia
---attention:  #A8730E  /  wash #FBF3E2   vencendo, atenção
---overdue:    #A33A32  /  wash #FAECEA   vencido, crítico
---neutral:    #5C6270  /  wash #F4F5F7   aberto, sem prazo
+--calm:              #487756  /  wash #EDF3EF   concluído, em dia
+--attention:         #94650C  /  wash #FBF3E2   vencendo, atenção
+--attention-strong:  #9E4F14  /  wash #FAEEE4   atenção forte (degrau "laranja")
+--overdue:           #A33A32  /  wash #FAECEA   vencido, crítico
+--neutral:           #5C6270  /  wash #F4F5F7   aberto, sem prazo
 ```
 
-Escala graduada de idade (mesma lógica de backlog): neutro → âmbar → laranja → vermelho, conforme o registro envelhece sem resolução. Implementada em `src/lib/severity.ts`.
+Escala graduada de idade (mesma lógica de backlog): neutro → âmbar → laranja → vermelho, conforme o registro envelhece sem resolução. Implementada em `src/lib/severity.ts`. O laranja não é uma quinta severidade: é `attention` com `strong`, pintado com `--attention-strong`.
+
+Contraste: toda cor forte de severidade passa AA (≥ 4,5:1) sobre o próprio wash, sobre `--surface` e sobre `--surface-sunken`. Revisão de 01/10/2026: `--calm` era `#4B7A5A` (4,41:1) e `--attention` era `#A8730E` (3,71:1); ambos foram escurecidos mantendo o tom. Qualquer token novo de texto passa pela mesma checagem antes de entrar aqui.
+
+### Tema escuro
+
+Fora do MVP. Não há tokens escuros definidos, e não se inventa paleta escura por conta própria — seria deriva visual. Os tokens vivem em `:root`, então um tema escuro futuro entra como um bloco de redefinição dos mesmos nomes, sem tocar em componente.
 
 ## Tipografia
 
@@ -96,7 +103,7 @@ A timeline é o único momento de ousadia visual do produto — todo o resto do 
 - **Calha:** 96px de largura total, da borda esquerda da coluna até o início do conteúdo do evento. É onde vivem a régua, a data e o marcador.
 - **Régua:** linha vertical de 1px, centralizada na calha, na cor `--line`.
 - **Marcador:** 7px de diâmetro, círculo sobre a régua, alinhado ao topo de cada evento.
-- **Sangria de severidade:** quando o item está vencido ou exige ação, um traço de 4px de largura em `--attention` ou `--overdue` sangra para dentro da calha a partir da régua, no trecho correspondente àquele evento — não é um ponto ou ícone isolado, é a própria calha que ganha cor no trecho.
+- **Sangria de severidade:** quando o item está vencido ou exige ação, um traço de 4px de largura em `--attention`, `--attention-strong` ou `--overdue` (conforme o degrau da escala) sangra para dentro da calha a partir da régua, no trecho correspondente àquele evento — não é um ponto ou ícone isolado, é a própria calha que ganha cor no trecho.
 
 Composição:
 

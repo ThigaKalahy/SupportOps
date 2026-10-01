@@ -51,7 +51,7 @@ function FieldGroup({
     <div data-slot="field-group" className={cn("flex flex-col gap-1.5", className)} {...props}>
       <Label htmlFor={controlId} className="gap-1">
         {label}
-        {optional ? <span className="font-normal text-ink-tertiary">({labels.common.optional})</span> : null}
+        {optional ? <span className="font-normal text-ink-secondary">({labels.common.optional})</span> : null}
       </Label>
       {control}
       {message ? (

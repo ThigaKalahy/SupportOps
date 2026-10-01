@@ -201,7 +201,7 @@ export function LabOverlays() {
         <Specimen state="CommandDialog">
           <Button variant="secondary" onClick={() => setPaletteOpen(true)}>
             {demo.commandTrigger}
-            <kbd className="rounded-xs border border-line px-1 font-mono text-2xs text-ink-tertiary">⌘K</kbd>
+            <kbd className="rounded-xs border border-line px-1 font-mono text-2xs text-ink-secondary">⌘K</kbd>
           </Button>
           <CommandDialog open={paletteOpen} onOpenChange={setPaletteOpen}>
             <PaletteContent />

@@ -15,7 +15,7 @@ export function Specimen({
 }) {
   return (
     <div className={cn("flex min-w-0 flex-col gap-2", className)}>
-      <MetaLabel className="text-ink-tertiary">{state}</MetaLabel>
+      <MetaLabel>{state}</MetaLabel>
       <div className="flex min-w-0 flex-wrap items-center gap-3">{children}</div>
     </div>
   )

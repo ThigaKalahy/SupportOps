@@ -48,7 +48,7 @@ function StatStrip({
         >
           <dt className="text-xs text-ink-secondary">
             {item.label}
-            {item.coverage ? <span className="text-ink-tertiary"> · {item.coverage}</span> : null}
+            {item.coverage ? <span className="text-ink-secondary"> · {item.coverage}</span> : null}
           </dt>
           <dd
             className={cn(

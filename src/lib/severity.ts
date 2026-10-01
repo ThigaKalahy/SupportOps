@@ -11,9 +11,8 @@ import { fill, labels } from "@/lib/labels";
  *   neutral   aberto, sem prazo
  *
  * A escala graduada (neutro → âmbar → laranja → vermelho) tem um degrau a mais
- * que os tokens: o "laranja" é representado como `attention` com `strong: true`.
- * O DESIGN.md ainda não define cor própria para esse degrau — até lá ele é
- * exibido como `attention`.
+ * que as quatro severidades: o "laranja" é `attention` com `strong: true`, e
+ * StatusPill/SeverityDot o pintam com o token `--attention-strong`.
  */
 
 export const SEVERITIES = ["calm", "attention", "overdue", "neutral"] as const;

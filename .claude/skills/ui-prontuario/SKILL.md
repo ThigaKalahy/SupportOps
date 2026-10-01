@@ -35,19 +35,20 @@ Nunca fazer, sem exceção, sem "só desta vez":
 --surface-sunken:  #F4F5F7
 --ink:             #16181D   (nunca #000)
 --ink-secondary:   #5C6270
---ink-tertiary:    #8A909E
+--ink-tertiary:    #8A909E   só placeholder, desabilitado e marcador de ausência — nunca texto a ser lido
 --line:            #E4E6EB
 --line-strong:     #CDD1D9
 --accent:          #2C4A7C   único acento não semântico — ação primária e seleção
 --accent-wash:     #EDF1F6
 
---calm:       #4B7A5A  /  wash #EDF3EF   concluído, em dia
---attention:  #A8730E  /  wash #FBF3E2   vencendo, atenção
---overdue:    #A33A32  /  wash #FAECEA   vencido, crítico
---neutral:    #5C6270  /  wash #F4F5F7   aberto, sem prazo
+--calm:              #487756  /  wash #EDF3EF   concluído, em dia
+--attention:         #94650C  /  wash #FBF3E2   vencendo, atenção
+--attention-strong:  #9E4F14  /  wash #FAEEE4   atenção forte (degrau "laranja")
+--overdue:           #A33A32  /  wash #FAECEA   vencido, crítico
+--neutral:           #5C6270  /  wash #F4F5F7   aberto, sem prazo
 ```
 
-A cor de severidade comunica estado e prioridade — nunca decoração. Não usar `--calm`/`--attention`/`--overdue` fora de contexto de status de registro.
+A cor de severidade comunica estado e prioridade — nunca decoração. Não usar `--calm`/`--attention`/`--attention-strong`/`--overdue` fora de contexto de status de registro. O degrau laranja é `attention` com `strong` (StatusPill/SeverityDot), não uma quinta severidade. Sem tema escuro no MVP — não inventar tokens escuros.
 
 Tipografia: **IBM Plex Sans** na interface inteira, **IBM Plex Mono** em datas, prazos, contadores, chaves e rótulos de tipo de registro. Escala `11/12/13/15/18/22/28`, corpo a 13px com `line-height: 1.5`. `font-variant-numeric: tabular-nums` global em números. Sentence case em tudo; uppercase só em rótulo mono de 11px com `letter-spacing: 0.06em`.
 

@@ -41,7 +41,7 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
       header: demo.colStatus,
       cell: (a) => {
         const s = deadlineSeverity(a.dueDate, { resolved: a.resolved, today })
-        return <StatusPill severity={s.severity} label={s.label} />
+        return <StatusPill severity={s.severity} strong={s.strong} label={s.label} />
       },
       title: (a) => deadlineSeverity(a.dueDate, { resolved: a.resolved, today }).label,
       width: "184px",

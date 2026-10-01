@@ -18,10 +18,12 @@
   --accent: #2c4a7c;
   --accent-wash: #edf1f6;
 
-  --calm: #4b7a5a;
+  --calm: #487756;
   --calm-wash: #edf3ef;
-  --attention: #a8730e;
+  --attention: #94650c;
   --attention-wash: #fbf3e2;
+  --attention-strong: #9e4f14;
+  --attention-strong-wash: #faeee4;
   --overdue: #a33a32;
   --overdue-wash: #faecea;
   --neutral: #5c6270;
@@ -96,6 +98,8 @@
   --color-calm-wash: var(--calm-wash);
   --color-attention: var(--attention);
   --color-attention-wash: var(--attention-wash);
+  --color-attention-strong: var(--attention-strong);
+  --color-attention-strong-wash: var(--attention-strong-wash);
   --color-overdue: var(--overdue);
   --color-overdue-wash: var(--overdue-wash);
   --color-neutral: var(--neutral);

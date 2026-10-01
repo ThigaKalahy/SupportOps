@@ -17,4 +17,4 @@ export const menuItemClasses =
 
 /** Rótulo de grupo em menus: mesmo estilo do MetaLabel. */
 export const menuLabelClasses =
-  "px-2 pt-2 pb-1 font-mono text-2xs font-medium tracking-label text-ink-tertiary uppercase"
+  "px-2 pt-2 pb-1 font-mono text-2xs font-medium tracking-label text-ink-secondary uppercase"

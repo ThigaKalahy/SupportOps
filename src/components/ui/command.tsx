@@ -87,7 +87,7 @@ function CommandGroup({ className, ...props }: React.ComponentProps<typeof Comma
       className={cn(
         "overflow-hidden text-ink",
         // cabeçalho de grupo no estilo MetaLabel (mesmo visual de menuLabelClasses)
-        "**:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-2xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:tracking-label **:[[cmdk-group-heading]]:text-ink-tertiary **:[[cmdk-group-heading]]:uppercase",
+        "**:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-2xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:tracking-label **:[[cmdk-group-heading]]:text-ink-secondary **:[[cmdk-group-heading]]:uppercase",
         className
       )}
       {...props}
@@ -114,7 +114,7 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
 
 function CommandShortcut({ className, ...props }: React.ComponentProps<"span">) {
   return (
-    <span data-slot="command-shortcut" className={cn("ml-auto font-mono text-2xs text-ink-tertiary", className)} {...props} />
+    <span data-slot="command-shortcut" className={cn("ml-auto font-mono text-2xs text-ink-secondary", className)} {...props} />
   )
 }
 

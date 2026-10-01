@@ -48,8 +48,9 @@ const structuralTokens = [
 ] as const
 
 const severityTokens = [
-  ["--calm", "#4B7A5A", "bg-calm", "#EDF3EF", "bg-calm-wash"],
-  ["--attention", "#A8730E", "bg-attention", "#FBF3E2", "bg-attention-wash"],
+  ["--calm", "#487756", "bg-calm", "#EDF3EF", "bg-calm-wash"],
+  ["--attention", "#94650C", "bg-attention", "#FBF3E2", "bg-attention-wash"],
+  ["--attention-strong", "#9E4F14", "bg-attention-strong", "#FAEEE4", "bg-attention-strong-wash"],
   ["--overdue", "#A33A32", "bg-overdue", "#FAECEA", "bg-overdue-wash"],
   ["--neutral", "#5C6270", "bg-neutral", "#F4F5F7", "bg-neutral-wash"],
 ] as const
@@ -337,6 +338,7 @@ export default function UiLabPage() {
             {SEVERITIES.map((s) => (
               <StatusPill key={s} severity={s} label={enumLabel("severity", s)} />
             ))}
+            <StatusPill severity="attention" strong label={labels.severity.attentionStrong} />
           </Specimen>
           <Specimen state="SeverityDot · 6px">
             {SEVERITIES.map((s) => (
@@ -345,6 +347,10 @@ export default function UiLabPage() {
                 {enumLabel("severity", s)}
               </span>
             ))}
+            <span className="flex items-center gap-1.5 text-sm">
+              <SeverityDot severity="attention" strong label={labels.severity.attentionStrong} />
+              {labels.severity.attentionStrong}
+            </span>
           </Specimen>
           <Specimen state="Badge">
             <Badge>{seniorities[1]}</Badge>
@@ -370,10 +376,10 @@ export default function UiLabPage() {
         <div className="flex flex-col divide-y divide-line rounded-lg border border-line bg-surface">
           {deadlineSamples.map((s, i) => (
             <div key={i} className="grid h-10 grid-cols-[16px_112px_1fr] items-center gap-3 px-3 sm:grid-cols-[16px_112px_200px_1fr]">
-              <SeverityDot severity={s.severity} label={s.label} />
+              <SeverityDot severity={s.severity} strong={s.strong} label={s.label} />
               {s.dueDate ? <DateStamp date={s.dueDate} kind="business" /> : <span className="text-ink-tertiary">—</span>}
-              <StatusPill severity={s.severity} label={s.label} />
-              <span className="hidden font-mono text-2xs text-ink-tertiary sm:block">
+              <StatusPill severity={s.severity} strong={s.strong} label={s.label} />
+              <span className="hidden font-mono text-2xs text-ink-secondary sm:block">
                 {s.stage}
                 {s.strong ? " · strong" : ""}
               </span>

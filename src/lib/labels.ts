@@ -43,6 +43,10 @@ export const labels = {
     emptyTitle: "Nenhum registro",
     selectedRow: "Linha selecionada",
   },
+  severity: {
+    /** Degrau "laranja" da escala graduada (attention + strong). */
+    attentionStrong: "Atenção forte",
+  },
   deadline: {
     noDueDate: "Sem prazo",
     onTrack: "Em dia",

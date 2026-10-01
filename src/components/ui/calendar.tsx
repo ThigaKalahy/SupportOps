@@ -57,12 +57,12 @@ function Calendar({
         month_grid: cn("w-full border-collapse", defaults.month_grid),
         weekdays: cn("flex", defaults.weekdays),
         weekday: cn(
-          "w-(--cell-size) font-mono text-2xs font-medium tracking-label text-ink-tertiary uppercase select-none",
+          "w-(--cell-size) font-mono text-2xs font-medium tracking-label text-ink-secondary uppercase select-none",
           defaults.weekday
         ),
         week: cn("mt-1 flex w-full", defaults.week),
         week_number_header: cn("w-(--cell-size) select-none", defaults.week_number_header),
-        week_number: cn("font-mono text-2xs text-ink-tertiary select-none", defaults.week_number),
+        week_number: cn("font-mono text-2xs text-ink-secondary select-none", defaults.week_number),
         day: cn("relative size-(--cell-size) p-0 text-center select-none", defaults.day),
         range_start: cn("rounded-l-sm bg-accent-wash", defaults.range_start),
         range_middle: cn("rounded-none bg-accent-wash", defaults.range_middle),
