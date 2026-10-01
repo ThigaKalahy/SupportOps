@@ -3,7 +3,7 @@
 | Fase | Status | Commit | Data |
 |------|--------|--------|------|
 | P0  Fundação documental        | concluída | | |
-| P1  Design system              | concluída — aguarda checagem visual | (hash) | 01/10/2026 |
+| P1  Design system              | concluída — aguarda checagem visual | 94e0273 | 01/10/2026 |
 | P2  App shell                  | pendente | | |
 | P3  Schema Prisma              | pendente | | |
 | P4  Seed                       | pendente | | |
