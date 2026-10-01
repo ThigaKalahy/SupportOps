@@ -4,7 +4,7 @@
 |------|--------|--------|------|
 | P0  Fundação documental        | concluída | | |
 | P1  Design system              | concluída — aguarda checagem visual | 94e0273 | 01/10/2026 |
-| P2  App shell                  | pendente | | |
+| P2  App shell                  | concluída | (hash) | 01/10/2026 |
 | P3  Schema Prisma              | pendente | | |
 | P4  Seed                       | pendente | | |
 | P5  Auth e visibilidade        | pendente | | |
@@ -30,3 +30,9 @@
 - **Ajustes pós-fase (aprovados pelo Thiago):** `--attention` #A8730E → #94650C e `--calm` #4B7A5A → #487756 para passar AA; token novo `--attention-strong` #9E4F14 / wash #FAEEE4 para o degrau laranja (prop `strong` em StatusPill e SeverityDot); `--ink-tertiary` restrito a placeholder, desabilitado e marcador de ausência; exemplo do BLOCKERS.md recuado para não disparar o phase-gate; `jq` 1.8.2 já instalado — hooks passam a valer após reabrir o VS Code.
 - **Precisa de revisão humana:** a checagem da Parte E em `pnpm dev` → /ui-lab, incluindo os tons novos de âmbar, laranja e verde; as decisões tomadas sem pedir — subset `latin` junto com `latin-ext` (só `latin-ext` jogaria ASCII para a fonte do sistema), outline de foco deslocado para dentro (`-2px`) em linhas de tabela e no campo da paleta para não ser cortado, tooltip com 400ms de atraso, polegar da ScrollArea com `rounded-full` (regra global de barra de rolagem), SeverityDot desenhado como círculo SVG em vez de `rounded-full`.
 - **A próxima fase assume:** primitivos em `src/components/ui/` (consultar /ui-lab antes de criar qualquer coisa); tokens só via classes do tema (`bg-canvas`, `text-ink-secondary`, `bg-overdue-wash`, `max-w-page`...); texto visível só via `src/lib/labels.ts`; datas via `src/lib/dates.ts` distinguindo timestamp de data de negócio; `/` ainda responde 404 — o P2 cria `src/app/(app)/page.tsx`.
+
+### P2 — App shell (branch `fase/2-app-shell`)
+
+- **Ficou de fora:** busca da barra de contexto oculta abaixo de 768px (inerte até o P16; em 360px não cabe junto do breadcrumb); abertura do drawer e navegação por teclado ponta a ponta não foram exercitadas por clique/teclado — verificadas pela ordem do DOM, pelos estados forçados no /ui-lab e por screenshots headless do Edge em 360, 768, 900, 1280 e 1920px; nenhuma página tem ação primária ainda (botão sem função seria falso — o slot existe e está no /ui-lab).
+- **Precisa de revisão humana:** abrir o drawer em tela < 1024px e percorrer a navegação com Tab; o contorno de foco em linha de tabela aparece só em cima e embaixo (o Chrome não desenha as laterais do outline em `<tr>`); correção feita na DataTable do P1 — a soma das larguras fixas fazia a coluna flexível sumir em contêiner estreito, agora há `hideBelow` e `w-full min-w-0`.
+- **A próxima fase assume:** páginas novas entram em `src/app/(app)/` e herdam o shell; ação primária via `<ContextActions>`; sub-rotas de `/team/[memberId]` aparecem no breadcrumb pelos rótulos de `nav-config.ts` (segmento dinâmico é omitido — o P7 deve injetar o nome da pessoa); o P3 depende do banco Neon já provisionado e de `DATABASE_URL`/`DIRECT_URL` no `.env.local`.

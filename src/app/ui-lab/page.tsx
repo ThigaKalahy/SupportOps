@@ -26,6 +26,7 @@ import { deadlineSeverity, SEVERITIES } from "@/lib/severity"
 
 import { LabDataTables } from "./_components/lab-data-tables"
 import { LabCalendar, LabOverlays } from "./_components/lab-overlays"
+import { LabShell } from "./_components/lab-shell"
 import { LabSection, Specimen } from "./_components/specimen"
 import { addDays, buildAgreements, demo, notes, people, sectionCopy, seniorities } from "./_fixtures"
 
@@ -100,6 +101,11 @@ export default function UiLabPage() {
   return (
     <main className="mx-auto flex w-full max-w-page flex-col gap-8 px-4 py-6 md:px-6">
       <PageHeader title={labels.uiLab.title} subtitle={labels.uiLab.subtitle} />
+
+      {/* Shell */}
+      <LabSection id="shell" title={sectionCopy.shell.title} description={sectionCopy.shell.description}>
+        <LabShell />
+      </LabSection>
 
       {/* Tokens */}
       <LabSection id="tokens" title={sectionCopy.tokens.title} description={sectionCopy.tokens.description}>

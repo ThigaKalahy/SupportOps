@@ -32,6 +32,82 @@ export const labels = {
     previousMonth: "Mês anterior",
     nextMonth: "Próximo mês",
   },
+  nav: {
+    today: "Hoje",
+    team: "Equipe",
+    agreements: "Combinados",
+    priorityValidations: "Validação de prioridade",
+    dailies: "Dailies",
+    records: "Registros",
+    development: "Desenvolvimento",
+    settings: "Configurações",
+    timeline: "Timeline",
+  },
+  shell: {
+    skipToContent: "Pular para o conteúdo",
+    mainNavigation: "Navegação principal",
+    openNavigation: "Abrir navegação",
+    collapseSidebar: "Recolher barra lateral",
+    expandSidebar: "Expandir barra lateral",
+    breadcrumb: "Você está em",
+    searchPlaceholder: "Buscar pessoa, combinado ou ação",
+    searchShortcut: "⌘K",
+  },
+  notFound: {
+    title: "Página não encontrada",
+    direction: "Este endereço não corresponde a nenhuma página do Prontuário. Confira o link ou volte para Hoje.",
+    action: "Ir para Hoje",
+  },
+  pages: {
+    today: {
+      subtitle: "Quem precisa da sua atenção hoje.",
+      emptyTitle: "Nenhum alerta por enquanto",
+      emptyDirection:
+        "Combinados vencidos, 1:1 atrasados, PDIs parados e dailies não registradas aparecem aqui, ordenados por urgência, assim que houver registros do time.",
+    },
+    team: {
+      subtitle: "Cadastro das pessoas do time, com senioridade, último 1:1 e combinados em aberto.",
+      emptyTitle: "Nenhuma pessoa cadastrada",
+      emptyDirection:
+        "Cada analista cadastrado ganha um perfil com timeline, combinados, 1:1, feedbacks e plano de desenvolvimento.",
+    },
+    agreements: {
+      subtitle: "Compromissos combinados com o time, com responsável, prazo e histórico de reagendamento.",
+      emptyTitle: "Nenhum combinado registrado",
+      emptyDirection:
+        "Combinados nascem em dailies, 1:1 e feedbacks e aparecem aqui com o prazo original, o prazo atual e quantas vezes foram reagendados.",
+    },
+    priorityValidations: {
+      subtitle: "Prioridade definida pelo analista no chamado e prioridade confirmada pela supervisão.",
+      emptyTitle: "Nenhuma validação registrada",
+      emptyDirection:
+        "Cada validação registra o chamado, o responsável, as duas prioridades e se ela foi mantida, elevada, reduzida ou devolvida para reanálise.",
+    },
+    dailies: {
+      subtitle: "Revisão dos combinados do dia anterior e registro dos novos, por pessoa.",
+      emptyTitle: "Nenhuma daily registrada",
+      emptyDirection:
+        "Ao registrar uma daily, os combinados da anterior e os vencidos entram para revisão automaticamente.",
+    },
+    records: {
+      subtitle: "1:1 e feedbacks de todo o time.",
+      emptyTitle: "Nenhum 1:1 ou feedback registrado",
+      emptyDirection:
+        "1:1 e feedbacks ficam aqui, filtráveis por pessoa, tipo e período. Nascem privados; só o feedback de reconhecimento sugere compartilhar com o gestor.",
+    },
+    development: {
+      subtitle: "Planos de desenvolvimento, competências e acompanhamentos.",
+      emptyTitle: "Nenhum plano de desenvolvimento ativo",
+      emptyDirection:
+        "Planos aparecem aqui com a data do último acompanhamento. Plano sem acompanhamento há mais de 45 dias fica em destaque.",
+    },
+    settings: {
+      subtitle: "Parâmetros que alimentam registros e alertas.",
+      emptyTitle: "Nenhum parâmetro cadastrado",
+      emptyDirection:
+        "Aqui ficam os níveis de prioridade, os motivos de bloqueio e de reclassificação, os padrões de URL de chamado e os limiares dos alertas.",
+    },
+  },
   command: {
     title: "Paleta de comandos",
     description: "Busque uma ação ou um registro",

@@ -19,7 +19,7 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
   const columns: DataTableColumn<LabAgreement>[] = [
     { id: "title", header: demo.colTitle, cell: (a) => a.title, stacked: "primary" },
     { id: "owner", header: demo.colOwner, cell: (a) => a.owner, width: "160px" },
-    { id: "origin", header: demo.colOrigin, cell: (a) => <MetaLabel>{a.origin}</MetaLabel>, title: (a) => a.origin, width: "104px" },
+    { id: "origin", header: demo.colOrigin, cell: (a) => <MetaLabel>{a.origin}</MetaLabel>, title: (a) => a.origin, width: "104px", hideBelow: "lg" },
     {
       id: "created",
       header: demo.colCreated,
@@ -27,6 +27,7 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
       title: () => undefined,
       width: "112px",
       stacked: "hidden",
+      hideBelow: "xl",
     },
     {
       id: "due",
@@ -60,8 +61,12 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
       title: () => undefined,
       width: "112px",
       align: "right",
+      hideBelow: "xl",
     },
   ]
+
+  // Painéis estreitos (meia largura) usam só as colunas essenciais.
+  const narrowColumns = columns.filter((c) => ["title", "owner", "due", "status"].includes(c.id))
 
   const base = {
     columns,
@@ -77,22 +82,22 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
       </Specimen>
       <div className="grid gap-6 xl:grid-cols-2">
         <Specimen state={labels.uiLab.states.hover}>
-          <DataTable {...base} rows={few} forcedRowState={{ rowId: "a2", state: "hover" }} onRowSelect={() => {}} />
+          <DataTable {...base} rows={few} columns={narrowColumns} forcedRowState={{ rowId: "a2", state: "hover" }} onRowSelect={() => {}} />
         </Specimen>
         <Specimen state={labels.uiLab.states.focus}>
-          <DataTable {...base} rows={few} forcedRowState={{ rowId: "a2", state: "focus" }} onRowSelect={() => {}} />
+          <DataTable {...base} rows={few} columns={narrowColumns} forcedRowState={{ rowId: "a2", state: "focus" }} onRowSelect={() => {}} />
         </Specimen>
         <Specimen state={labels.uiLab.states.compact}>
-          <DataTable {...base} rows={few} density="compact" />
+          <DataTable {...base} rows={few} columns={narrowColumns} density="compact" />
         </Specimen>
         <Specimen state={labels.uiLab.states.loading}>
-          <DataTable {...base} rows={[]} state="loading" />
+          <DataTable {...base} rows={[]} columns={narrowColumns} state="loading" />
         </Specimen>
         <Specimen state={labels.uiLab.states.empty}>
-          <DataTable {...base} rows={[]} />
+          <DataTable {...base} rows={[]} columns={narrowColumns} />
         </Specimen>
         <Specimen state={labels.uiLab.states.error}>
-          <DataTable {...base} rows={[]} state="error" error={{ message: demo.tableError, onRetry: () => {} }} />
+          <DataTable {...base} rows={[]} columns={narrowColumns} state="error" error={{ message: demo.tableError, onRetry: () => {} }} />
         </Specimen>
       </div>
     </div>

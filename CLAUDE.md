@@ -236,7 +236,15 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Primitivos próprios em `src/components/ui/`: DataTable, StatusPill, SeverityDot, MetaLabel, DateStamp, PageHeader, EmptyState, FieldGroup, StatStrip, Sparkline.
 - `/ui-lab` com todos os primitivos em todos os estados; 404 em produção. Estados de hover e foco são reproduzidos com `data-force-state="hover|focus"` (variante `hover` redefinida no globals.css), sem duplicar estilo.
 - `src/lib/labels.ts` (formato da tradução: `labels`, `enumLabels`, `enumLabel()`, `fill()`), `src/lib/dates.ts` (timestamp no fuso de São Paulo × data de negócio `@db.Date` lida em UTC), `src/lib/severity.ts` (escala de prazo com os limiares do P9; escala de idade com limiares obrigatórios por módulo).
-- Não existe página em `/` — responde 404 até o P2 criar `src/app/(app)/page.tsx`.
+- Não existe página em `/` — responde 404 até o P2 criar `src/app/(app)/page.tsx`. _(Resolvido no P2.)_
+
+**P2 — App shell**
+- `src/app/(app)/layout.tsx` monta o `AppShell` (`src/components/shell/`): sidebar de 232px recolhível para 56px em ≥ 1024px, com estado no cookie `prontuario.sidebar` lido no servidor; drawer (Sheet) abaixo de 1024px; barra de contexto de 48px com breadcrumb (só a página atual abaixo de 768px), busca inerte com `⌘K` e slot de ação primária; conteúdo fluido até 1600px com padding de 24px (16px no mobile); link "Pular para o conteúdo".
+- Ação primária por página: `<ContextActions>` (`src/components/shell/context-actions.tsx`) injeta o botão no slot da barra de contexto via portal.
+- Navegação e breadcrumb definidos em `src/components/shell/nav-config.ts` (sete itens + Configurações).
+- Oito rotas com PageHeader e EmptyState de direção: `/`, `/team`, `/agreements`, `/priority-validations`, `/dailies`, `/records`, `/development`, `/settings`. Textos em `labels.pages`.
+- 404 global em pt-BR (`src/app/not-found.tsx`).
+- DataTable: colunas aceitam `hideBelow: "lg" | "xl"` para sair em telas médias; a tabela agora ocupa 100% do contêiner e encolhe.
 
 ## Backlog de curto prazo
 

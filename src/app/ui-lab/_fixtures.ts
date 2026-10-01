@@ -33,6 +33,7 @@ export const sectionCopy = {
   overlays: { title: "Sobreposições", description: "Dialog, Sheet, DropdownMenu, Popover, Tooltip e Command." },
   calendar: { title: "Calendar", description: "" },
   misc: { title: "Avatar, Separator e ScrollArea", description: "" },
+  shell: { title: "Shell", description: "NavLink, Sidebar (232px e 56px) e ContextBar de 48px. Abaixo de 1024px a sidebar vira drawer; abaixo de 768px o breadcrumb mostra só a página atual." },
 } as const
 
 export const demo = {

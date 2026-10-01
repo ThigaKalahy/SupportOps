@@ -24,7 +24,16 @@ export interface DataTableColumn<T> {
    * hidden    não aparece na lista empilhada
    */
   stacked?: "primary" | "secondary" | "hidden"
+  /**
+   * Oculta a coluna na tabela abaixo do breakpoint (lg = 1024px, xl = 1280px).
+   * Use nas colunas de menor prioridade: a soma das larguras fixas não pode
+   * passar da largura disponível, senão a coluna flexível (sem `width`) some.
+   */
+  hideBelow?: "lg" | "xl"
 }
+
+const hideCellClasses = { lg: "hidden lg:table-cell", xl: "hidden xl:table-cell" } as const
+const hideColClasses = { lg: "hidden lg:table-column", xl: "hidden xl:table-column" } as const
 
 export type DataTableState = "ready" | "loading" | "error"
 
@@ -122,7 +131,11 @@ function DataTable<T>({
     <div
       data-slot="data-table"
       data-state={state}
-      className={cn("rounded-lg border border-line bg-surface", maxHeight ? "overflow-auto" : "overflow-clip", className)}
+      className={cn(
+        "w-full min-w-0 rounded-lg border border-line bg-surface",
+        maxHeight ? "overflow-auto" : "overflow-clip",
+        className
+      )}
       style={maxHeight ? { maxHeight } : undefined}
     >
       {/* ≥ 768px: tabela */}
@@ -133,7 +146,11 @@ function DataTable<T>({
       >
         <colgroup>
           {columns.map((column) => (
-            <col key={column.id} style={column.width ? { width: column.width } : undefined} />
+            <col
+              key={column.id}
+              className={column.hideBelow ? hideColClasses[column.hideBelow] : undefined}
+              style={column.width ? { width: column.width } : undefined}
+            />
           ))}
         </colgroup>
         <thead>
@@ -144,7 +161,8 @@ function DataTable<T>({
                 scope="col"
                 className={cn(
                   "sticky top-0 z-10 h-8 truncate border-b border-line bg-surface-sunken px-3 font-mono text-2xs font-medium tracking-label text-ink-secondary uppercase",
-                  column.align === "right" ? "text-right" : "text-left"
+                  column.align === "right" ? "text-right" : "text-left",
+                  column.hideBelow && hideCellClasses[column.hideBelow]
                 )}
               >
                 {column.header}
@@ -157,7 +175,10 @@ function DataTable<T>({
             Array.from({ length: LOADING_ROWS }, (_, i) => (
               <tr key={i} className={rowHeight} aria-hidden>
                 {columns.map((column) => (
-                  <td key={column.id} className="border-b border-line px-3">
+                  <td
+                    key={column.id}
+                    className={cn("border-b border-line px-3", column.hideBelow && hideCellClasses[column.hideBelow])}
+                  >
                     <span className={cn("block h-2 rounded-xs bg-surface-sunken", i % 2 ? "w-1/2" : "w-3/4")} />
                   </td>
                 ))}
@@ -194,6 +215,7 @@ function DataTable<T>({
                         className={cn(
                           "truncate border-b border-line px-3",
                           column.align === "right" && "text-right",
+                          column.hideBelow && hideCellClasses[column.hideBelow],
                           index === 0 &&
                             selected &&
                             "relative before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent"
