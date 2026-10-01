@@ -12,7 +12,7 @@ Precedência em conflito: CLAUDE.md > MANUAL-COMPLETO.md > PLANO-TECNICO.md.
 
 - CLAUDE.md — este arquivo. Governa tudo. Atualizado ao final de cada fase.
 - MANUAL-COMPLETO.md — os prompts de cada fase e as checagens humanas. SOMENTE LEITURA para você.
-- PLANO-TECNICO.md — fonte de verdade sobre modelo de dados, escopo e riscos. SOMENTE LEITURA.
+- PLANO-TECNICO.md — documento histórico, superado. Não consultar para implementação.
 - DESIGN.md e .claude/skills/ui-prontuario/SKILL.md — governam tudo que é visual.
 
 Se o prompt de uma fase contradisser uma decisão travada deste arquivo, a decisão travada vence e você para para perguntar.
@@ -174,8 +174,15 @@ Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `s
 - `reasonId` é obrigatório quando `outcome != MAINTAINED`, validado no zod e no banco.
 - Métricas de cumprimento são calculadas em query sobre `originalDueDate`, `completedAt` e `AgreementCheckin`. Nenhuma taxa é persistida (D19).
 
+## Métricas e score
+
+- Métricas operacionais (`MetricResult`) nunca escrevem em `TimelineEvent`, nunca alteram `MemberTrait` e nunca aparecem na mesma superfície de um feedback.
+- `MetricResult.sampleSize` é obrigatório. Nenhuma métrica é exibida sem a cobertura ao lado.
+- Nenhum score é exibido sem o `ScoreResultComponent` que o explica — indicadores e pesos que formaram o número.
+
 ## Regras de segurança e privacidade
 
+- `ALLOWED_EMAILS` é uma allowlist rígida verificada no callback de signIn, ANTES de qualquer verificação de senha. Nenhum e-mail fora dela autentica, mesmo com passwordHash válido no banco. Não é redundante com a criação por CLI: é o kill switch operacional — remover um e-mail da variável de ambiente revoga o acesso imediatamente, sem tocar no banco de produção — e a segunda barreira caso alguém com acesso ao banco insira uma linha em `User`.
 - Autenticação é e-mail + senha com hash bcryptjs cost 12. Senha nunca em texto.
 - Não existe cadastro público, convite ou recuperação de senha. Usuários são criados exclusivamente por `pnpm user:create` e `pnpm user:password`.
 - Erro de login genérico e idêntico para e-mail inexistente e senha errada: "E-mail ou senha inválidos".

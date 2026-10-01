@@ -1,0 +1,7 @@
+.env
+.env*.local
+.claude/.autorun
+.claude/settings.local.json
+node_modules
+.next
+/tmp

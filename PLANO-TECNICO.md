@@ -1,3 +1,14 @@
+> **DOCUMENTO HISTÓRICO — NÃO É FONTE DE VERDADE.**
+> Escrito antes das decisões D11 a D19. Contém informação desatualizada sobre:
+> autenticação (descreve Google OAuth; o projeto usa Credentials), enum de
+> `Agreement.status` (lista OVERDUE, que não existe), e o modelo de dados (não
+> contém `originalDueDate`, `AgreementCheckin`, `BlockerReason`, `PriorityLevel`,
+> `PriorityValidation` nem `TicketUrlPattern`).
+> O modelo de dados vigente está no prompt da fase P3, dentro do MANUAL-COMPLETO.md.
+> As decisões vigentes estão no CLAUDE.md.
+> Mantido apenas pelo registro de raciocínio e análise de risco. NÃO consulte este
+> arquivo para implementar nada.
+
 # Plano Técnico — Sistema de Gestão de Equipe de Suporte
 
 Documento de decisão. Revise, corrija o que discordar, e só depois execute os prompts do arquivo `PROMPTS-CLAUDE-CODE.md`.
