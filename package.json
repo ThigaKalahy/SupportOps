@@ -53,5 +53,8 @@
       "@prisma/engines",
       "prisma"
     ]
+  },
+  "prisma": {
+    "seed": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON prisma/seed.ts"
   }
 }

@@ -11,7 +11,9 @@ Onde consigo:
 4. Cole no `.env.local`, sem aspas angulares. Não precisa me mostrar os valores.
 Enquanto isso: o P3 inteiro fica parado — schema, primeira migration, CHECK constraints e índice GIN só valem se validados contra o banco real. P4 em diante dependem do P3.
 
-## [ ] Lista de motivos de reclassificação: "nove" ou oito?
+## [x] Lista de motivos de reclassificação: "nove" ou oito?
+Resolvido em 01/10/2026: seed com os oito listados, "Outro" por último. Um nono pode ser acrescentado depois em /settings (P11).
+Decisão relacionada (P4): o ALLOWED_EMAILS tem um só e-mail; o seed cria apenas o OWNER, e o VIEWER será criado no P5 por `pnpm user:create`.
 Fase: P3 (o seed em si é do P4)
 Preciso de: confirmar a lista de `ReclassificationReason`. O prompt diz "exatamente estes nove, nesta ordem", mas lista oito: Impacto superestimado; Impacto subestimado; Ausência de contingência não considerada; Cliente único tratado como impacto geral; Urgência comercial confundida com criticidade técnica; Evidência insuficiente; Critério de prioridade aplicado incorretamente; Outro.
 Onde consigo: responder qual é o nono motivo, ou confirmar que são oito.

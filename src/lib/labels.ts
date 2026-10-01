@@ -53,6 +53,12 @@ export const labels = {
     searchPlaceholder: "Buscar pessoa, combinado ou ação",
     searchShortcut: "⌘K",
   },
+  timeline: {
+    /** Título da linha de 1:1 quando não há assuntos registrados. */
+    oneOnOneFallback: "1:1",
+    /** Título de mudança de carreira: "Pleno → Sênior". */
+    memberChange: "{from} → {to}",
+  },
   notFound: {
     title: "Página não encontrada",
     direction: "Este endereço não corresponde a nenhuma página do Prontuário. Confira o link ou volte para Hoje.",

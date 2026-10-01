@@ -254,6 +254,12 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - `src/server/db.ts`: singleton com `db` (leituras de TeamMember, Agreement, OneOnOne, Feedback, Note, PriorityValidation e DevelopmentPlan escondem `deletedAt` automaticamente; `include` aninhado precisa filtrar à mão) e `dbIncludingDeleted` (sem filtro, uso explícito).
 - Scripts: `db:generate`, `db:validate`, `db:push`, `db:migrate`, `db:migrate:deploy`, `db:seed` (o seed em si é do P4), `db:studio`; `postinstall` roda `prisma generate`.
 
+**P4 — Seed**
+- `src/server/timeline.ts`: único escritor de TimelineEvent. Construtores `timelineEventFor.*` (combinado criado/concluído, 1:1, feedback, nota de daily, anotação, PDI, mudança de carreira), `recordTimelineEvents(tx, ...)` e `syncTimelineVisibility(tx, ...)`. Registros sem campo de visibilidade (combinado, daily, PDI, mudança de carreira) geram linha SHARED.
+- `prisma/seed.ts` (`pnpm db:seed`, Node ≥ 22.6 com TypeScript nativo): ~6 meses de histórico relativo à data em que roda, aleatoriedade com semente fixa. Idempotente: apaga e recria só os ids `seed_`; organização, usuário e catálogos por upsert. O OWNER é o primeiro e-mail de `ALLOWED_EMAILS`, sem senha; o VIEWER não é criado (fica para o P5).
+- Padrões narrativos verificados no banco: Larissa 50% → 67% → 100% de cumprimento no prazo; Henrique 100% → 67%, com 5/6 → 3/6 nas duas últimas janelas de 30 dias (dispara "cumprimento em queda"), sem feedback há ~100 dias, PDI sem acompanhamento há ~80 dias e só dois 1:1; Diego com um combinado reagendado 4x, sempre "Dependência de terceiro"; Priscila com dois combinados vencidos há mais de 40 dias; Beatriz sem 1:1 há ~6 semanas; Otávio com 50% de alteração de prioridade e "Impacto superestimado" dominante; Rafael com 5% de alteração e 100% de cumprimento; dois combinados substituídos; duas semanas de ausência do gestor sem daily.
+- `tsconfig.json` com `allowImportingTsExtensions` (imports `.ts` explícitos em código que também roda no Node puro).
+
 ## Backlog de curto prazo
 
 Provisionar o banco antes do P3 (já feito).
