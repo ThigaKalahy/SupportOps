@@ -5,7 +5,7 @@
 | P0  Fundação documental        | concluída | | |
 | P1  Design system              | concluída — aguarda checagem visual | 94e0273 | 01/10/2026 |
 | P2  App shell                  | concluída | 377ecce | 01/10/2026 |
-| P3  Schema Prisma              | concluída | (hash) | 01/10/2026 |
+| P3  Schema Prisma              | concluída | aa6c80d | 01/10/2026 |
 | P4  Seed                       | pendente | | |
 | P5  Auth e visibilidade        | pendente | | |
 | P6  Equipe e cadastro          | pendente | | |
