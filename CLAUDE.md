@@ -226,7 +226,17 @@ Qualquer sessão de Claude Code que considerar revisar uma dessas decisões deve
 
 ## Funcionalidades existentes
 
-_Vazio — este projeto ainda não saiu da fase 0 (documentação). Atualize esta seção ao final de cada fase entregue, listando o que passou a existir e funcionar._
+Atualize esta seção ao final de cada fase entregue, listando o que passou a existir e funcionar.
+
+**P1 — Design system**
+- Scaffold Next.js 15.5 (App Router, `src/`), TypeScript strict com `noUncheckedIndexedAccess`, Tailwind CSS v4, ESLint, pnpm. Scripts: `dev`, `build`, `start`, `lint`, `typecheck`.
+- `src/app/globals.css`: tokens do DESIGN.md em `:root` com os mesmos nomes (`--canvas`, `--accent`...) e expostos ao Tailwind (`bg-canvas`, `text-ink`, `border-line`, `bg-overdue-wash`...). A paleta, as sombras, os blurs e as larguras padrão do Tailwind foram removidos: classe fora do sistema não gera CSS. Escala tipográfica em nomes Tailwind (`text-2xs` 11 · `xs` 12 · `sm` 13 corpo · `base` 15 · `lg` 18 · `xl` 22 · `2xl` 28). Raios: `rounded-xs` 2px, `rounded-sm` 4px (controles), `rounded-lg` 6px (contêineres). Única sombra: `shadow-popover`. Larguras: `max-w-page` (1600px), `max-w-dialog`, `max-w-drawer`, `max-w-tooltip`. Foco global com outline 2px `--accent`; `prefers-reduced-motion` remove transições; barra de rolagem discreta.
+- Fontes IBM Plex Sans (400/500/600) e IBM Plex Mono (400/500) via `next/font/google`, subsets `latin` + `latin-ext`.
+- shadcn/ui (base Radix) com os 19 componentes reescritos para os tokens: button, input, textarea, select, dialog, dropdown-menu, popover, tabs, badge, separator, tooltip, command, sheet, calendar, avatar, checkbox, label, scroll-area, table. Classes compartilhadas de superfície flutuante e item de menu em `src/components/ui/styles.ts`.
+- Primitivos próprios em `src/components/ui/`: DataTable, StatusPill, SeverityDot, MetaLabel, DateStamp, PageHeader, EmptyState, FieldGroup, StatStrip, Sparkline.
+- `/ui-lab` com todos os primitivos em todos os estados; 404 em produção. Estados de hover e foco são reproduzidos com `data-force-state="hover|focus"` (variante `hover` redefinida no globals.css), sem duplicar estilo.
+- `src/lib/labels.ts` (formato da tradução: `labels`, `enumLabels`, `enumLabel()`, `fill()`), `src/lib/dates.ts` (timestamp no fuso de São Paulo × data de negócio `@db.Date` lida em UTC), `src/lib/severity.ts` (escala de prazo com os limiares do P9; escala de idade com limiares obrigatórios por módulo).
+- Não existe página em `/` — responde 404 até o P2 criar `src/app/(app)/page.tsx`.
 
 ## Backlog de curto prazo
 

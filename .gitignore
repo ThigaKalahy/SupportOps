@@ -5,3 +5,12 @@
 node_modules
 .next
 /tmp
+
+# next.js / build
+/out
+/build
+/coverage
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.pnpm-debug.log*
