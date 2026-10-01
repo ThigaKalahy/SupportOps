@@ -8,14 +8,14 @@ Prontuário é o sistema de gestão de um time de suporte com 9 analistas. A met
 
 ## Documentos do projeto
 
-Precedência em caso de conflito: CLAUDE.md > PLANO-TECNICO.md > PROMPTS-CLAUDE-CODE.md.
+Precedência em conflito: CLAUDE.md > MANUAL-COMPLETO.md > PLANO-TECNICO.md.
 
 - CLAUDE.md — este arquivo. Governa tudo. Atualizado ao final de cada fase.
+- MANUAL-COMPLETO.md — os prompts de cada fase e as checagens humanas. SOMENTE LEITURA para você.
 - PLANO-TECNICO.md — fonte de verdade sobre modelo de dados, escopo e riscos. SOMENTE LEITURA.
-- PROMPTS-CLAUDE-CODE.md — especificação da fase corrente. SOMENTE LEITURA.
 - DESIGN.md e .claude/skills/ui-prontuario/SKILL.md — governam tudo que é visual.
 
-Se uma fase de PROMPTS-CLAUDE-CODE.md contradisser uma decisão travada deste arquivo, a decisão travada vence e você para para perguntar.
+Se o prompt de uma fase contradisser uma decisão travada deste arquivo, a decisão travada vence e você para para perguntar.
 
 ## Princípios do projeto
 
@@ -26,7 +26,7 @@ Se uma fase de PROMPTS-CLAUDE-CODE.md contradisser uma decisão travada deste ar
 - **Sem overengineering para dois usuários.** Sem REST público, sem tRPC, sem Redux, sem microserviços, sem camada de abstração especulativa. Ganhos de performance ou flexibilidade que só importam em escala não importam aqui.
 - **Fricção de registro mata o produto.** Se lançar uma daily custa mais de 30 segundos, o sistema é abandonado em três semanas. Captura rápida, formulário enxuto e salvamento parcial são requisito de aceite, não polimento.
 - **Escopo travado por fase.** Revisão de diff a cada fase, commit por fase. Nenhuma decisão da seção "Decisões que não devem ser alteradas silenciosamente" muda sem confirmação explícita do usuário.
-- **Número sem cobertura é mentira.** `MetricResult.sampleSize` é obrigatório e nenhuma métrica pode ser exibida sem a cobertura ao lado. CSAT de 4,8 com 6 avaliações não é CSAT de 4,8. Vale igualmente para qualquer indicador derivado.
+- **Número sem cobertura é mentira.** `MetricResult.sampleSize` é obrigatório e nenhuma métrica pode ser exibida sem a cobertura ao lado. CSAT de 4,8 com 6 avaliações não é CSAT de 4,8. Vale igualmente para taxa de cumprimento e taxa de alteração de prioridade.
 
 ## Stack
 
@@ -39,7 +39,7 @@ Se uma fase de PROMPTS-CLAUDE-CODE.md contradisser uma decisão travada deste ar
 | Ícones | Lucide, stroke 1.5, 16px | Nunca ícone acima de 20px na UI |
 | ORM | Prisma 6 | Schema legível, ~25 tabelas, muitos relacionamentos opcionais |
 | Banco | PostgreSQL — Neon, região `aws-sa-east-1` (São Paulo) | Dados de pessoas permanecem no Brasil |
-| Auth | Auth.js v5 (NextAuth) + Google OAuth | Alternativa: magic link via Resend |
+| Auth | Auth.js v5 (NextAuth) — provider Credentials | E-mail + senha, sessão JWT. Sem OAuth, sem cadastro público, sem recuperação de senha. Usuários criados por script de CLI |
 | Formulários | react-hook-form + zod | Schema zod compartilhado entre client e Server Action |
 | Datas | date-fns + `date-fns/locale/pt-BR`, TZ `America/Sao_Paulo` | Datas de negócio `@db.Date`, timestamps `timestamptz` |
 | Deploy | Vercel | Região de função `gru1` se o plano permitir |
@@ -61,6 +61,8 @@ Fluxo de uma escrita:
 5. `revalidatePath`/`revalidateTag` no que precisa reidratar; sem estado global de cliente (sem Redux, sem store).
 
 Fluxo de uma leitura: Server Component chama uma função de `src/server/queries/`, que já aplica a regra de `visibility` conforme o papel do usuário autenticado. Nenhuma query de UI decide visibilidade por conta própria.
+
+Auth.js exige configuração dividida por causa do Edge runtime: `src/server/auth.config.ts` é leve (sem Prisma, sem bcrypt) e é o que o middleware importa; `src/server/auth.ts` é completo, roda em Node, e contém o provider Credentials. Importar Prisma no middleware quebra o build na Vercel.
 
 ## Convenções
 
@@ -116,10 +118,12 @@ Fluxo de uma leitura: Server Component chama uma função de `src/server/queries
     │   └── forms/
     ├── server/
     │   ├── db.ts                     # cliente Prisma singleton
-    │   ├── auth.ts
+    │   ├── auth.config.ts            # config leve importada pelo middleware (sem Prisma, sem bcrypt)
+    │   ├── auth.ts                   # config completa, Node, provider Credentials
     │   ├── timeline.ts               # ÚNICO lugar que escreve TimelineEvent
     │   ├── alerts.ts                 # motor de alertas
     │   ├── audit.ts
+    │   ├── whatsapp.ts               # gerador de texto para WhatsApp (único lugar com emoji)
     │   └── queries/                  # queries por domínio
     ├── actions/                      # Server Actions, uma por domínio
     └── lib/
@@ -138,6 +142,8 @@ pnpm db:push             # sincronizar schema em dev
 pnpm db:migrate          # criar migration
 pnpm db:seed             # popular dados de demonstração
 pnpm db:studio           # inspecionar dados
+pnpm user:create         # criar usuário (único meio de criar conta)
+pnpm user:password       # redefinir senha de usuário
 pnpm lint && pnpm typecheck
 ```
 
@@ -148,6 +154,8 @@ No build da Vercel: `prisma migrate deploy && next build`.
 Antes de criar ou alterar qualquer componente visual, leia **[.claude/skills/ui-prontuario/SKILL.md](.claude/skills/ui-prontuario/SKILL.md)** e **[DESIGN.md](DESIGN.md)**. Eles definem tokens, tipografia, densidade e as restrições negativas do projeto — não são opcionais e têm precedência sobre qualquer default de shadcn/ui ou instinto genérico de "boa UI".
 
 Nenhum componente novo sem primitivo correspondente em `/ui-lab`. Deriva visual entre fases é o risco mais provável do projeto depois de fricção de registro — trate `/ui-lab` como referência obrigatória, não como catálogo opcional.
+
+Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `src/server/whatsapp.ts` (D16). Nenhum componente de UI usa emoji, em nenhuma circunstância.
 
 ## Regras de modelagem
 
@@ -160,10 +168,21 @@ Nenhum componente novo sem primitivo correspondente em `/ui-lab`. Deriva visual 
 - `TeamMember` não é `User`. Os 9 analistas não autenticam no sistema — não criar fluxo de convite, sessão ou autorização para eles (D1).
 - Soft delete (`deletedAt`) apenas onde há valor histórico: `TeamMember`, `Agreement`, registros. Não em tabelas de junção (D10).
 - `tags` em `TimelineEvent` é `text[]` nativo do Postgres com índice GIN — não criar tabela de tags separada.
+- A daily do dia D puxa os combinados criados na daily anterior mais os em aberto com `dueDate <= hoje`. Revisar grava `AgreementCheckin` (D11).
+- Reagendar estende `dueDate` do mesmo `Agreement` e grava checkin com `newDueDate`. `originalDueDate` permanece intocado (D12, D17). Substituir: o antigo vai para CANCELLED, o novo nasce com `replacesAgreementId`.
+- `PriorityValidation.outcome` é calculado na escrita e nunca recalculado (D14). `RETURNED` é ação explícita, não derivável de ranks.
+- `reasonId` é obrigatório quando `outcome != MAINTAINED`, validado no zod e no banco.
+- Métricas de cumprimento são calculadas em query sobre `originalDueDate`, `completedAt` e `AgreementCheckin`. Nenhuma taxa é persistida (D19).
 
 ## Regras de segurança e privacidade
 
-- `ALLOWED_EMAILS` é uma allowlist rígida no login — nenhum e-mail fora dela autentica, mesmo via Google Workspace válido.
+- Autenticação é e-mail + senha com hash bcryptjs cost 12. Senha nunca em texto.
+- Não existe cadastro público, convite ou recuperação de senha. Usuários são criados exclusivamente por `pnpm user:create` e `pnpm user:password`.
+- Erro de login genérico e idêntico para e-mail inexistente e senha errada: "E-mail ou senha inválidos".
+- `bcrypt.compare` roda SEMPRE, inclusive com e-mail inexistente (contra hash descartável), para não vazar quais contas existem por tempo de resposta.
+- 5 tentativas falhas bloqueiam a conta por 15 minutos.
+- Toda tentativa de login, sucesso ou falha, gera entrada no `AuditLog`.
+- O domínio de produção na Vercel é público no plano Hobby. A tela de login é a única barreira. Deployment Protection cobre apenas os previews.
 - Dois papéis ativos no MVP: `OWNER` (você, leitura e escrita completas) e `VIEWER` (seu gestor, leitura apenas). `MANAGER` existe no enum mas fica reservado para quando outro gestor tiver seu próprio time.
 - `VIEWER` **nunca** lê um registro com `visibility: PRIVATE`, em nenhuma superfície — timeline, busca, command palette, exportação futura. Essa checagem vive nas queries de `src/server/queries/`, não em filtro de UI.
 - Toda escrita grava uma entrada em `AuditLog` (`action`, `entity`, `entityId`, `before`, `after`, `userId`, `at`). Sem exceção, inclusive para escritas administrativas em `/settings`.
@@ -186,8 +205,17 @@ Nenhum componente novo sem primitivo correspondente em `/ui-lab`. Deriva visual 
 | D8 | Server Actions. Sem REST público, sem tRPC, sem Redux | Só duas pessoas usam. Não há cliente externo |
 | D9 | Alertas são **derivados em query**, não persistidos | Um alerta persistido fica obsoleto no segundo seguinte |
 | D10 | Soft delete apenas onde há valor histórico | `TeamMember`, `Agreement`, registros. Não em tabelas de junção |
+| D11 | `AgreementCheckin` registra cada revisão de combinado numa daily | Um combinado arrastado 4x é problema diferente de um arrastado 1x. Sem a tabela, o arrasto é invisível |
+| D12 | Reagendar estende o `dueDate` e grava um checkin — não cria registro novo nem muda status | Mantém o enum de status em 4 valores e preserva o histórico de arrasto |
+| D13 | `PriorityLevel` (chamado) é separado do enum `Agreement.priority` (combinado) | Domínios diferentes. Unificar faz a escala do helpdesk mexer na priorização dos compromissos do gestor |
+| D14 | `PriorityValidation.outcome` é persistido junto com os ranks do momento | Fato histórico de uma decisão, não estado derivado do tempo. Reordenar a escala não pode reescrever o passado. Não conflita com D9 |
+| D15 | Validação de prioridade não escreve em `TimelineEvent` | Inundaria o prontuário com registro operacional. O perfil mostra o agregado; virar feedback é ato explícito do gestor |
+| D16 | Emoji permitido exclusivamente no texto exportado para WhatsApp | A proibição vale para a interface. O export é outro meio |
+| D17 | `Agreement.originalDueDate` é gravado na criação e NUNCA alterado | Reagendamento muda `dueDate`. Sem o prazo original não existe medição honesta de cumprimento — todo combinado arrastado pareceria cumprido no prazo |
+| D18 | `BlockerReason.category` (EXTERNAL / INTERNAL / CAPACITY) separa cumprimento bruto de ajustado | "Aguardando acesso do cliente" e "esqueci" não podem pesar igual contra a pessoa |
+| D19 | Taxa de cumprimento nunca aparece sem o total de combinados ao lado, e nunca vira um número único por pessoa | Quem teve 3 combinados fáceis fecha 100%. Taxa sem denominador é propaganda, não medição |
 
-Qualquer sessão de Claude Code que considerar revisar uma dessas dez decisões deve parar e perguntar ao usuário antes de agir — não decidir sozinha, mesmo que pareça uma melhoria técnica.
+Qualquer sessão de Claude Code que considerar revisar uma dessas decisões deve parar e perguntar ao usuário antes de agir — não decidir sozinha, mesmo que pareça uma melhoria técnica.
 
 ## Funcionalidades existentes
 
@@ -195,15 +223,26 @@ _Vazio — este projeto ainda não saiu da fase 0 (documentação). Atualize est
 
 ## Backlog de curto prazo
 
-1. **P0** — CLAUDE.md, README.md, DESIGN.md, skill local de UI. Fundação documental — em auditoria/correção nesta fase.
-2. **P1** — scaffold Next.js 15 + TypeScript + Tailwind v4, tokens do `DESIGN.md` aplicados via `@theme`, primitivos shadcn reescritos em `/ui-lab`.
-3. **P2** — app shell: sidebar fixa/colapsável, barra de contexto de 48px, responsividade (drawer em tablet/mobile, tabelas viram lista empilhada).
-4. Provisionar Neon (`aws-sa-east-1`, branches `main` e `dev`) **antes** de iniciar P3 — P3 em diante depende de banco real, não de fixtures em memória.
-5. **P3** — `schema.prisma` completo (seção 5 do `PLANO-TECNICO.md`) + primeira migration.
-6. **P4** — seed com as 9 pessoas do time e ~6 meses de histórico não uniforme (ver seção 11 do `PLANO-TECNICO.md`).
-7. **P5** — Auth.js v5 + Google OAuth, allowlist de e-mail, papéis, `visibility`, `AuditLog`.
-8. **P6–P15** — os 7 módulos do MVP, agrupados (Hoje, Equipe, Perfil, Dailies, Combinados, 1:1/Feedbacks, Desenvolvimento). `PLANO-TECNICO.md` §7 não quebra este intervalo em fases individuais — a numeração fina de P6 a P15 só existe em `PROMPTS-CLAUDE-CODE.md`, que não está neste repositório. Não fragmentar sem essa fonte.
-9. **P16** — não definida. `PLANO-TECNICO.md` §7 só cobre até "Fase 15"; não há fonte para o conteúdo de uma fase 16. Confirmar com o usuário ou com `PROMPTS-CLAUDE-CODE.md` quando ele existir — não inventar escopo para essa fase.
+Provisionar o banco antes do P3 (já feito).
+
+- **P1** — Design system
+- **P2** — App shell
+- **P3** — Schema Prisma
+- **P4** — Seed
+- **P5** — Auth e visibilidade
+- **P6** — Equipe e cadastro
+- **P7** — Perfil do analista
+- **P8** — Timeline
+- **P9** — Combinados
+- **P10** — Dailies com rollover
+- **P11** — Validação de prioridade
+- **P12** — Cumprimento de combinados
+- **P13** — 1:1 e feedbacks
+- **P14** — Desenvolvimento e PDI
+- **P15** — Hoje e motor de alertas
+- **P16** — Busca global
+- **P17** — Arquitetura de score
+- **P18** — Mobile, a11y e deploy
 
 ## Protocolo de execução autônoma
 

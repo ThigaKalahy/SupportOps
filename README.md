@@ -9,7 +9,7 @@ Para decisões de produto, arquitetura e regras de negócio, ver [CLAUDE.md](CLA
 - Next.js 15 (App Router) + TypeScript `strict`
 - Tailwind CSS v4, shadcn/ui (Radix) com tokens reescritos
 - Prisma 6 + PostgreSQL (Neon, `aws-sa-east-1`)
-- Auth.js v5 + Google OAuth
+- Auth.js v5 — provider Credentials (e-mail + senha, sessão JWT)
 - react-hook-form + zod
 - date-fns (`pt-BR`, TZ `America/Sao_Paulo`)
 - Deploy: Vercel (`gru1`)
@@ -31,14 +31,16 @@ DATABASE_URL=            # Neon, connection string com pooler
 DIRECT_URL=              # Neon, conexão direta — usada por prisma migrate
 AUTH_SECRET=             # openssl rand -base64 32
 AUTH_URL=                # http://localhost:3000 em dev
-AUTH_GOOGLE_ID=
-AUTH_GOOGLE_SECRET=
-ALLOWED_EMAILS=          # seu@email.com,gestor@email.com — allowlist rígida
 DEFAULT_ORG_SLUG=suporte
 TZ=America/Sao_Paulo
 ```
 
-Redirect URIs do OAuth no Google Cloud Console: `https://SEU-APP.vercel.app/api/auth/callback/google` e `http://localhost:3000/api/auth/callback/google`.
+Não há cadastro público nem recuperação de senha. Usuários são criados por CLI:
+
+```
+pnpm user:create         # criar usuário
+pnpm user:password       # redefinir senha
+```
 
 ## Banco de dados
 
