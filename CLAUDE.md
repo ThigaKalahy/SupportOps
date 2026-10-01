@@ -155,7 +155,7 @@ Antes de criar ou alterar qualquer componente visual, leia **[.claude/skills/ui-
 
 Nenhum componente novo sem primitivo correspondente em `/ui-lab`. Deriva visual entre fases é o risco mais provável do projeto depois de fricção de registro — trate `/ui-lab` como referência obrigatória, não como catálogo opcional.
 
-Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `src/server/whatsapp.ts` (D16). Nenhum componente de UI usa emoji, em nenhuma circunstância.
+Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `src/server/whatsapp.ts` (D16). Nenhum componente de UI usa emoji.
 
 ## Regras de modelagem
 
@@ -219,7 +219,7 @@ Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `s
 | D15 | Validação de prioridade não escreve em `TimelineEvent` | Inundaria o prontuário com registro operacional. O perfil mostra o agregado; virar feedback é ato explícito do gestor |
 | D16 | Emoji permitido exclusivamente no texto exportado para WhatsApp | A proibição vale para a interface. O export é outro meio |
 | D17 | `Agreement.originalDueDate` é gravado na criação e NUNCA alterado | Reagendamento muda `dueDate`. Sem o prazo original não existe medição honesta de cumprimento — todo combinado arrastado pareceria cumprido no prazo |
-| D18 | `BlockerReason.category` (EXTERNAL / INTERNAL / CAPACITY) separa cumprimento bruto de ajustado | "Aguardando acesso do cliente" e "esqueci" não podem pesar igual contra a pessoa |
+| D18 | `BlockerReason.category` (EXTERNAL / INTERNAL / CAPACITY) existe para separar cumprimento bruto de ajustado | "Aguardando acesso do cliente" e "esqueci" não podem pesar igual contra a pessoa |
 | D19 | Taxa de cumprimento nunca aparece sem o total de combinados ao lado, e nunca vira um número único por pessoa | Quem teve 3 combinados fáceis fecha 100%. Taxa sem denominador é propaganda, não medição |
 
 Qualquer sessão de Claude Code que considerar revisar uma dessas decisões deve parar e perguntar ao usuário antes de agir — não decidir sozinha, mesmo que pareça uma melhoria técnica.
