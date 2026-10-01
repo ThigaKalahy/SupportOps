@@ -53,6 +53,21 @@ export const labels = {
     searchPlaceholder: "Buscar pessoa, combinado ou ação",
     searchShortcut: "⌘K",
   },
+  auth: {
+    explanation: "Registro de gestão do time de suporte. Acesso restrito.",
+    email: "E-mail",
+    password: "Senha",
+    submit: "Entrar",
+    /** Idêntico para e-mail inexistente, senha errada e conta bloqueada (CLAUDE.md). */
+    invalidCredentials: "E-mail ou senha inválidos",
+    signOut: "Sair",
+    currentUser: "Usuário atual",
+    readOnly: "Somente leitura",
+    readOnlyHint: "Seu acesso é de leitura. Registros privados do gestor não aparecem para você.",
+  },
+  access: {
+    forbidden: "Ação não permitida para o seu papel.",
+  },
   timeline: {
     /** Título da linha de 1:1 quando não há assuntos registrados. */
     oneOnOneFallback: "1:1",
@@ -161,6 +176,11 @@ export const labels = {
 } as const;
 
 export const enumLabels = {
+  role: {
+    OWNER: "Gestor",
+    MANAGER: "Gestor de time",
+    VIEWER: "Leitura",
+  },
   severity: {
     calm: "Em dia",
     attention: "Atenção",

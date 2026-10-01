@@ -7,7 +7,7 @@
 | P2  App shell                  | concluída | 377ecce | 01/10/2026 |
 | P3  Schema Prisma              | concluída | aa6c80d | 01/10/2026 |
 | P4  Seed                       | concluída | b6b6411 | 01/10/2026 |
-| P5  Auth e visibilidade        | pendente | | |
+| P5  Auth e visibilidade        | concluída — aguarda AUTH_SECRET | (hash) | 01/10/2026 |
 | P6  Equipe e cadastro          | pendente | | |
 | P7  Perfil do analista         | pendente | | |
 | P8  Timeline                   | pendente | | |
@@ -48,4 +48,10 @@
 - **Ficou de fora:** o VIEWER (o ALLOWED_EMAILS tem um só e-mail; decisão sua — criar no P5 com `pnpm user:create`); AuditLog do seed (é carga de demonstração, não ação de usuário); TimelineEvent para AgreementCheckin, MentorshipLink e MemberTrait (o modelo não tem coluna de origem para eles — o arrasto aparece no próprio combinado); Notes (anotações) não foram pedidas e não existem no seed; a checagem visual no Prisma Studio — a distribuição desigual foi verificada por SQL, não abri o Studio.
 - **Precisa de revisão humana:** linhas da timeline de combinado, daily, PDI e mudança de carreira nascem SHARED, porque esses registros não têm campo de visibilidade — o VIEWER vai vê-las; confirmar no P5 se é isso mesmo, especialmente as notas individuais de daily. Números finais: 95 combinados (6 a mais que o pedido, para o Henrique ter massa suficiente nas janelas de 30 dias), 68 checkins, 41 dailies, 37 1:1, 51 feedbacks, 14 PDIs, 180 validações, 333 linhas de timeline. O padrão genérico de URL é `(\d+)`: o extrator do P11 precisa aplicar o padrão a todas as ocorrências e ficar com a mais longa. O `package.json#prisma.seed` está deprecado no Prisma 7 (funciona no 6).
 - **A próxima fase assume:** banco populado no branch `main` do Neon; usuário OWNER existente sem `passwordHash` — o P5 deve criar `user:password` para definir a senha dele e `user:create` para o VIEWER; seed pode ser reaplicado a qualquer momento sem duplicar.
+
+### P5 — Auth e visibilidade (branch `fase/5-auth`)
+
+- **Ficou de fora:** `AUTH_SECRET` real (bloqueio aberto em BLOCKERS.md — gerar e colar no `.env.local`); senha do OWNER e conta do VIEWER (dependem de você rodar `pnpm user:password` e `pnpm user:create`); superfícies de timeline, busca, command palette e contadores ainda não existem — o teste de visibilidade cobre as funções de leitura que elas vão usar e reprova, por varredura do código, qualquer leitura nova sem `visibilityFilter`; nenhuma Server Action de escrita existe ainda para chamar `requireOwner` + `writeAudit` (o padrão está pronto); o aviso de build do `jose` (dependência do Auth.js) sobre `CompressionStream` no Edge é conhecido e inofensivo.
+- **Precisa de revisão humana:** o teste de vazamento da Parte E do manual (OWNER cria nota PRIVATE, VIEWER não vê) — hoje não há tela de criação de nota; o teste automatizado prova a regra com os dados do seed. Decisões tomadas: conta bloqueada recebe o mesmo erro genérico (não revela o bloqueio); falhas durante o bloqueio não renovam os 15 minutos; bloqueio vencido zera o contador; sessão renovada a cada 1 hora de atividade; `user:create` recusa e-mail fora do `ALLOWED_EMAILS` e não cria MANAGER; a sessão expõe papel e organização em `/api/auth/session` (só para quem está logado). Testado de ponta a ponta por HTTP com contas temporárias (apagadas depois): redirecionamento sem sessão, login OWNER/VIEWER, indicador "Somente leitura", senha errada, kill switch derrubando sessão aberta.
+- **A próxima fase assume:** toda página em `src/app/(app)` recebe usuário via `requireUser()`; toda Server Action de escrita começa com `requireOwner()` e grava `writeAudit` na mesma transação; toda leitura de 1:1, feedback, nota ou timeline passa por `src/server/queries` com `visibilityFilter` — o `pnpm test` reprova o contrário.
 

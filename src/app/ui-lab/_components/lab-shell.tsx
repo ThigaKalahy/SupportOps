@@ -6,7 +6,7 @@ import { PlusIcon } from "lucide-react"
 import { ContextBar } from "@/components/shell/context-bar"
 import { crumbsFor, mainNav } from "@/components/shell/nav-config"
 import { NavLink } from "@/components/shell/nav-link"
-import { ProductIdentity, SidebarNav } from "@/components/shell/sidebar"
+import { CurrentUser, ProductIdentity, SidebarNav } from "@/components/shell/sidebar"
 import { Button } from "@/components/ui/button"
 import { labels } from "@/lib/labels"
 
@@ -65,6 +65,25 @@ export function LabShell() {
           </div>
         </Specimen>
       </div>
+
+      <div className="flex flex-wrap items-start gap-6">
+        <Specimen state="CurrentUser · 232px">
+          <div className="w-[208px]">
+            <CurrentUser user={{ name: "Rafael Bittencourt", email: "rafael@exemplo.com.br", role: "OWNER" }} />
+          </div>
+        </Specimen>
+        <Specimen state="CurrentUser · 56px">
+          <div className="w-8">
+            <CurrentUser user={{ name: "Rafael Bittencourt", email: "rafael@exemplo.com.br", role: "VIEWER" }} collapsed />
+          </div>
+        </Specimen>
+      </div>
+
+      <Specimen state="ContextBar · VIEWER (somente leitura)" className="w-full">
+        <div className="w-full overflow-hidden rounded-lg border border-line">
+          <ContextBar className="border-b-0" crumbs={crumbsFor("/agreements")} onOpenNavigation={() => {}} readOnly />
+        </div>
+      </Specimen>
 
       <Specimen state="ContextBar · 48px" className="w-full">
         <div className="w-full overflow-hidden rounded-lg border border-line">

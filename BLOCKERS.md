@@ -26,6 +26,16 @@ Preciso de: confirmar a fonte do modelo de dados. O P3 pede "Leia a seção 5 do
 Onde consigo: responder "ok" ou corrigir.
 Enquanto isso: não bloqueia, se a leitura acima estiver certa.
 
+## [ ] AUTH_SECRET do .env.local ainda é um marcador
+Fase: P5
+Preciso de: um valor aleatório real em `AUTH_SECRET` no `.env.local`. Hoje o valor contém `<...>`. Sem ele, o login não funciona (os testes do P5 rodaram com um segredo temporário passado só ao processo, nunca gravado).
+Onde consigo:
+1. No terminal, na raiz do projeto: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+2. Cole o resultado em `AUTH_SECRET=` no `.env.local`. Não precisa me mostrar.
+3. Defina a sua senha: `pnpm user:password` com o seu e-mail (o seed criou sua conta sem senha). Guarde a senha — só aparece uma vez.
+4. Quando tiver o e-mail do VIEWER: acrescente-o ao `ALLOWED_EMAILS` e rode `pnpm user:create` com papel VIEWER.
+Enquanto isso: o código do P5 está pronto e testado, mas ninguém consegue entrar no app local. As fases seguintes dependem de login.
+
 <!--
 FORMATO — o Claude Code adiciona blocos assim e PARA (sem o recuo, que só existe
 aqui para o exemplo não ser lido como bloqueio real pelo phase-gate):

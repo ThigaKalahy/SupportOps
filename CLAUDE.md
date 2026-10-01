@@ -144,6 +144,7 @@ pnpm db:seed             # popular dados de demonstração
 pnpm db:studio           # inspecionar dados
 pnpm user:create         # criar usuário (único meio de criar conta)
 pnpm user:password       # redefinir senha de usuário
+pnpm test                # node:test (tests/); parte lê o banco com os dados do seed
 pnpm lint && pnpm typecheck
 ```
 
@@ -259,6 +260,17 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - `prisma/seed.ts` (`pnpm db:seed`, Node ≥ 22.6 com TypeScript nativo): ~6 meses de histórico relativo à data em que roda, aleatoriedade com semente fixa. Idempotente: apaga e recria só os ids `seed_`; organização, usuário e catálogos por upsert. O OWNER é o primeiro e-mail de `ALLOWED_EMAILS`, sem senha; o VIEWER não é criado (fica para o P5).
 - Padrões narrativos verificados no banco: Larissa 50% → 67% → 100% de cumprimento no prazo; Henrique 100% → 67%, com 5/6 → 3/6 nas duas últimas janelas de 30 dias (dispara "cumprimento em queda"), sem feedback há ~100 dias, PDI sem acompanhamento há ~80 dias e só dois 1:1; Diego com um combinado reagendado 4x, sempre "Dependência de terceiro"; Priscila com dois combinados vencidos há mais de 40 dias; Beatriz sem 1:1 há ~6 semanas; Otávio com 50% de alteração de prioridade e "Impacto superestimado" dominante; Rafael com 5% de alteração e 100% de cumprimento; dois combinados substituídos; duas semanas de ausência do gestor sem daily.
 - `tsconfig.json` com `allowImportingTsExtensions` (imports `.ts` explícitos em código que também roda no Node puro).
+
+**P5 — Auth e visibilidade**
+- Auth.js v5 (5.0.0-beta.32) com provider Credentials, configuração dividida: `src/server/auth.config.ts` (leve, Edge, usado pelo `src/middleware.ts`) e `src/server/auth.ts` (Node, Credentials). O bundle do middleware não contém Prisma nem bcrypt (verificado). Sessão JWT de 7 dias renovada a cada hora de atividade; papel e organização vão no token.
+- `src/server/credentials.ts`: allowlist antes do banco; `bcrypt.compare` sempre (hash descartável para e-mail inexistente, fora da lista ou sem senha); 5 falhas → bloqueio de 15 min, recusando até a senha certa; sucesso zera e grava `lastLoginAt`; toda tentativa no AuditLog (`auth.login.success|failure|blocked`). Logout também é auditado.
+- Kill switch: a allowlist é conferida no middleware e em `getCurrentUser` a cada requisição — tirar o e-mail de `ALLOWED_EMAILS` derruba sessões abertas (testado).
+- `src/server/access.ts`: `getCurrentUser`, `requireUser`, `requireOwner` (lança `ForbiddenError` para VIEWER), reexporta `visibilityFilter`, `memberScope`, `canWrite` de `src/server/visibility.ts`. MANAGER limitado ao próprio time via `memberScope`.
+- `src/server/queries/records.ts`: única leitura de OneOnOne, Feedback, Note e TimelineEvent — `getMemberTimeline`, `searchRecords`, `countRecordsByMember`, `listOneOnOnes`, `listFeedbacks`, `listNotes`, todas com `visibilityFilter` e escopo de organização.
+- `src/server/audit.ts`: `writeAudit(entry, { organizationId, userId, tx })`.
+- `/login` (`src/app/(auth)/login`), Server Actions `loginAction`/`logoutAction` em `src/actions/auth.ts`. Shell mostra o usuário atual com "Sair" e, para VIEWER, o indicador "Somente leitura" na barra de contexto.
+- CLI: `pnpm user:create` e `pnpm user:password` (`scripts/`), senha aleatória mostrada uma vez, só o hash gravado, auditados.
+- Testes (`pnpm test`, `node:test`, sem biblioteca extra): `tests/visibility.test.ts` (varredura estática que reprova leitura sensível fora de `src/server/queries` ou sem `visibilityFilter` + verificação no banco de timeline, busca, contadores e listas como VIEWER), `tests/lockout.test.ts` (6 senhas erradas → bloqueio de 15 min e 6 linhas no AuditLog), `tests/access.test.ts`.
 
 ## Backlog de curto prazo
 

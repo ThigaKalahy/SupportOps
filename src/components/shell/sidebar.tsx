@@ -1,11 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react"
+import { LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react"
+import type { Role } from "@prisma/client"
 
+import { logoutAction } from "@/actions/auth"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { labels } from "@/lib/labels"
+import { enumLabel, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 
 import { footerNav, isActive, mainNav } from "./nav-config"
@@ -22,6 +25,46 @@ export function ProductIdentity({ collapsed = false }: { collapsed?: boolean }) 
         P
       </span>
       <span className={cn("truncate text-sm font-semibold text-ink", collapsed && "sr-only")}>{labels.app.name}</span>
+    </div>
+  )
+}
+
+export interface ShellUser {
+  name: string
+  email: string
+  role: Role
+}
+
+function initials(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean)
+  const first = parts[0]?.[0] ?? ""
+  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : ""
+  return (first + last).toUpperCase()
+}
+
+/** Usuário atual, discreto, com o botão de sair. */
+export function CurrentUser({ user, collapsed = false }: { user: ShellUser; collapsed?: boolean }) {
+  return (
+    <div
+      aria-label={labels.auth.currentUser}
+      className={cn("mt-2 flex items-center gap-2 border-t border-line pt-3", collapsed && "flex-col")}
+    >
+      <Avatar size="sm" title={collapsed ? `${user.name} · ${enumLabel("role", user.role)}` : undefined}>
+        <AvatarFallback>{initials(user.name)}</AvatarFallback>
+      </Avatar>
+      {collapsed ? null : (
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-ink" title={user.email}>
+            {user.name}
+          </p>
+          <p className="truncate text-xs text-ink-secondary">{enumLabel("role", user.role)}</p>
+        </div>
+      )}
+      <form action={logoutAction}>
+        <Button type="submit" variant="ghost" size="icon-sm" aria-label={labels.auth.signOut} title={labels.auth.signOut}>
+          <LogOutIcon />
+        </Button>
+      </form>
     </div>
   )
 }
@@ -73,10 +116,12 @@ export function Sidebar({
   pathname,
   collapsed,
   onToggle,
+  user,
 }: {
   pathname: string
   collapsed: boolean
   onToggle: () => void
+  user: ShellUser
 }) {
   const ToggleIcon = collapsed ? PanelLeftOpenIcon : PanelLeftCloseIcon
   const toggleLabel = collapsed ? labels.shell.expandSidebar : labels.shell.collapseSidebar
@@ -94,6 +139,7 @@ export function Sidebar({
         pathname={pathname}
         collapsed={collapsed}
         footer={
+          <>
           <Button
             variant="ghost"
             size="sm"
@@ -106,6 +152,8 @@ export function Sidebar({
             <ToggleIcon />
             {collapsed ? null : <span className="truncate font-normal">{labels.shell.collapseSidebar}</span>}
           </Button>
+          <CurrentUser user={user} collapsed={collapsed} />
+          </>
         }
       />
     </aside>

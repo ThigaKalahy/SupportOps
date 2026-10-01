@@ -27,7 +27,16 @@ import { fill, labels } from "../lib/labels.ts"
  * AgreementCheckin (o arrasto aparece no próprio combinado).
  */
 
-type Tx = Prisma.TransactionClient
+/**
+ * Transação do cliente base ou do cliente com extensão (`db`): tipo estrutural
+ * de propósito, porque os dois têm tipos de transação diferentes no Prisma.
+ */
+type Tx = {
+  timelineEvent: {
+    createMany(args: { data: Prisma.TimelineEventCreateManyInput[] }): Promise<unknown>
+    updateMany(args: { where: Prisma.TimelineEventWhereInput; data: Prisma.TimelineEventUpdateManyMutationInput }): Promise<unknown>
+  }
+}
 
 export type TimelineSource =
   | { kind: "agreement"; id: string }

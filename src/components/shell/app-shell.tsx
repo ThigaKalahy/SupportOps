@@ -14,7 +14,7 @@ import {
 } from "./constants"
 import { ContextBar } from "./context-bar"
 import { crumbsFor } from "./nav-config"
-import { ProductIdentity, Sidebar, SidebarNav } from "./sidebar"
+import { CurrentUser, ProductIdentity, Sidebar, SidebarNav, type ShellUser } from "./sidebar"
 
 function persistCollapsed(collapsed: boolean) {
   const value = collapsed ? SIDEBAR_COLLAPSED_VALUE : "expanded"
@@ -25,7 +25,15 @@ function persistCollapsed(collapsed: boolean) {
  * Shell da aplicação: sidebar (≥ 1024px) ou drawer (< 1024px), barra de
  * contexto de 48px e conteúdo fluido até 1600px.
  */
-export function AppShell({ defaultCollapsed, children }: { defaultCollapsed: boolean; children: React.ReactNode }) {
+export function AppShell({
+  defaultCollapsed,
+  user,
+  children,
+}: {
+  defaultCollapsed: boolean
+  user: ShellUser
+  children: React.ReactNode
+}) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
   const [drawerOpen, setDrawerOpen] = React.useState(false)
@@ -50,14 +58,18 @@ export function AppShell({ defaultCollapsed, children }: { defaultCollapsed: boo
         {labels.shell.skipToContent}
       </a>
 
-      <Sidebar pathname={pathname} collapsed={collapsed} onToggle={toggleCollapsed} />
+      <Sidebar pathname={pathname} collapsed={collapsed} onToggle={toggleCollapsed} user={user} />
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="left" className="w-[264px] gap-0 p-0">
           <SheetTitle className="sr-only">{labels.shell.mainNavigation}</SheetTitle>
           <SheetDescription className="sr-only">{labels.app.name}</SheetDescription>
           <ProductIdentity />
-          <SidebarNav pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
+          <SidebarNav
+            pathname={pathname}
+            onNavigate={() => setDrawerOpen(false)}
+            footer={<CurrentUser user={user} />}
+          />
         </SheetContent>
       </Sheet>
 
@@ -67,6 +79,7 @@ export function AppShell({ defaultCollapsed, children }: { defaultCollapsed: boo
           crumbs={crumbsFor(pathname)}
           onOpenNavigation={() => setDrawerOpen(true)}
           actionsSlotId={CONTEXT_ACTIONS_ID}
+          readOnly={user.role === "VIEWER"}
         />
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">
           {children}

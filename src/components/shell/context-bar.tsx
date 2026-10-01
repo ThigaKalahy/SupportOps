@@ -2,9 +2,11 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { MenuIcon, SearchIcon } from "lucide-react"
+import { EyeIcon, MenuIcon, SearchIcon } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 
@@ -61,6 +63,21 @@ export function ContextSearch() {
   )
 }
 
+/** Indicador discreto para quem tem acesso de leitura (VIEWER). */
+export function ReadOnlyIndicator() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant="outline" tabIndex={0} className="cursor-default">
+          <EyeIcon aria-hidden />
+          {labels.auth.readOnly}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{labels.auth.readOnlyHint}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 /**
  * Barra de contexto de 48px no topo do conteúdo: breadcrumb à esquerda, busca
  * no centro, ação primária à direita. Não é navbar.
@@ -73,12 +90,15 @@ export function ContextBar({
   onOpenNavigation,
   actions,
   actionsSlotId,
+  readOnly = false,
   className,
 }: {
   crumbs: Crumb[]
   onOpenNavigation?: () => void
   actions?: React.ReactNode
   actionsSlotId?: string
+  /** Mostra o indicador "Somente leitura" (papel VIEWER). */
+  readOnly?: boolean
   className?: string
 }) {
   return (
@@ -102,8 +122,11 @@ export function ContextBar({
       <div className="hidden w-full max-w-[360px] justify-center md:flex">
         <ContextSearch />
       </div>
-      <div id={actionsSlotId} className="flex min-w-0 flex-1 basis-0 items-center justify-end gap-2">
-        {actions}
+      <div className="flex min-w-0 flex-1 basis-0 items-center justify-end gap-2">
+        {readOnly ? <ReadOnlyIndicator /> : null}
+        <div id={actionsSlotId} className="flex items-center gap-2">
+          {actions}
+        </div>
       </div>
     </header>
   )
