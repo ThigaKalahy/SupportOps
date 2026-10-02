@@ -298,6 +298,15 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Alternar privado/compartilhado (só quem escreve, só 1:1, feedback e anotação): `setRecordVisibilityRecord` em `src/server/records.ts` muda a origem e todas as linhas-espelho na mesma transação, com auditoria `record.visibility.update`; compartilhar pede confirmação em modal, tornar privado é imediato. Combinado, daily, PDI e mudança de carreira mostram "Compartilhado" com a explicação. O VIEWER não vê indicador nem ação. A origem é localizada por `findToggleableSource` (`src/server/queries/records.ts`).
 - /ui-lab ganhou a seção Timeline com todos os estados (sem pendência, âmbar, laranja, vermelho, privado, resumo longo, combinados gerados).
 
+**P9 — Combinados**
+- `/agreements`: abas Atrasados | Vencendo (7 dias) | Em aberto | Concluídos | Todos, com contagem e estado na URL (`?view=`); filtros no popover (pessoa, senioridade, origem, prioridade, criado nos últimos 30 dias/3/6 meses), também na URL (`src/lib/agreement-filters.ts`). Tabela com título, responsável, origem, criado em, prazo com a escala graduada, prioridade, status, arrasto ("reagendado 1x"; a partir de 3, selo vermelho "arrastado Nx") e menu com "Marcar como concluído". Ordem: abertos por prazo (vencidos, vencendo, depois o resto), encerrados por último. Clique na linha abre o detalhe.
+- Leitura em `src/server/queries/agreements.ts`: `listAgreements` (uma consulta; abas e contagens repartidas em memória), `getAgreementDetail`, `listAgreementMembers`.
+- `/agreements/[agreementId]`: prazo original × atual (+N dias), origem (daily com data), prioridade, autor, substitui/substituído por, detalhes, resultado e o histórico de revisões nas dailies em ordem cronológica (data da daily, desfecho, impeditivo com motivo e categoria, novo prazo).
+- Criação rápida acionável de qualquer lugar: `QuickAgreementProvider` (`src/components/forms/quick-agreement.tsx`) no AppShell, atalho C fora de campos de texto, botão "Novo combinado" na central e no perfil (com o responsável preenchido). Ordem do teclado: título → responsável (o select aceita a inicial) → prazo → Enter; Ctrl/⌘+Enter salva e reabre em branco com o foco no título. Origem pelo contexto (em /dailies, DAILY; no resto, Gestor).
+- Conclusão: `completeAgreementRecord` (`src/server/agreements.ts`) grava DONE, completedAt (hoje), resultado opcional, linha AGREEMENT_DONE e auditoria; recusa combinado já encerrado sem duplicar a linha.
+- Aba Combinados do perfil (`/team/[memberId]/agreements`): as mesmas abas e tabela, filtradas pela pessoa. Combinados da visão geral e da timeline levam ao detalhe.
+- `RouteTabs` aceita contagem por aba; `DataTable.hideBelow` aceita `2xl` (1536px).
+
 ## Backlog de curto prazo
 
 Provisionar o banco antes do P3 (já feito).

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { LockIcon, UsersIcon } from "lucide-react"
 
 import { DateStamp } from "@/components/ui/date-stamp"
@@ -56,7 +57,11 @@ function Summary({ text }: { text: string }) {
 function AgreementLine({ agreement, withTitle }: { agreement: LinkedAgreement; withTitle: boolean }) {
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-      {withTitle ? <span className="min-w-0 truncate text-ink">{agreement.title}</span> : null}
+      {withTitle ? (
+        <Link href={`/agreements/${agreement.id}`} className="min-w-0 truncate text-ink hover:underline">
+          {agreement.title}
+        </Link>
+      ) : null}
       <StatusPill severity={agreement.pill.severity} strong={agreement.pill.strong} label={agreement.pill.label} />
       <span className="text-ink-secondary">
         {T.due} <DateStamp date={agreement.dueDate} kind="business" />
@@ -64,6 +69,11 @@ function AgreementLine({ agreement, withTitle }: { agreement: LinkedAgreement; w
       {agreement.reschedules > 0 ? (
         <span className="text-ink-secondary">{plural(labels.profile.agreements.rescheduled, agreement.reschedules)}</span>
       ) : null}
+      {withTitle ? null : (
+        <Link href={`/agreements/${agreement.id}`} className="font-medium text-accent hover:underline">
+          {labels.agreements.open}
+        </Link>
+      )}
     </span>
   )
 }

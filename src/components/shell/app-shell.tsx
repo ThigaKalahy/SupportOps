@@ -3,6 +3,7 @@
 import * as React from "react"
 import { usePathname } from "next/navigation"
 
+import { QuickAgreementProvider } from "@/components/forms/quick-agreement"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { labels } from "@/lib/labels"
 
@@ -29,10 +30,13 @@ function persistCollapsed(collapsed: boolean) {
 export function AppShell({
   defaultCollapsed,
   user,
+  agreementMembers,
   children,
 }: {
   defaultCollapsed: boolean
   user: ShellUser
+  /** Pessoas para a criação rápida de combinado (atalho C); null para quem só lê. */
+  agreementMembers: { id: string; preferredName: string }[] | null
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -91,7 +95,9 @@ export function AppShell({
           readOnly={user.role === "VIEWER"}
         />
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">
-          <CrumbLabelsContext value={crumbLabels}>{children}</CrumbLabelsContext>
+          <CrumbLabelsContext value={crumbLabels}>
+            <QuickAgreementProvider members={agreementMembers}>{children}</QuickAgreementProvider>
+          </CrumbLabelsContext>
         </main>
       </div>
     </div>

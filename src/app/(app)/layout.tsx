@@ -2,7 +2,8 @@ import { cookies } from "next/headers"
 
 import { AppShell } from "@/components/shell/app-shell"
 import { SIDEBAR_COLLAPSED_VALUE, SIDEBAR_COOKIE } from "@/components/shell/constants"
-import { requireUser } from "@/server/access"
+import { canWrite, requireUser } from "@/server/access"
+import { listAgreementMembers } from "@/server/queries/agreements"
 
 /**
  * Shell autenticado. O middleware já barra quem não tem sessão; requireUser()
@@ -13,9 +14,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser()
   const cookieStore = await cookies()
   const collapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === SIDEBAR_COLLAPSED_VALUE
+  const agreementMembers = canWrite(user)
+    ? (await listAgreementMembers(user)).map((m) => ({ id: m.id, preferredName: m.preferredName }))
+    : null
 
   return (
-    <AppShell defaultCollapsed={collapsed} user={{ name: user.name, email: user.email, role: user.role }}>
+    <AppShell
+      defaultCollapsed={collapsed}
+      user={{ name: user.name, email: user.email, role: user.role }}
+      agreementMembers={agreementMembers}
+    >
       {children}
     </AppShell>
   )

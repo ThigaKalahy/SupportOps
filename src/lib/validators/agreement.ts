@@ -25,3 +25,11 @@ export const createAgreementSchema = z.object({
 })
 
 export type CreateAgreementInput = z.infer<typeof createAgreementSchema>
+
+/** Conclusão: resultado em uma linha, opcional mas incentivado. */
+export const completeAgreementSchema = z.object({
+  id: z.string().min(1),
+  outcome: optionalText(300),
+})
+
+export type CompleteAgreementInput = z.infer<typeof completeAgreementSchema>

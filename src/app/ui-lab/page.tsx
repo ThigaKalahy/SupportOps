@@ -541,7 +541,7 @@ export default function UiLabPage() {
             tabs={[
               { href: "#aba-visao-geral", label: demo.tabsOverview, exact: true },
               { href: "#aba-timeline", label: demo.tabsTimeline },
-              { href: "#aba-combinados", label: demo.tabsAgreements },
+              { href: "#aba-combinados", label: demo.tabsAgreements, count: 12 },
               { href: "#aba-desenvolvimento", label: demo.tabsDevelopment },
               { href: "#aba-registros", label: demo.tabsRecords },
             ]}

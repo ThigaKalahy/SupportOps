@@ -127,7 +127,9 @@ export function OpenAgreements({ agreements, href }: { agreements: MemberOvervie
             const chronic = a.reschedules >= ATTENTION_THRESHOLDS.chronicReschedules
             return (
               <li key={a.id} className="flex flex-col gap-1 border-b border-line py-2 last:border-b-0">
-                <span className="line-clamp-2 text-sm text-ink">{a.title}</span>
+                <Link href={`/agreements/${a.id}`} className="line-clamp-2 text-sm text-ink hover:underline">
+                  {a.title}
+                </Link>
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <DateStamp date={a.dueDate} kind="business" className="text-ink-secondary" />
                   <StatusPill severity={deadline.severity} strong={deadline.strong} label={deadline.label} />

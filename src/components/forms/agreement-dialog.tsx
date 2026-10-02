@@ -23,35 +23,40 @@ import { applyFieldErrors, DisclosureToggle, FormError, zodResolver } from "./fo
 import type { RecordTarget } from "./note-dialog"
 
 const L = labels.forms.agreement
-const FIELDS = ["title", "dueDate", "description", "priority", "origin"] as const
+const FIELDS = ["memberId", "title", "dueDate", "description", "priority", "origin"] as const
 
 /**
- * Criação rápida de combinado. Obrigatórios: título e prazo (o responsável
- * vem do contexto). Enter salva; Ctrl/⌘+Enter salva e reabre em branco, para
+ * Criação rápida de combinado. Obrigatórios: título, responsável e prazo.
+ * Aberto do perfil, o responsável já vem preenchido; de qualquer outro lugar
+ * (atalho C, /agreements), escolhe-se no select — que aceita digitar a
+ * inicial do nome. Enter salva; Ctrl/⌘+Enter salva e reabre em branco, para
  * lançar vários seguidos. Origem pré-preenchida pelo contexto.
- * (Seleção de responsável e abertura de qualquer lugar: P9.)
+ * Ordem do teclado: título → responsável → prazo → Enter.
  */
 export function AgreementDialog({
   open,
   onOpenChange,
   member,
+  members = [],
   origin = "MANAGER",
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  member: RecordTarget
+  /** Responsável fixo (perfil). Sem ele, o dialog oferece `members`. */
+  member?: RecordTarget
+  members?: { id: string; preferredName: string }[]
   origin?: CreateAgreementInput["origin"]
 }) {
   const defaults = React.useCallback(
     (): CreateAgreementInput => ({
-      memberId: member.id,
+      memberId: member?.id ?? "",
       title: "",
       dueDate: "",
       description: "",
       priority: "NORMAL",
       origin,
     }),
-    [member.id, origin],
+    [member?.id, origin],
   )
   const form = useForm<CreateAgreementInput>({ resolver: zodResolver(createAgreementSchema), defaultValues: defaults() })
   const [showDetails, setShowDetails] = React.useState(false)
@@ -78,7 +83,8 @@ export function AgreementDialog({
         if (!keepOpen) return onOpenChange(false)
         form.reset(defaults())
         setSavedNotice(true)
-        form.setFocus("title")
+        // Depois do re-render do reset; antes dele o foco voltaria ao campo que disparou o atalho.
+        requestAnimationFrame(() => form.setFocus("title"))
         return
       }
       setFormError(result.error)
@@ -109,13 +115,36 @@ export function AgreementDialog({
       >
         <DialogHeader>
           <DialogTitle>{L.title}</DialogTitle>
-          <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
+          <DialogDescription>
+            {member ? fill(L.description, { name: member.preferredName }) : L.descriptionGeneral}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} onKeyDown={onKeyDown} className="flex flex-col gap-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
-            <FieldGroup label={L.agreementTitle} error={err.title?.message} required>
+            <FieldGroup label={L.agreementTitle} error={err.title?.message} required className={member ? undefined : "sm:col-span-2"}>
               <Input autoComplete="off" {...form.register("title", { onChange: () => setSavedNotice(false) })} />
             </FieldGroup>
+            {member ? null : (
+              <FieldGroup label={L.member} error={err.memberId?.message} required>
+                {(control) => (
+                  <Select
+                    value={form.watch("memberId") || undefined}
+                    onValueChange={(v) => form.setValue("memberId", v, { shouldValidate: form.formState.isSubmitted })}
+                  >
+                    <SelectTrigger {...control} className="w-full">
+                      <SelectValue placeholder={L.memberPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {members.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.preferredName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FieldGroup>
+            )}
             <FieldGroup label={L.dueDate} error={err.dueDate?.message} required>
               <Input
                 inputMode="numeric"

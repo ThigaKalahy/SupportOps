@@ -11,6 +11,8 @@ export interface RouteTab {
   label: string
   /** Só a rota exata ativa a aba (ex.: a visão geral, que é a raiz das outras). */
   exact?: boolean
+  /** Quantidade de itens da aba, em mono ao lado do rótulo. */
+  count?: number
 }
 
 /**
@@ -18,7 +20,8 @@ export interface RouteTab {
  * navegador). Mesmo visual das Tabs "line" — sublinhado de 2px em --accent na
  * ativa. Em tela estreita a faixa rola na horizontal; a página, não.
  *
- * `activeHref` força a aba ativa (só para /ui-lab).
+ * `activeHref` define a aba ativa quando ela não sai só do caminho — abas
+ * que diferem pela query (?view=...) ou o /ui-lab.
  */
 function RouteTabs({
   tabs,
@@ -56,6 +59,9 @@ function RouteTabs({
                 )}
               >
                 {tab.label}
+                {tab.count !== undefined ? (
+                  <span className="ml-1.5 font-mono text-xs font-normal text-ink-secondary">{tab.count}</span>
+                ) : null}
               </Link>
             </li>
           )

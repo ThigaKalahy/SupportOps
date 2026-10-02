@@ -10,10 +10,10 @@ import {
   UsersRoundIcon,
 } from "lucide-react"
 
-import { AgreementDialog } from "@/components/forms/agreement-dialog"
 import { FeedbackDialog } from "@/components/forms/feedback-dialog"
 import { NoteDialog } from "@/components/forms/note-dialog"
 import { OneOnOneDialog } from "@/components/forms/one-on-one-dialog"
+import { useQuickAgreement } from "@/components/forms/quick-agreement"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -52,9 +52,13 @@ export function ProfileActions({
   member: MemberForEdit
   catalogs: MemberFormCatalogs
 }) {
-  const [dialog, setDialog] = React.useState<DialogKind | null>(null)
-  const close = (open: boolean) => !open && setDialog(null)
   const target = { id: member.id, preferredName: member.preferredName }
+  const [dialog, setDialogState] = React.useState<DialogKind | null>(null)
+  const quickAgreement = useQuickAgreement()
+  // O combinado usa a criação rápida global (mesmo dialog do atalho C), com o responsável preenchido.
+  const setDialog = (kind: DialogKind | null) =>
+    kind === "agreement" ? quickAgreement?.open({ member: target }) : setDialogState(kind)
+  const close = (open: boolean) => !open && setDialogState(null)
 
   return (
     <>
@@ -109,7 +113,6 @@ export function ProfileActions({
 
       <OneOnOneDialog open={dialog === "oneOnOne"} onOpenChange={close} member={target} />
       <FeedbackDialog open={dialog === "feedback"} onOpenChange={close} member={target} />
-      <AgreementDialog open={dialog === "agreement"} onOpenChange={close} member={target} />
       <NoteDialog open={dialog === "note"} onOpenChange={close} member={target} />
       {dialog === "edit" ? <MemberDialog open onOpenChange={close} catalogs={catalogs} member={member} /> : null}
       {dialog === "deactivate" ? <DeactivateMemberDialog open onOpenChange={close} member={target} /> : null}

@@ -27,15 +27,15 @@ export interface DataTableColumn<T> {
    */
   stacked?: "primary" | "aside" | "secondary" | "hidden"
   /**
-   * Oculta a coluna na tabela abaixo do breakpoint (lg = 1024px, xl = 1280px).
+   * Oculta a coluna na tabela abaixo do breakpoint (lg = 1024px, xl = 1280px, 2xl = 1536px).
    * Use nas colunas de menor prioridade: a soma das larguras fixas não pode
    * passar da largura disponível, senão a coluna flexível (sem `width`) some.
    */
-  hideBelow?: "lg" | "xl"
+  hideBelow?: "lg" | "xl" | "2xl"
 }
 
-const hideCellClasses = { lg: "hidden lg:table-cell", xl: "hidden xl:table-cell" } as const
-const hideColClasses = { lg: "hidden lg:table-column", xl: "hidden xl:table-column" } as const
+const hideCellClasses = { lg: "hidden lg:table-cell", xl: "hidden xl:table-cell", "2xl": "hidden 2xl:table-cell" } as const
+const hideColClasses = { lg: "hidden lg:table-column", xl: "hidden xl:table-column", "2xl": "hidden 2xl:table-column" } as const
 
 export type DataTableState = "ready" | "loading" | "error"
 
