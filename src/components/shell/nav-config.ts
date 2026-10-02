@@ -51,6 +51,7 @@ const subrouteLabels: Record<string, string> = {
   "reclassification-reasons": labels.settings.tabs.reclassificationReasons,
   "blocker-reasons": labels.settings.tabs.blockerReasons,
   "ticket-patterns": labels.settings.tabs.ticketPatterns,
+  "competency-matrix": labels.settings.tabs.competencyMatrix,
 }
 
 export interface Crumb {

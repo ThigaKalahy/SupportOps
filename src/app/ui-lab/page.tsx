@@ -31,6 +31,7 @@ import { LabDataTables } from "./_components/lab-data-tables"
 import { LabFieldRender } from "./_components/lab-field-render"
 import { LabAdherence } from "./_components/lab-adherence"
 import { LabDaily } from "./_components/lab-daily"
+import { LabDevelopment } from "./_components/lab-development"
 import { LabRecords } from "./_components/lab-records"
 import { LabPriorityValidation } from "./_components/lab-priority-validation"
 import { LabTimeline } from "./_components/lab-timeline"
@@ -538,6 +539,11 @@ export default function UiLabPage() {
       {/* Daily */}
       <LabSection id="daily" title={sectionCopy.daily.title} description={sectionCopy.daily.description}>
         <LabDaily />
+      </LabSection>
+
+      {/* Desenvolvimento */}
+      <LabSection id="development" title={sectionCopy.development.title} description={sectionCopy.development.description}>
+        <LabDevelopment />
       </LabSection>
 
       {/* 1:1 e feedbacks */}

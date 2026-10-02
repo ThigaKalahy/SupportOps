@@ -147,16 +147,16 @@ const TICKET_URL_PATTERNS = [
 ]
 
 const COMPETENCIES = [
-  { id: "seed_cp_hardware", name: "Diagnóstico de hardware", category: "Técnica", levels: [2, 3, 4] },
-  { id: "seed_cp_escrita", name: "Comunicação escrita com cliente", category: "Relacionamento", levels: [2, 3, 4] },
-  { id: "seed_cp_escalonamento", name: "Escalonamento", category: "Processo", levels: [2, 3, 4] },
-  { id: "seed_cp_documentacao", name: "Documentação técnica", category: "Processo", levels: [1, 3, 4] },
-  { id: "seed_cp_autonomia", name: "Autonomia em chamado complexo", category: "Técnica", levels: [1, 3, 4] },
-  { id: "seed_cp_log", name: "Análise de log", category: "Técnica", levels: [1, 3, 4] },
-  { id: "seed_cp_critico", name: "Atendimento a cliente crítico", category: "Relacionamento", levels: [1, 3, 4] },
-  { id: "seed_cp_priorizacao", name: "Priorização de chamados", category: "Processo", levels: [2, 3, 4] },
-  { id: "seed_cp_redes", name: "Conectividade e redes", category: "Técnica", levels: [1, 2, 3] },
-  { id: "seed_cp_fila", name: "Gestão da própria fila", category: "Processo", levels: [2, 3, 4] },
+  { id: "seed_cp_hardware", name: "Diagnóstico de hardware", category: "Técnica" },
+  { id: "seed_cp_escrita", name: "Comunicação escrita com cliente", category: "Relacionamento" },
+  { id: "seed_cp_escalonamento", name: "Escalonamento", category: "Processo" },
+  { id: "seed_cp_documentacao", name: "Documentação técnica", category: "Processo" },
+  { id: "seed_cp_autonomia", name: "Autonomia em chamado complexo", category: "Técnica" },
+  { id: "seed_cp_log", name: "Análise de log", category: "Técnica" },
+  { id: "seed_cp_critico", name: "Atendimento a cliente crítico", category: "Relacionamento" },
+  { id: "seed_cp_priorizacao", name: "Priorização de chamados", category: "Processo" },
+  { id: "seed_cp_redes", name: "Conectividade e redes", category: "Técnica" },
+  { id: "seed_cp_fila", name: "Gestão da própria fila", category: "Processo" },
 ] as const
 type CompetencyId = (typeof COMPETENCIES)[number]["id"]
 
@@ -1639,14 +1639,8 @@ async function main() {
           create: { id: c.id, organizationId: ORG_ID, name: c.name, category: c.category },
           update: { name: c.name, category: c.category },
         })
-        for (const [i, s] of SENIORITIES.entries()) {
-          const expectedLevel = at(c.levels, i)
-          await tx.competencyExpectation.upsert({
-            where: { competencyId_seniorityId: { competencyId: c.id, seniorityId: s.id } },
-            create: { competencyId: c.id, seniorityId: s.id, expectedLevel },
-            update: { expectedLevel },
-          })
-        }
+        // A matriz de níveis esperados (CompetencyExpectation) NÃO é preenchida pelo
+        // seed (P14): é decisão do gestor, em /settings.
       }
       for (const [id, name, description] of RESPONSIBILITIES) {
         await tx.responsibility.upsert({ where: { id }, create: { id, organizationId: ORG_ID, name, description }, update: { name, description } })

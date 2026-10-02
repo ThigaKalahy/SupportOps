@@ -16,7 +16,7 @@
 | P11 Validação de prioridade    | concluída | e45bc5a | 02/10/2026 |
 | P12 Cumprimento de combinados  | concluída | bd143e2 | 02/10/2026 |
 | P13 1:1 e feedbacks            | concluída | f946089 | 02/10/2026 |
-| P14 Desenvolvimento e PDI      | pendente | | |
+| P14 Desenvolvimento e PDI      | concluída | | 02/10/2026 |
 | P15 Hoje e motor de alertas    | pendente | | |
 | P16 Busca global               | pendente | | |
 | P17 Arquitetura de score       | pendente | | |
@@ -193,4 +193,47 @@
     - /records em 1440 e 360px, filtro de reconhecimento, detalhe lateral, aba do perfil;
     - VIEWER sem nenhum registro privado.
 - **A próxima fase assume:** `getOneOnOneContext` mostra o PDI ativo com as ações em aberto; o P14 pode reaproveitar `GeneratedAgreements` e `FollowUpCell`.
+
+### P14 — Desenvolvimento e PDI (branch `fase/14-development`)
+
+- **Ficou de fora:**
+  - editar os campos de um PDI ou de uma ação depois de criados, e acrescentar ação a um PDI existente;
+  - criar ou encerrar mentoria pela interface (o mapa só lê os vínculos do seed);
+  - cadastrar e desativar competências (a matriz usa as competências ativas existentes);
+  - avaliar o nível de competência continua em Editar cadastro (P6), sem histórico de níveis — o schema guarda um nível por pessoa × competência;
+  - checagem visual do /ui-lab (seção nova, só em desenvolvimento).
+- **Precisa de revisão humana:**
+  - **Matriz de competências:** o P14 manda não preencher, e o seed do P4 a preenchia (30 linhas de demonstração, que eu tinha posto por conta própria). Removi as linhas e tirei do seed. Sem matriz, as barras não têm marca do esperado e ninguém aparece em prontidão até você preencher em Configurações.
+  - **Leitura de "prontidão":** "só para quem tem todas as competências no nível esperado" = da senioridade ATUAL; o rótulo conta as da PRÓXIMA.
+  - **Escala da idade do PDI:** âmbar 30, laranja 45 (parado), vermelho 90.
+  - **Acompanhamento:** exige uma nota do que mudou.
+  - **Status:** concluir e cancelar pedem confirmação; pausar e reativar não.
+  - **Timeline:** os pontos fortes/de desenvolvimento não entram nela (decisão do P4).
+  - **Critério de aceite:** coberto por teste. Nenhuma lista de pessoas é ordenada por desempenho, e as telas não exibem porcentagem nem score.
+- **A próxima fase assume:**
+  - `planStaleness` e `STALE_PLAN_DAYS` para o alerta "PDI sem acompanhamento" do P15 (o limiar de 45 já está em `ATTENTION_THRESHOLDS.stalePlanDays`);
+  - `getDevelopmentOverview` para "Ritmo de gestão";
+  - matriz vazia até o gestor preencher.
+- **Verificado:**
+  - **Testes:** 139 no total, 11 novos em `tests/development.test.ts`.
+    - idade do acompanhamento e prontidão em todos os casos;
+    - o seed não preenche a matriz;
+    - o PDI do Henrique entre os parados;
+    - criar PDI com ações e mentor obrigatório;
+    - linha da timeline na data certa;
+    - acompanhamento zerando o relógio e indo para a timeline;
+    - ação no progresso;
+    - conclusão com data e linha;
+    - arquivo de pontos;
+    - matriz gravando, limpando e auditando, com a prontidão em texto neutro e ordem alfabética;
+    - VIEWER sem escrita;
+    - varredura de porcentagem/score nas telas.
+  - **Servidor de produção, contas temporárias (apagadas):**
+    - aba do Henrique com PDI parado há 84 dias em laranja;
+    - /development com contagens, parados, tabela, mentorias e prontidão avisando da matriz vazia;
+    - matriz em Configurações;
+    - dialog de novo PDI;
+    - acompanhamento abrindo com o foco na nota;
+    - 1440 e 360px;
+    - VIEWER sem ações.
 

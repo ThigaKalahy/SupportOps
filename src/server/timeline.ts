@@ -324,12 +324,43 @@ export const timelineEventFor = {
   developmentPlan(p: DevelopmentPlanLike): TimelineEventInput {
     return {
       memberId: p.memberId,
-      occurredAt: p.startedAt,
+      // startedAt é data de negócio: meio-dia em São Paulo (meia-noite UTC cairia no dia anterior).
+      occurredAt: businessDateAtNoon(p.startedAt),
       type: "DEVELOPMENT",
       title: p.objective,
       summary: p.currentSituation,
       authorUserId: p.authorUserId,
       visibility: "SHARED",
+      source: { kind: "developmentPlan", id: p.id },
+    }
+  },
+
+  /** Acompanhamento de PDI: o que mudou desde o último, no instante do registro. */
+  developmentReview(p: { id: string; memberId: string; objective: string; note: string; reviewedAt: Date; authorUserId: string }): TimelineEventInput {
+    return {
+      memberId: p.memberId,
+      occurredAt: p.reviewedAt,
+      type: "DEVELOPMENT",
+      title: fill(labels.timeline.planReview, { objective: p.objective }),
+      summary: p.note,
+      authorUserId: p.authorUserId,
+      visibility: "SHARED",
+      tags: ["acompanhamento"],
+      source: { kind: "developmentPlan", id: p.id },
+    }
+  },
+
+  /** PDI concluído (data de negócio da conclusão). */
+  developmentDone(p: { id: string; memberId: string; objective: string; completedAt: Date; authorUserId: string }): TimelineEventInput {
+    return {
+      memberId: p.memberId,
+      occurredAt: businessDateAtNoon(p.completedAt),
+      type: "DEVELOPMENT",
+      title: fill(labels.timeline.planDone, { objective: p.objective }),
+      summary: null,
+      authorUserId: p.authorUserId,
+      visibility: "SHARED",
+      tags: ["concluido"],
       source: { kind: "developmentPlan", id: p.id },
     }
   },
