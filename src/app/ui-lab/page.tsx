@@ -29,6 +29,7 @@ import { deadlineSeverity, SEVERITIES } from "@/lib/severity"
 
 import { LabDataTables } from "./_components/lab-data-tables"
 import { LabFieldRender } from "./_components/lab-field-render"
+import { LabTimeline } from "./_components/lab-timeline"
 import { LabCalendar, LabOverlays } from "./_components/lab-overlays"
 import { LabShell } from "./_components/lab-shell"
 import { LabSection, Specimen } from "./_components/specimen"
@@ -523,6 +524,11 @@ export default function UiLabPage() {
             </Tabs>
           </Specimen>
         </div>
+      </LabSection>
+
+      {/* Timeline */}
+      <LabSection id="timeline" title={sectionCopy.timeline.title} description={sectionCopy.timeline.description}>
+        <LabTimeline />
       </LabSection>
 
       {/* RouteTabs */}

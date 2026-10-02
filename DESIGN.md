@@ -113,6 +113,8 @@ Composição:
 
 - Data de cada evento em **IBM Plex Mono**, alinhada à margem esquerda da calha.
 - Tipo do registro como etiqueta mono de 11px, uppercase, `letter-spacing: 0.06em` (ex.: `FEEDBACK`, `1:1`, `COMBINADO`).
-- Eventos sem pendência não perturbam a calha: régua e marcador permanecem em `--line`, sem sangria, no trecho correspondente.
+- Eventos sem pendência não perturbam a calha: régua em `--line`, marcador em `--line-strong` (em `--line` ele sumiria sobre a régua), sem sangria, no trecho correspondente.
+- O que conta como pendência (implementado em `src/server/queries/timeline.ts`): combinado ainda aberto vencendo ou vencido, pela escala de prazo; revisão marcada no 1:1 mais recente e ainda não feita; PDI ativo sem acompanhamento há mais de 45 dias. Concluído, cancelado, daily, feedback e anotação nunca sangram. Pendências consecutivas formam um trecho contínuo de cor na calha — é intencional: a trajetória fica legível de longe.
+- Na timeline, a data da calha é curta (`DD/MM`); o mês e o ano estão no cabeçalho de mês, que gruda no topo ao rolar.
 
 Esse componente é a referência de "o que é permitido ousar" no produto. Nenhum outro componente deve competir com ele em intensidade visual.

@@ -31,6 +31,7 @@ export const sectionCopy = {
   dataTable: { title: "DataTable", description: "Linhas de 40px, cabeçalho sticky, seleção com barra de 2px. Abaixo de 768px vira lista empilhada." },
   tabs: { title: "Tabs", description: "" },
   routeTabs: { title: "RouteTabs", description: "Abas em rota: cada aba é um link (linkável, sobrevive a refresh). Mesmo visual das Tabs line." },
+  timeline: { title: "Timeline", description: "Elemento assinatura: calha de 96px, régua de 1px, marcador de 7px e traço de 4px que sangra na calha quando há pendência." },
   section: { title: "Section", description: "Bloco de página: título de 13px, contagem em mono e no máximo uma ação. Sem card, sem borda." },
   overlays: { title: "Sobreposições", description: "Dialog, Sheet, DropdownMenu, Popover, Tooltip e Command." },
   calendar: { title: "Calendar", description: "" },

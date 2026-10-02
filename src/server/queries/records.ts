@@ -70,3 +70,25 @@ export function listNotes(viewer: Viewer, memberId: string) {
     orderBy: { occurredAt: "desc" },
   })
 }
+
+/**
+ * Origem de uma linha da timeline cuja visibilidade pode ser alternada
+ * (1:1, feedback ou anotação), para a escrita em src/server/records.ts.
+ * null quando a linha não existe, está fora do escopo ou não tem
+ * visibilidade própria (combinado, daily, PDI, mudança de carreira).
+ */
+export async function findToggleableSource(viewer: Viewer, eventId: string) {
+  const event = await db.timelineEvent.findFirst({
+    where: { id: eventId, member: memberScope(viewer), ...visibilityFilter(viewer) },
+    select: { memberId: true, visibility: true, oneOnOneId: true, feedbackId: true, noteId: true },
+  })
+  if (!event) return null
+  const source = event.oneOnOneId
+    ? ({ kind: "oneOnOne", id: event.oneOnOneId } as const)
+    : event.feedbackId
+      ? ({ kind: "feedback", id: event.feedbackId } as const)
+      : event.noteId
+        ? ({ kind: "note", id: event.noteId } as const)
+        : null
+  return source ? { source, memberId: event.memberId, visibility: event.visibility } : null
+}

@@ -1,11 +1,12 @@
 import { businessDateAtNoon, parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
-import { feedbackSchema, noteSchema, oneOnOneSchema } from "../lib/validators/records.ts"
+import { feedbackSchema, noteSchema, oneOnOneSchema, recordVisibilitySchema } from "../lib/validators/records.ts"
 
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
-import { recordTimelineEvents, timelineEventFor } from "./timeline.ts"
+import { findToggleableSource } from "./queries/records.ts"
+import { recordTimelineEvents, syncTimelineVisibility, timelineEventFor } from "./timeline.ts"
 import { canWrite, memberScope, type Viewer } from "./visibility.ts"
 
 /**
@@ -142,6 +143,44 @@ export async function createNoteRecord(user: Viewer, input: unknown): Promise<Ac
         entity: "Note",
         entityId: created.id,
         after: { memberId: created.memberId, occurredAt: occurredAt.toISOString(), visibility: created.visibility },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+const SOURCE_ENTITY = { oneOnOne: "OneOnOne", feedback: "Feedback", note: "Note" } as const
+
+/**
+ * Alterna PRIVATE/SHARED de um 1:1, feedback ou anotação a partir da linha da
+ * timeline. Registro de origem e TODAS as linhas-espelho mudam na mesma
+ * transação (linha SHARED apontando para registro PRIVATE é vazamento).
+ */
+export async function setRecordVisibilityRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = recordVisibilitySchema.safeParse(input)
+  if (!parsed.success) return invalid(parsed.error)
+  const { eventId, visibility } = parsed.data
+
+  const found = await findToggleableSource(user, eventId)
+  if (!found) return { ok: false, error: labels.validation.generic }
+  if (found.visibility === visibility) return { ok: true }
+  const { source } = found
+
+  await db.$transaction(async (tx) => {
+    const where = { id: source.id, memberId: found.memberId }
+    if (source.kind === "oneOnOne") await tx.oneOnOne.update({ where, data: { visibility } })
+    if (source.kind === "feedback") await tx.feedback.update({ where, data: { visibility } })
+    if (source.kind === "note") await tx.note.update({ where, data: { visibility } })
+    await syncTimelineVisibility(tx, source, visibility)
+    await writeAudit(
+      {
+        action: "record.visibility.update",
+        entity: SOURCE_ENTITY[source.kind],
+        entityId: source.id,
+        before: { visibility: found.visibility },
+        after: { visibility },
       },
       { organizationId: user.organizationId, userId: user.id, tx },
     )

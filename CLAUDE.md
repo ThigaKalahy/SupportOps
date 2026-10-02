@@ -291,6 +291,13 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Datas de negócio na timeline: `businessDateAtNoon` grava 1:1, feedback, daily e conclusão de combinado ao meio-dia de São Paulo — meia-noite UTC aparecia como o dia anterior.
 - `pnpm test` roda os arquivos em série (`--test-concurrency=1`): eles compartilham o banco.
 
+**P8 — Timeline**
+- `/team/[memberId]/timeline`: calha temporal em `src/components/timeline/` — `timeline-rail.tsx` (calha de 96px, régua de 1px centralizada desenhada em cada linha para correr contínua, marcador de 7px em SVG, traço de 4px que sangra da régua para dentro da calha no trecho do evento com pendência, cabeçalho de mês sticky abaixo da barra de contexto), `timeline-event.tsx` (etiqueta mono do tipo, visibilidade, título 13px medium, resumo em 3 linhas com "Mostrar tudo" só quando passa disso, combinados vinculados, tags traduzidas, autor) e `timeline-feed.tsx` (agrupamento por mês, "Carregar mais" por cursor, sem scroll infinito). Sem animação de entrada.
+- Leitura em `src/server/queries/timeline.ts` (`getTimelinePage`, 40 por página, `visibilityFilter`): cada item sai com o marcador calculado — sangra só combinado aberto vencendo/vencido (escala de prazo), revisão marcada no 1:1 mais recente e não cumprida, PDI ativo sem acompanhamento há mais de 45 dias — e com os combinados vinculados e o status atual (o próprio combinado, ou os que o 1:1/feedback/daily gerou).
+- Filtros na URL (`src/lib/timeline-filters.ts`): `?types=ONE_ON_ONE,FEEDBACK&period=30d|3m|6m&q=texto`; popover de tipos com multi-seleção, período segmentado, busca com espera de 350ms. "Carregar mais" é a Server Action de leitura `loadTimelinePage` (`src/actions/timeline.ts`), com a mesma query.
+- Alternar privado/compartilhado (só quem escreve, só 1:1, feedback e anotação): `setRecordVisibilityRecord` em `src/server/records.ts` muda a origem e todas as linhas-espelho na mesma transação, com auditoria `record.visibility.update`; compartilhar pede confirmação em modal, tornar privado é imediato. Combinado, daily, PDI e mudança de carreira mostram "Compartilhado" com a explicação. O VIEWER não vê indicador nem ação. A origem é localizada por `findToggleableSource` (`src/server/queries/records.ts`).
+- /ui-lab ganhou a seção Timeline com todos os estados (sem pendência, âmbar, laranja, vermelho, privado, resumo longo, combinados gerados).
+
 ## Backlog de curto prazo
 
 Provisionar o banco antes do P3 (já feito).

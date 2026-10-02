@@ -68,3 +68,8 @@ export const noteSchema = z.object({
 export type OneOnOneInput = z.infer<typeof oneOnOneSchema>
 export type FeedbackInput = z.infer<typeof feedbackSchema>
 export type NoteInput = z.infer<typeof noteSchema>
+
+export const recordVisibilitySchema = z.object({
+  eventId: z.string().min(1),
+  visibility: visibilityField,
+})
