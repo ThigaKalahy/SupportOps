@@ -16,7 +16,7 @@
 | P11 Validação de prioridade    | concluída | e45bc5a | 02/10/2026 |
 | P12 Cumprimento de combinados  | concluída | bd143e2 | 02/10/2026 |
 | P13 1:1 e feedbacks            | concluída | f946089 | 02/10/2026 |
-| P14 Desenvolvimento e PDI      | concluída | | 02/10/2026 |
+| P14 Desenvolvimento e PDI      | concluída | ea82549 | 02/10/2026 |
 | P15 Hoje e motor de alertas    | pendente | | |
 | P16 Busca global               | pendente | | |
 | P17 Arquitetura de score       | pendente | | |
