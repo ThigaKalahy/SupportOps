@@ -6,46 +6,14 @@ import { PlusIcon, SlidersHorizontalIcon } from "lucide-react"
 
 import { useQuickAgreement } from "@/components/forms/quick-agreement"
 import { Button } from "@/components/ui/button"
+import { FilterSelect } from "@/components/ui/filter-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AGREEMENT_PARAMS, CREATED_PERIODS, hasAgreementFilters, type AgreementFilters } from "@/lib/agreement-filters"
 import { enumLabel, labels } from "@/lib/labels"
 import { AGREEMENT_ORIGINS, AGREEMENT_PRIORITIES } from "@/lib/validators/agreement"
 
 const F = labels.agreements.filters
-const ALL = "all"
 
-function FilterSelect({
-  label,
-  value,
-  allLabel,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string | null
-  allLabel: string
-  options: { value: string; label: string }[]
-  onChange: (value: string | null) => void
-}) {
-  return (
-    <Select value={value ?? ALL} onValueChange={(v) => onChange(v === ALL ? null : v)}>
-      <SelectTrigger size="sm" aria-label={label} className="w-full">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>
-          {label}: {allLabel}
-        </SelectItem>
-        {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>
-            {o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
 
 /**
  * Filtros (popover) e "Novo combinado" na barra de contexto de /agreements.

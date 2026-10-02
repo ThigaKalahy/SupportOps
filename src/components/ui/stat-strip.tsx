@@ -13,6 +13,8 @@ export interface StatItem {
    * Obrigatória para métrica: número sem cobertura é mentira (CLAUDE.md).
    */
   coverage?: string
+  /** Complemento pequeno ao lado do número (ex.: "(14 combinados)" ao lado de "78%"). */
+  detail?: string
   /** Só para estado (ex.: vencidos). Nunca para "bom/ruim" de desempenho. */
   severity?: Extract<Severity, "attention" | "overdue">
 }
@@ -57,6 +59,7 @@ function StatStrip({
             )}
           >
             {item.value === null ? "—" : typeof item.value === "number" ? numberFormat.format(item.value) : item.value}
+            {item.detail ? <span className="ml-1.5 font-sans text-xs font-normal text-ink-secondary">{item.detail}</span> : null}
           </dd>
         </div>
       ))}

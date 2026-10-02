@@ -1,7 +1,10 @@
 import type { Metadata } from "next"
+import Link from "next/link"
+import { ChartNoAxesColumnIcon } from "lucide-react"
 
 import { AgreementsView } from "@/components/agreements/agreements-view"
 import { ContextActions } from "@/components/shell/context-actions"
+import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { parseAgreementFilters } from "@/lib/agreement-filters"
 import { labels, plural } from "@/lib/labels"
@@ -46,7 +49,18 @@ export default async function AgreementsPage({
           canWrite={canWrite(user)}
         />
       </ContextActions>
-      <PageHeader title={labels.nav.agreements} subtitle={plural(labels.agreements.count, rows.length)} />
+      <PageHeader
+        title={labels.nav.agreements}
+        subtitle={plural(labels.agreements.count, rows.length)}
+        actions={
+          <Button asChild variant="secondary" size="sm">
+            <Link href="/agreements/adherence">
+              <ChartNoAxesColumnIcon />
+              {labels.adherence.seeTeam}
+            </Link>
+          </Button>
+        }
+      />
       <AgreementsView
         basePath="/agreements"
         search={search}

@@ -1,5 +1,6 @@
 import { Prisma, type MemberStatus } from "@prisma/client"
 
+import { trendWindows } from "../../lib/adherence.ts"
 import { todayBusinessDate } from "../../lib/dates.ts"
 import { memberAttention, ATTENTION_THRESHOLDS, type MemberAttention } from "../alerts.ts"
 import { db } from "../db.ts"
@@ -57,6 +58,10 @@ interface RawRow {
   dueSoonAgreements: number
   chronicAgreements: number
   oldestPlanReview: Date | null
+  dueCurrent: number
+  onTimeCurrent: number
+  duePrevious: number
+  onTimePrevious: number
 }
 
 /**
@@ -67,6 +72,15 @@ export async function listTeamMembers(viewer: Viewer, filters: TeamListFilters =
   const today = todayBusinessDate()
   const dueSoonLimit = new Date(today)
   dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + ATTENTION_THRESHOLDS.dueSoonDays)
+
+  // Janelas da tendência de cumprimento (mesmas regras de src/lib/adherence.ts, conferidas em teste).
+  const windows = trendWindows(today)
+  const dueIn = (from: Date, to: Date, onTime: boolean) => Prisma.sql`
+      (SELECT count(*)::int FROM "Agreement" a
+        WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL
+          AND a."originalDueDate" BETWEEN ${from} AND ${to}
+          AND NOT (a."status" IN ('OPEN', 'IN_PROGRESS') AND a."originalDueDate" >= ${today})
+          ${onTime ? Prisma.sql`AND a."status" = 'DONE' AND a."completedAt" <= a."originalDueDate"` : Prisma.empty})`
 
   const inactive = filters.status === "inactive"
   const scope =
@@ -96,7 +110,11 @@ export async function listTeamMembers(viewer: Viewer, filters: TeamListFilters =
       ) AS "chronicAgreements",
       (SELECT min(coalesce((p."lastReviewedAt" AT TIME ZONE 'America/Sao_Paulo')::date, p."startedAt"))
         FROM "DevelopmentPlan" p
-        WHERE p."memberId" = m."id" AND p."deletedAt" IS NULL AND p."status" = 'ACTIVE') AS "oldestPlanReview"
+        WHERE p."memberId" = m."id" AND p."deletedAt" IS NULL AND p."status" = 'ACTIVE') AS "oldestPlanReview",
+      ${dueIn(windows.current.from, windows.current.to, false)} AS "dueCurrent",
+      ${dueIn(windows.current.from, windows.current.to, true)} AS "onTimeCurrent",
+      ${dueIn(windows.previous.from, windows.previous.to, false)} AS "duePrevious",
+      ${dueIn(windows.previous.from, windows.previous.to, true)} AS "onTimePrevious"
     FROM "TeamMember" m
     JOIN "Team" t ON t."id" = m."teamId"
     JOIN "Seniority" s ON s."id" = m."seniorityId"
@@ -128,6 +146,10 @@ export async function listTeamMembers(viewer: Viewer, filters: TeamListFilters =
               dueSoonAgreements: row.dueSoonAgreements,
               chronicAgreements: row.chronicAgreements,
               oldestPlanReview: row.oldestPlanReview,
+              adherenceWindows: {
+                current: { due: row.dueCurrent, onTime: row.onTimeCurrent },
+                previous: { due: row.duePrevious, onTime: row.onTimePrevious },
+              },
             },
             today,
           )

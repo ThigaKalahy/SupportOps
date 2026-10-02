@@ -1,13 +1,18 @@
 import { notFound } from "next/navigation"
 
+import { AdherencePanel } from "@/components/adherence/adherence-panel"
 import { AgreementsView } from "@/components/agreements/agreements-view"
 import { parseAgreementFilters } from "@/lib/agreement-filters"
 import { canWrite } from "@/server/access"
+import { getMemberAdherenceProfile } from "@/server/queries/adherence"
 import { listAgreements } from "@/server/queries/agreements"
 
 import { loadProfile } from "../data"
 
-/** Combinados da pessoa: as mesmas abas e tabela de /agreements, filtradas por ela. */
+/**
+ * Combinados da pessoa: o cumprimento dos últimos 90 dias em cima e, abaixo,
+ * as mesmas abas e tabela de /agreements, filtradas por ela.
+ */
 export default async function MemberAgreementsPage({
   params,
   searchParams,
@@ -22,18 +27,24 @@ export default async function MemberAgreementsPage({
   const raw = await searchParams
   const view = parseAgreementFilters(raw).view
   const filters = { ...parseAgreementFilters({}), view, memberId: profile.id }
-  const { rows, counts } = await listAgreements(user, filters)
+  const [{ rows, counts }, adherence] = await Promise.all([
+    listAgreements(user, filters),
+    getMemberAdherenceProfile(user, profile.id),
+  ])
   const search = new URLSearchParams(typeof raw.view === "string" ? { view: raw.view } : {})
 
   return (
-    <AgreementsView
-      basePath={`/team/${profile.id}/agreements`}
-      search={search}
-      filters={filters}
-      rows={rows}
-      counts={counts}
-      canWrite={canWrite(user) && profile.status !== "INACTIVE"}
-      showMember={false}
-    />
+    <div className="flex flex-col gap-8">
+      <AdherencePanel {...adherence} />
+      <AgreementsView
+        basePath={`/team/${profile.id}/agreements`}
+        search={search}
+        filters={filters}
+        rows={rows}
+        counts={counts}
+        canWrite={canWrite(user) && profile.status !== "INACTIVE"}
+        showMember={false}
+      />
+    </div>
   )
 }

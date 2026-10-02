@@ -1,4 +1,4 @@
-import { parseDisplayDate, todayBusinessDate } from "./dates.ts"
+import { parseUrlDate, todayBusinessDate } from "./dates.ts"
 import { VALIDATION_OUTCOMES, type ValidationOutcome } from "./priority-validation.ts"
 
 /**
@@ -37,17 +37,7 @@ function one(params: Params, key: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null
 }
 
-/** "02-10-2026" (URL) → data de negócio. */
-export function parseUrlDate(value: string | null): Date | null {
-  return value ? parseDisplayDate(value.replaceAll("-", "/")) : null
-}
-
-/** Data de negócio → "02-10-2026" (URL). */
-export function toUrlDate(date: Date): string {
-  const dd = String(date.getUTCDate()).padStart(2, "0")
-  const mm = String(date.getUTCMonth() + 1).padStart(2, "0")
-  return `${dd}-${mm}-${date.getUTCFullYear()}`
-}
+export { parseUrlDate, toUrlDate } from "./dates.ts"
 
 export function parseValidationFilters(params: Params): ValidationFilters {
   const rawPeriod = one(params, VALIDATION_PARAMS.period)

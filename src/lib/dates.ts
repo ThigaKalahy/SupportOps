@@ -237,3 +237,15 @@ export function parseDisplayDate(value: string): Date | null {
     date.getUTCFullYear() === Number(yyyy) && date.getUTCMonth() === Number(mm) - 1 && date.getUTCDate() === Number(dd)
   return valid ? date : null
 }
+
+/** Data de negócio → "02-10-2026", o formato das datas na URL (brasileiro, com hífen). */
+export function toUrlDate(date: Date): string {
+  const dd = String(date.getUTCDate()).padStart(2, "0")
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0")
+  return `${dd}-${mm}-${date.getUTCFullYear()}`
+}
+
+/** "02-10-2026" (URL) → data de negócio, ou null. */
+export function parseUrlDate(value: string | null | undefined): Date | null {
+  return value ? parseDisplayDate(value.replaceAll("-", "/")) : null
+}

@@ -14,7 +14,7 @@
 | P9  Combinados                 | concluída | 66f1bb1 | 02/10/2026 |
 | P10 Dailies com rollover       | concluída | f3c0304 | 02/10/2026 |
 | P11 Validação de prioridade    | concluída | e45bc5a | 02/10/2026 |
-| P12 Cumprimento de combinados  | pendente | | |
+| P12 Cumprimento de combinados  | concluída | | 02/10/2026 |
 | P13 1:1 e feedbacks            | pendente | | |
 | P14 Desenvolvimento e PDI      | pendente | | |
 | P15 Hoje e motor de alertas    | pendente | | |
@@ -130,4 +130,35 @@
     - VIEWER sem formulário, sem ações e com configurações só leitura.
     - Complementos do P9/P10 na tela.
 - **A próxima fase assume:** `summaryByMember` e `memberValidationSummary` prontos para o P12 e o P15; `isBusinessDay` para o alerta "daily não registrada nos últimos 2 dias úteis" (P15); `replaceTimelineEvents`/`syncTimelineContent` para as edições do P13/P14.
+
+### P12 — Cumprimento de combinados (branch `fase/12-adherence`)
+
+- **Ficou de fora:** o critério de aceite visual é seu (eu conferi as telas do Henrique e do Diego por captura, não com seus olhos); combinados de pessoas desligadas não entram na visão de equipe nem na taxa do time (o roster é o de pessoas ativas); feriados não mudam as janelas de 30 dias (são dias corridos); a checagem visual do /ui-lab (seção nova, só existe em desenvolvimento).
+- **Decisões tomadas sem perguntar (revise):**
+  - **Aberto com prazo original hoje:** fica fora do total até amanhã, porque ainda pode ser cumprido no prazo. Sem isso, a taxa do mês corrente nasceria baixa.
+  - **Cancelado:** conta no total e não é cumprido, inclusive o substituído na daily.
+  - **Ajustada:** tira só o combinado NÃO cumprido no prazo, e olha o último impeditivo **com motivo**, não o último checkin. O combinado do Diego termina num checkin "Feito" sem motivo, então "último checkin" literal nunca excluiria nada. Tirar também o cumprido no prazo faria a taxa passar de 100%.
+  - **Tendência:** sem amostra (5+) nas duas janelas, não há seta, só "amostra pequena para tendência". No seed, isso vale para quase todos, exceto o Henrique: são cerca de 2 combinados por pessoa por mês.
+  - **Taxa do time:** ignora quem tem menos de 5 combinados e diz quantas pessoas ficaram fora. O total de combinados inclui todas.
+  - **Ordem por taxa:** quem tem amostra pequena vai para o fim.
+  - **Período padrão da equipe:** 90 dias.
+  - **Visão geral do perfil:** também ganhou um bloco compacto, para a queda aparecer sem clique. O alerta aparece ainda no cabeçalho e na coluna de atenção de /team.
+  - **Sugestão de feedback:** traz só números, sem juízo.
+- **Verificado:**
+  - **Testes:** 117 no total, 12 novos em `tests/adherence.test.ts`.
+    - regras puras em todos os casos de borda;
+    - Henrique 83% (5 de 6) → 50% (3 de 6), −33 p.p., com alerta na consulta de /team;
+    - Diego 67% → 100% ajustada, impeditivos só externos;
+    - SQL de /team coerente com as consultas para as 9 pessoas;
+    - agregado do time sem amostra pequena;
+    - série mensal somando o período;
+    - VIEWER com os mesmos números;
+    - nenhuma escrita;
+    - o teste de consulta única de /team continua passando.
+  - **Servidor de produção, contas temporárias (apagadas):**
+    - Henrique, visão geral: "Cumprimento no prazo caiu de 83% para 50%" no cabeçalho, sem clique, e o bloco com −33 p.p.
+    - Diego, aba Combinados: 67% (6 combinados) ao lado de 100% (4 combinados, amostra pequena), crônico em vermelho com link e só impeditivos externos.
+    - Equipe: 1440 e 360px, ordem por taxa, 6 meses, "Registrar feedback" abrindo com o contexto vazio e a sugestão à parte; VIEWER sem a ação.
+- **Corrigido do processo de verificação (fora do código do app):** as capturas deixavam processos do Edge sem janela vivos; 340 deles somavam 6,7 GB e derrubaram um build por falta de memória. Foram encerrados só os da verificação, e o script agora encerra os seus ao terminar.
+- **A próxima fase assume:** `adherenceDropAlert`, `isDropping`, `getAdherenceTrend` e `getTeamAdherence` prontos para o motor de alertas e o "Ritmo de gestão" do P15.
 

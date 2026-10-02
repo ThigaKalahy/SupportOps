@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation"
 
+import { AdherenceSummary } from "@/components/adherence/adherence-summary"
 import { SummaryEditor } from "@/components/member/summary-editor"
 import { ProfileValidationBlock } from "@/components/priority-validations/profile-validation-block"
 import { todayBusinessDate } from "@/lib/dates"
 import { toUrlDate, VALIDATION_PARAMS } from "@/lib/validation-filters"
 import { canWrite } from "@/server/access"
+import { getMemberAdherenceProfile } from "@/server/queries/adherence"
 import { memberValidationSummary } from "@/server/queries/priority-validations"
 import { getMemberOverview } from "@/server/queries/profile"
 
@@ -30,9 +32,10 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
   if (!profile) notFound()
 
   const today = todayBusinessDate()
-  const [overview, validations] = await Promise.all([
+  const [overview, validations, adherence] = await Promise.all([
     getMemberOverview(user, profile.id),
     memberValidationSummary(user, profile.id, today),
+    getMemberAdherenceProfile(user, profile.id, today),
   ])
   const base = `/team/${profile.id}`
   const windowStart = new Date(today)
@@ -58,7 +61,13 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
 
       <div className="flex min-w-0 flex-col gap-8 lg:border-l lg:border-line lg:pl-8">
         <OpenAgreements agreements={overview.agreements} href={`${base}/agreements`} />
-        {/* P12: bloco de cumprimento de combinados entra aqui, acima da validação de prioridade. */}
+        <AdherenceSummary
+          adherence={adherence.adherence}
+          trend={adherence.trend}
+          series={adherence.series}
+          days={adherence.days}
+          href={`${base}/agreements`}
+        />
         <ProfileValidationBlock
           data={{
             days: validations.days,
