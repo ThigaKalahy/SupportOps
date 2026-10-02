@@ -10,7 +10,7 @@
 | P5  Auth e visibilidade        | concluída — aguarda AUTH_SECRET | d04cfae | 01/10/2026 |
 | P6  Equipe e cadastro          | concluída | 9510608 | 01/10/2026 |
 | P7  Perfil do analista         | concluída | 2cbe624 | 02/10/2026 |
-| P8  Timeline                   | concluída | (hash) | 02/10/2026 |
+| P8  Timeline                   | concluída | e308b39 | 02/10/2026 |
 | P9  Combinados                 | pendente | | |
 | P10 Dailies com rollover       | pendente | | |
 | P11 Validação de prioridade    | pendente | | |
