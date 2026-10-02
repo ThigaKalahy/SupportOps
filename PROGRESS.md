@@ -8,7 +8,7 @@
 | P3  Schema Prisma              | concluída | aa6c80d | 01/10/2026 |
 | P4  Seed                       | concluída | b6b6411 | 01/10/2026 |
 | P5  Auth e visibilidade        | concluída — aguarda AUTH_SECRET | d04cfae | 01/10/2026 |
-| P6  Equipe e cadastro          | concluída | (hash) | 01/10/2026 |
+| P6  Equipe e cadastro          | concluída | 9510608 | 01/10/2026 |
 | P7  Perfil do analista         | pendente | | |
 | P8  Timeline                   | pendente | | |
 | P9  Combinados                 | pendente | | |
