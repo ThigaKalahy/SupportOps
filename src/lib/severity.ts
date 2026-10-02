@@ -1,5 +1,5 @@
-import { businessDaysBetween, todayBusinessDate } from "@/lib/dates";
-import { fill, labels } from "@/lib/labels";
+import { businessDaysBetween, todayBusinessDate } from "./dates.ts";
+import { fill, labels } from "./labels.ts";
 
 /**
  * Escala de severidade do Prontuário (DESIGN.md, "Severidade").

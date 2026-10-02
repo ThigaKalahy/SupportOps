@@ -17,6 +17,10 @@ type ControlProps = {
  * Rótulo + campo + ajuda, com espaçamento fixo. Liga o rótulo ao campo e
  * injeta id, aria-describedby e aria-invalid no controle filho.
  * Quando há erro, a mensagem de erro substitui a ajuda.
+ *
+ * O filho pode ser um elemento (recebe as props por clone) ou uma função que
+ * recebe as props — necessário quando o controle não é um elemento do DOM,
+ * como o Select do Radix (as props vão para o SelectTrigger).
  */
 function FieldGroup({
   label,
@@ -33,19 +37,21 @@ function FieldGroup({
   error?: string
   required?: boolean
   optional?: boolean
-  children: React.ReactElement<ControlProps>
+  children: React.ReactElement<ControlProps> | ((control: Required<Pick<ControlProps, "id">> & ControlProps) => React.ReactNode)
 }) {
   const generatedId = React.useId()
-  const controlId = children.props.id ?? `${generatedId}-control`
+  const isRender = typeof children === "function"
+  const controlId = (!isRender && children.props.id) || `${generatedId}-control`
   const messageId = `${generatedId}-message`
   const message = error ?? help
-
-  const control = React.cloneElement(children, {
+  const controlProps = {
     id: controlId,
     "aria-describedby": message ? messageId : undefined,
-    "aria-invalid": error ? true : children.props["aria-invalid"],
+    "aria-invalid": error ? true : !isRender ? children.props["aria-invalid"] : undefined,
     "aria-required": required || undefined,
-  })
+  }
+
+  const control = isRender ? children(controlProps) : React.cloneElement(children, controlProps)
 
   return (
     <div data-slot="field-group" className={cn("flex flex-col gap-1.5", className)} {...props}>

@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { enumLabel, labels } from "@/lib/labels"
+import { initials } from "@/lib/people"
 import { cn } from "@/lib/utils"
 
 import { footerNav, isActive, mainNav } from "./nav-config"
@@ -33,13 +34,6 @@ export interface ShellUser {
   name: string
   email: string
   role: Role
-}
-
-function initials(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean)
-  const first = parts[0]?.[0] ?? ""
-  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : ""
-  return (first + last).toUpperCase()
 }
 
 /** Usuário atual, discreto, com o botão de sair. */

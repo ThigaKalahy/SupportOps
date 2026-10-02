@@ -68,6 +68,100 @@ export const labels = {
   access: {
     forbidden: "Ação não permitida para o seu papel.",
   },
+  validation: {
+    required: "Campo obrigatório.",
+    tooShort: "Texto curto demais.",
+    tooLong: "Texto longo demais.",
+    email: "E-mail inválido.",
+    date: "Data inválida. Use DD/MM/AAAA.",
+    futureDate: "A data não pode ser no futuro.",
+    reasonRequired: "Informe o motivo: mudança de senioridade, cargo ou status é evento de carreira.",
+    generic: "Não foi possível salvar. Revise os campos.",
+  },
+  team: {
+    tableLabel: "Pessoas do time",
+    peopleCount: "{count} pessoas",
+    personCount: "1 pessoa",
+    columns: {
+      person: "Pessoa",
+      seniority: "Senioridade",
+      tenure: "No time",
+      status: "Status",
+      lastOneOnOne: "Último 1:1",
+      openAgreements: "Combinados abertos",
+      attention: "Atenção",
+      actions: "Ações",
+    },
+    filters: {
+      button: "Filtros",
+      seniority: "Senioridade",
+      allSeniorities: "Todas",
+      status: "Status",
+      current: "Ativos e afastados",
+      inactive: "Inativos",
+      needsAttention: "Precisa de atenção",
+      groupBySeniority: "Agrupar por senioridade",
+      clear: "Limpar filtros",
+    },
+    empty: {
+      filteredTitle: "Ninguém com esses filtros",
+      filteredDirection: "Ajuste ou limpe os filtros da barra de contexto para ver o time inteiro.",
+    },
+    noOneOnOne: "Nenhum",
+    noAttention: "Sem pendências",
+    add: "Adicionar pessoa",
+    edit: "Editar cadastro",
+    deactivate: "Desativar pessoa",
+    rowActions: "Ações de {name}",
+    form: {
+      createTitle: "Adicionar pessoa",
+      createDescription: "Cadastro de quem entra no time. Responsabilidades e competências são opcionais.",
+      editTitle: "Editar cadastro",
+      editDescription: "Mudança de senioridade, cargo ou status vira evento de carreira, com motivo.",
+      fullName: "Nome completo",
+      preferredName: "Nome preferido",
+      preferredNameHelp: "Como a pessoa é chamada no dia a dia. Aparece nas listas.",
+      position: "Cargo",
+      seniority: "Senioridade",
+      joinedAt: "Data de entrada",
+      joinedAtPlaceholder: "DD/MM/AAAA",
+      status: "Status",
+      email: "E-mail",
+      moreDetails: "Mais detalhes",
+      lessDetails: "Menos detalhes",
+      responsibilities: "Responsabilidades",
+      responsibilitiesHelp: "Marque as que a pessoa assume a partir de hoje.",
+      competencies: "Competências avaliadas",
+      competenciesHelp: "Nível atual de 1 a 5. Deixe em branco o que não foi avaliado.",
+      notAssessed: "—",
+      reason: "Motivo da mudança",
+      reasonHelp: "Fica registrado na timeline da pessoa.",
+      careerChange: "Esta edição muda {fields}. Isso gera um evento de carreira.",
+      fieldSeniority: "senioridade",
+      fieldPosition: "cargo",
+      fieldStatus: "status",
+      save: "Salvar",
+      create: "Adicionar pessoa",
+    },
+    deactivateDialog: {
+      title: "Desativar {name}?",
+      description:
+        "A pessoa sai das listagens ativas. Nada é apagado: 1:1, feedbacks, combinados e timeline continuam no histórico.",
+      reason: "Motivo da saída",
+      confirm: "Desativar pessoa",
+    },
+  },
+  attention: {
+    overdue: { one: "1 combinado vencido há {days} dias", other: "{count} combinados vencidos; o mais antigo há {days} dias" },
+    dueSoon: { one: "1 combinado vence em até {limit} dias", other: "{count} combinados vencem em até {limit} dias" },
+    chronic: {
+      one: "1 combinado reagendado {limit} vezes ou mais",
+      other: "{count} combinados reagendados {limit} vezes ou mais",
+    },
+    noOneOnOne: "Nenhum 1:1 registrado desde a entrada, há {days} dias",
+    lateOneOnOne: "Sem 1:1 há {days} dias (referência para {seniority}: {limit} dias)",
+    stalePlan: "PDI sem acompanhamento há {days} dias",
+  },
   timeline: {
     /** Título da linha de 1:1 quando não há assuntos registrados. */
     oneOnOneFallback: "1:1",
@@ -176,6 +270,12 @@ export const labels = {
 } as const;
 
 export const enumLabels = {
+  memberStatus: {
+    ACTIVE: "Ativo",
+    ON_LEAVE: "Afastado",
+    OFFBOARDING: "Em desligamento",
+    INACTIVE: "Inativo",
+  },
   role: {
     OWNER: "Gestor",
     MANAGER: "Gestor de time",
@@ -203,4 +303,13 @@ export function fill(template: string, values: Record<string, string | number>):
   return template.replace(/\{(\w+)\}/g, (match, key: string) =>
     key in values ? String(values[key]) : match,
   );
+}
+
+/** Escolhe singular ou plural e interpola: plural(labels.attention.overdue, 2, { days: 9 }). */
+export function plural(
+  forms: { one: string; other: string },
+  count: number,
+  values: Record<string, string | number> = {},
+): string {
+  return fill(count === 1 ? forms.one : forms.other, { count, ...values })
 }

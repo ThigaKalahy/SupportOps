@@ -80,6 +80,14 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
       <Specimen state={`${labels.uiLab.states.default} + ${labels.uiLab.states.selected}`}>
         <DataTable {...base} rows={agreements} selectedRowId={selectedId} onRowSelect={(a) => setSelectedId(a.id)} />
       </Specimen>
+      <Specimen state="groupBy · cabeçalho de grupo discreto">
+        <DataTable
+          {...base}
+          columns={narrowColumns}
+          rows={[...agreements].sort((a, b) => (a.resolved === b.resolved ? 0 : a.resolved ? 1 : -1))}
+          groupBy={(a) => (a.resolved ? { id: "done", label: "Concluídos" } : { id: "open", label: "Em aberto" })}
+        />
+      </Specimen>
       <div className="grid gap-6 xl:grid-cols-2">
         <Specimen state={labels.uiLab.states.hover}>
           <DataTable {...base} rows={few} columns={narrowColumns} forcedRowState={{ rowId: "a2", state: "hover" }} onRowSelect={() => {}} />

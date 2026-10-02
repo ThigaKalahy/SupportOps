@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { todayBusinessDate } from "@/lib/dates"
 import { enumLabel, labels } from "@/lib/labels"
+import { avatarColors, initials } from "@/lib/people"
 import { deadlineSeverity, SEVERITIES } from "@/lib/severity"
 
 import { LabDataTables } from "./_components/lab-data-tables"
@@ -295,6 +296,24 @@ export default function UiLabPage() {
               </Select>
             </FieldGroup>
           </Specimen>
+          <Specimen state="FieldGroup + Select (render prop)">
+            <FieldGroup label={demo.fieldSeniority} help={demo.fieldTitleHelp} className="w-full">
+              {(control) => (
+                <Select defaultValue="Pleno">
+                  <SelectTrigger {...control} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {seniorities.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </FieldGroup>
+          </Specimen>
           <Specimen state={`Select · ${S.disabled}`}>
             <FieldGroup label={demo.fieldSeniority} className="w-full">
               <Select defaultValue="Sênior" disabled>
@@ -535,6 +554,13 @@ export default function UiLabPage() {
             {(["sm", "default", "lg"] as const).map((size) => (
               <Avatar key={size} size={size}>
                 <AvatarFallback>HL</AvatarFallback>
+              </Avatar>
+            ))}
+          </Specimen>
+          <Specimen state="Avatar · cor determinística por id">
+            {people.slice(0, 6).map((name) => (
+              <Avatar key={name} size="sm" title={name}>
+                <AvatarFallback style={avatarColors(name)}>{initials(name)}</AvatarFallback>
               </Avatar>
             ))}
           </Specimen>

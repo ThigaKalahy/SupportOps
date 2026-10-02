@@ -272,6 +272,15 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - CLI: `pnpm user:create` e `pnpm user:password` (`scripts/`), senha aleatória mostrada uma vez, só o hash gravado, auditados.
 - Testes (`pnpm test`, `node:test`, sem biblioteca extra): `tests/visibility.test.ts` (varredura estática que reprova leitura sensível fora de `src/server/queries` ou sem `visibilityFilter` + verificação no banco de timeline, busca, contadores e listas como VIEWER), `tests/lockout.test.ts` (6 senhas erradas → bloqueio de 15 min e 6 linhas no AuditLog), `tests/access.test.ts`.
 
+**P6 — Equipe e cadastro**
+- `/team`: DataTable com pessoa (avatar de iniciais com cor por id, nome preferido, cargo), senioridade, tempo no time, status, último 1:1, combinados abertos e coluna de atenção (SeverityDot + tooltip com cada motivo em uma frase). Agrupada por senioridade (Sênior → Pleno → Júnior) com toggle; ordem por senioridade e nome, nunca por métrica.
+- Filtros no popover "Filtros" da barra de contexto (senioridade, status atual/inativos, precisa de atenção, agrupar), estado na URL: `?seniority=PLENO&status=inactive&attention=1&group=off`.
+- Listagem em UMA consulta SQL (`listTeamMembers` em `src/server/queries/members.ts`, provado por teste com contador de consultas). Último 1:1 respeita visibilidade: para VIEWER, 1:1 privado não conta (`visibilitySql`).
+- Atenção derivada em `src/server/alerts.ts` (`memberAttention`), com os limiares padrão da tabela do P15: combinado vencido (escala de prazo), crônico (≥ 3 reagendamentos), 1:1 atrasado (Júnior 21 dias, Pleno/Sênior 30; acima do dobro vira vermelho), PDI sem acompanhamento > 45 dias, combinado vencendo em ≤ 3 dias.
+- Cadastro, edição e desativação: `MemberDialog` e `DeactivateMemberDialog` em `src/components/member/` (reutilizáveis no header do perfil, P7), Server Actions em `src/actions/members.ts`, núcleo testável em `src/server/members.ts`. Mudança de senioridade, cargo ou status exige motivo e grava MemberChange + TimelineEvent; desativar = INACTIVE + `deletedAt`, nunca apaga. Responsabilidades com histórico (`endedAt`), competências com nível 1–5.
+- Primitivos ampliados: DataTable (`groupBy`, `stacked: "aside"`, vazio/erro fora da tabela), FieldGroup (filho como função, para Select). Data em DD/MM/AAAA com máscara (`maskDateInput`, `parseDisplayDate`), tempo no time (`formatTenure`), `plural()` em labels.
+- `db.ts` tem `queryCounter`, ligado só com `PRISMA_COUNT_QUERIES=1` (testes).
+
 ## Backlog de curto prazo
 
 Provisionar o banco antes do P3 (já feito).

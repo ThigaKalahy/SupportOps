@@ -20,10 +20,11 @@ export interface DataTableColumn<T> {
   /**
    * Papel na lista empilhada (< 768px):
    * primary   linha de título do item
+   * aside     à direita da linha de título, sem rótulo (sinal, menu de ações)
    * secondary par rótulo/valor abaixo do título (padrão)
    * hidden    não aparece na lista empilhada
    */
-  stacked?: "primary" | "secondary" | "hidden"
+  stacked?: "primary" | "aside" | "secondary" | "hidden"
   /**
    * Oculta a coluna na tabela abaixo do breakpoint (lg = 1024px, xl = 1280px).
    * Use nas colunas de menor prioridade: a soma das larguras fixas não pode
@@ -53,6 +54,11 @@ export interface DataTableProps<T> {
   error?: { message: string; onRetry?: () => void }
   /** Altura máxima; com ela, a tabela rola internamente e o cabeçalho gruda no topo dela. */
   maxHeight?: number
+  /**
+   * Agrupa linhas consecutivas com o mesmo grupo sob um cabeçalho discreto.
+   * As linhas precisam chegar já ordenadas pelo grupo.
+   */
+  groupBy?: (row: T) => { id: string; label: string }
   /** Só para /ui-lab: força o estado visual de hover/foco numa linha. */
   forcedRowState?: { rowId: string; state: "hover" | "focus" }
   className?: string
@@ -84,6 +90,7 @@ function DataTable<T>({
   error,
   maxHeight,
   forcedRowState,
+  groupBy,
   className,
 }: DataTableProps<T>) {
   const interactive = Boolean(onRowSelect)
@@ -102,6 +109,22 @@ function DataTable<T>({
         }
       },
     }
+  }
+
+  /** Grupo da linha quando ela inicia um grupo novo (para o cabeçalho), senão null. */
+  const groupCounts = new Map<string, number>()
+  if (groupBy) for (const row of rows) {
+    const g = groupBy(row).id
+    groupCounts.set(g, (groupCounts.get(g) ?? 0) + 1)
+  }
+  function groupStart(index: number): { id: string; label: string; count: number } | null {
+    if (!groupBy) return null
+    const row = rows[index]
+    if (row === undefined) return null
+    const current = groupBy(row)
+    const previous = index > 0 ? rows[index - 1] : undefined
+    if (previous !== undefined && groupBy(previous).id === current.id) return null
+    return { ...current, count: groupCounts.get(current.id) ?? 0 }
   }
 
   function rowState(id: string) {
@@ -184,17 +207,36 @@ function DataTable<T>({
                 ))}
               </tr>
             ))
-          ) : statusBlock ? (
-            <tr>
-              <td colSpan={columns.length}>{statusBlock}</td>
-            </tr>
-          ) : (
-            rows.map((row) => {
+          ) : statusBlock ? null : (
+            rows.map((row, rowIndex) => {
               const id = getRowId(row)
               const { selected, forced } = rowState(id)
+              const group = groupStart(rowIndex)
               return (
+                <React.Fragment key={id}>
+                {group ? (
+                  // Uma célula por coluna, com a mesma regra de ocultação: colSpan
+                  // sobre colunas ocultas por hideBelow cria colunas fantasmas.
+                  <tr data-slot="data-table-group">
+                    {columns.map((column, index) => (
+                      <th
+                        key={column.id}
+                        scope={index === 0 ? "colgroup" : undefined}
+                        className={cn(
+                          "h-7 border-b border-line bg-canvas px-3 text-left font-normal whitespace-nowrap",
+                          column.hideBelow && hideCellClasses[column.hideBelow]
+                        )}
+                      >
+                        {index === 0 ? (
+                          <MetaLabel>
+                            {group.label} · {group.count}
+                          </MetaLabel>
+                        ) : null}
+                      </th>
+                    ))}
+                  </tr>
+                ) : null}
                 <tr
-                  key={id}
                   data-selected={selected || undefined}
                   data-force-state={forced}
                   aria-current={selected || undefined}
@@ -226,11 +268,14 @@ function DataTable<T>({
                     )
                   })}
                 </tr>
+                </React.Fragment>
               )
             })
           )}
         </tbody>
       </table>
+      {/* Vazio e erro ficam fora da tabela: colSpan sobre colunas ocultas criaria colunas fantasmas. */}
+      {statusBlock ? <div className="hidden border-t border-line md:block">{statusBlock}</div> : null}
 
       {/* < 768px: lista de linhas empilhadas */}
       <div className="md:hidden" aria-label={label} role="list" aria-busy={state === "loading" || undefined}>
@@ -239,14 +284,23 @@ function DataTable<T>({
         ) : statusBlock ? (
           statusBlock
         ) : (
-          rows.map((row) => {
+          rows.map((row, rowIndex) => {
             const id = getRowId(row)
             const { selected, forced } = rowState(id)
             const primary = columns.filter((c) => c.stacked === "primary")
+            const aside = columns.filter((c) => c.stacked === "aside")
             const secondary = columns.filter((c) => (c.stacked ?? "secondary") === "secondary")
+            const group = groupStart(rowIndex)
             return (
+              <React.Fragment key={id}>
+              {group ? (
+                <div role="presentation" className="border-b border-line bg-canvas px-3 py-1.5">
+                  <MetaLabel>
+                    {group.label} · {group.count}
+                  </MetaLabel>
+                </div>
+              ) : null}
               <div
-                key={id}
                 role="listitem"
                 data-selected={selected || undefined}
                 data-force-state={forced}
@@ -260,11 +314,20 @@ function DataTable<T>({
                 )}
                 {...rowHandlers(row)}
               >
-                {primary.map((column) => (
-                  <div key={column.id} className="truncate text-sm font-medium text-ink">
-                    {column.cell(row)}
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="min-w-0 truncate text-sm font-medium text-ink">
+                    {primary.map((column) => (
+                      <React.Fragment key={column.id}>{column.cell(row)}</React.Fragment>
+                    ))}
                   </div>
-                ))}
+                  {aside.length ? (
+                    <div className="flex shrink-0 items-center gap-1">
+                      {aside.map((column) => (
+                        <React.Fragment key={column.id}>{column.cell(row)}</React.Fragment>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <dl className="flex flex-wrap gap-x-4 gap-y-1">
                   {secondary.map((column) => (
                     <div key={column.id} className="flex min-w-0 items-center gap-1.5">
@@ -276,6 +339,7 @@ function DataTable<T>({
                   ))}
                 </dl>
               </div>
+              </React.Fragment>
             )
           })
         )}

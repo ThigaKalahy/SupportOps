@@ -68,6 +68,27 @@ describe("camada estática: leituras sensíveis só com visibilityFilter", () =>
     assert.deepEqual(violations, [])
   })
 
+  test("SQL cru ($queryRaw) que toca tabela sensível usa visibilitySql e mora em src/server/queries", () => {
+    const violations: string[] = []
+    for (const file of files) {
+      const source = readFileSync(file, "utf8")
+      const rel = relative(SRC, file).split(sep).join("/")
+      for (const match of source.matchAll(/\$queryRaw(Unsafe)?/g)) {
+        const start = source.indexOf("`", match.index)
+        // Fim do template: crase seguida de quebra de linha (crases internas de Prisma.sql não fecham linha).
+        const end = source.indexOf("`\n", start + 1)
+        const sql = source.slice(start, end > start ? end : undefined)
+        const tables = [...sql.matchAll(/"(OneOnOne|Feedback|Note|TimelineEvent)"/g)].map((m) => m[1])
+        if (match[1]) violations.push(`${rel}: $queryRawUnsafe é proibido (use $queryRaw com parâmetros)`)
+        if (tables.length === 0) continue
+        if (!rel.startsWith("server/queries/")) violations.push(`${rel}: SQL cru em tabela sensível fora de src/server/queries`)
+        const guards = (sql.match(/visibilitySql\(/g) ?? []).length
+        if (guards < tables.length) violations.push(`${rel}: ${tables.length} tabela(s) sensível(is) e ${guards} visibilitySql`)
+      }
+    }
+    assert.deepEqual(violations, [])
+  })
+
   test("relação aninhada com registro sensível (include/select/_count) também filtra visibilidade", () => {
     const violations: string[] = []
     for (const file of files) {

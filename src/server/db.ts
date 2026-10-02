@@ -62,10 +62,23 @@ function withSoftDelete(base: PrismaClient) {
   })
 }
 
+/**
+ * Contador de consultas SQL, ligado só com PRISMA_COUNT_QUERIES=1 (usado nos
+ * testes para provar "uma única query, sem N+1"). Desligado, não custa nada.
+ */
+export const queryCounter = { count: 0 }
+
 function createClients() {
+  const levels: Prisma.LogLevel[] = process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"]
+  const countQueries = process.env.PRISMA_COUNT_QUERIES === "1"
   const base = new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    log: countQueries ? [...levels, { emit: "event", level: "query" } as const] : levels,
   })
+  if (countQueries) {
+    ;(base as unknown as { $on(event: "query", cb: () => void): void }).$on("query", () => {
+      queryCounter.count += 1
+    })
+  }
   return { base, filtered: withSoftDelete(base) }
 }
 

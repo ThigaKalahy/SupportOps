@@ -96,6 +96,10 @@ Base 4px, progressão `4 / 8 / 12 / 16 / 24 / 32 / 48 / 64`. Densidade de gestã
 - **Tablet/mobile:** sidebar vira drawer. Tabelas viram lista de linhas empilhadas (não scroll horizontal). Ações secundárias entram em menu de overflow.
 - Sidebar com 6 itens + configurações: Hoje · Equipe · Combinados · Dailies · Registros (1:1 e feedbacks) · Desenvolvimento · ⌄ Configurações.
 
+## Avatar de iniciais
+
+Sem foto e sem upload. Iniciais do nome completo sobre uma cor derivada do id da pessoa (`src/lib/people.ts`): mesma pessoa, mesma cor em todo o produto. Tons dessaturados e de luminosidade fixa — fundo `hsl(h 28% 93%)`, texto `hsl(h 32% 30%)`, contraste acima de 7:1 — para identificar sem competir com a cor de severidade, que é a única cor com significado. `rounded-full` só aqui.
+
 ## Elemento assinatura: a calha temporal
 
 A timeline é o único momento de ousadia visual do produto — todo o resto do sistema fica quieto. Medidas:

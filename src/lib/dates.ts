@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, format } from "date-fns";
+import { differenceInCalendarDays, differenceInCalendarMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale/pt-BR";
 
 /**
@@ -118,4 +118,38 @@ export function businessDaysBetween(from: Date, to: Date): number {
 /** Dias de calendário, em São Paulo, desde um instante até `now`. */
 export function daysSince(instant: Date, now: Date = new Date()): number {
   return differenceInCalendarDays(toSaoPaulo(now), toSaoPaulo(instant));
+}
+
+/** "2 anos e 3 meses", "8 meses", "menos de 1 mês" — tempo desde uma data de negócio. */
+export function formatTenure(since: Date, today: Date = todayBusinessDate()): string {
+  const months = differenceInCalendarMonths(fromBusinessDate(today), fromBusinessDate(since))
+  const adjusted = fromBusinessDate(today).getDate() < fromBusinessDate(since).getDate() ? months - 1 : months
+  if (adjusted < 1) return "menos de 1 mês"
+  const years = Math.floor(adjusted / 12)
+  const rest = adjusted % 12
+  const y = years === 1 ? "1 ano" : `${years} anos`
+  const m = rest === 1 ? "1 mês" : `${rest} meses`
+  if (years === 0) return m
+  return rest === 0 ? y : `${y} e ${m}`
+}
+
+/**
+ * Campo de data com máscara DD/MM/AAAA (o <input type="date"> nativo segue o
+ * idioma do navegador). Mantém só dígitos e insere as barras.
+ */
+export function maskDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8)
+  const parts = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean)
+  return parts.join("/")
+}
+
+/** "DD/MM/AAAA" → data de negócio (meia-noite UTC), ou null se inválida. */
+export function parseDisplayDate(value: string): Date | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim())
+  if (!match) return null
+  const [, dd, mm, yyyy] = match
+  const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)))
+  const valid =
+    date.getUTCFullYear() === Number(yyyy) && date.getUTCMonth() === Number(mm) - 1 && date.getUTCDate() === Number(dd)
+  return valid ? date : null
 }
