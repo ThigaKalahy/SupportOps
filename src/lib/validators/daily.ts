@@ -105,3 +105,17 @@ export type DailyInput = z.infer<typeof dailySchema>
 export type DailyReviewInput = z.infer<typeof dailyReviewSchema>
 export type DailyParticipantInput = z.infer<typeof dailyParticipantSchema>
 export type DailyNewAgreementInput = z.infer<typeof dailyNewAgreementSchema>
+
+/**
+ * Edição de uma daily salva: só o que é texto da própria daily — resumo,
+ * decisões, presença e notas. Revisões e combinados criados não se editam:
+ * eles já mudaram os combinados (prazo, status, substituição).
+ */
+export const editDailySchema = z.object({
+  id: z.string().min(1),
+  summary: optionalText(4000),
+  decisions: optionalText(4000),
+  participants: z.array(dailyParticipantSchema),
+})
+
+export type EditDailyInput = z.infer<typeof editDailySchema>

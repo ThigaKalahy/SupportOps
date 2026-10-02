@@ -1,12 +1,12 @@
 import { parseDisplayDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
-import { dailySchema } from "../lib/validators/daily.ts"
+import { dailySchema, editDailySchema } from "../lib/validators/daily.ts"
 
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
 import { teamFor } from "./queries/dailies.ts"
-import { recordTimelineEvents, timelineEventFor, type TimelineEventInput } from "./timeline.ts"
+import { recordTimelineEvents, replaceTimelineEvents, timelineEventFor, type TimelineEventInput } from "./timeline.ts"
 import { canWrite, memberScope, type Viewer } from "./visibility.ts"
 
 /**
@@ -232,6 +232,114 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
   }
 
   return { ok: true, id: dailyId }
+}
+
+/**
+ * Edição de daily salva: resumo, decisões, presença e notas (a lista de
+ * participantes é a mesma da gravação). As linhas DAILY da timeline são
+ * refeitas na mesma transação — quem ganhou nota passa a ter linha, quem
+ * perdeu e não teve combinado revisado deixa de ter. Revisões e combinados
+ * criados não mudam aqui.
+ */
+export async function updateDailyRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+  const parsed = editDailySchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  }
+  const data = parsed.data
+  const team = await teamFor(user)
+  if (!team) return { ok: false, error: labels.validation.generic }
+  const daily = await db.daily.findFirst({
+    where: { id: data.id, teamId: team.id },
+    select: {
+      id: true,
+      date: true,
+      summary: true,
+      decisions: true,
+      authorUserId: true,
+      participants: { select: { memberId: true, present: true, note: true, blocker: true } },
+      checkins: { select: { outcome: true, agreement: { select: { memberId: true } } } },
+    },
+  })
+  if (!daily) return { ok: false, error: labels.validation.generic }
+  const known = new Set(daily.participants.map((p) => p.memberId))
+  const sent = new Set(data.participants.map((p) => p.memberId))
+  if (sent.size !== data.participants.length || sent.size !== known.size || [...sent].some((id) => !known.has(id))) {
+    return { ok: false, error: labels.validation.generic }
+  }
+
+  const reviewedBy = new Map<string, Record<Outcome, number>>()
+  for (const c of daily.checkins) {
+    const counts = reviewedBy.get(c.agreement.memberId) ?? { DONE: 0, PARTIAL: 0, NOT_DONE: 0 }
+    counts[c.outcome]++
+    reviewedBy.set(c.agreement.memberId, counts)
+  }
+
+  await db.$transaction(
+    async (tx) => {
+      await tx.daily.update({
+        where: { id: daily.id },
+        data: { summary: textOrNull(data.summary), decisions: textOrNull(data.decisions) },
+      })
+      const timeline: TimelineEventInput[] = []
+      for (const p of data.participants) {
+        const text = textOrNull(p.note)
+        const note = p.isBlocker ? null : text
+        const blocker = p.isBlocker ? text : null
+        await tx.dailyParticipant.update({
+          where: { dailyId_memberId: { dailyId: daily.id, memberId: p.memberId } },
+          data: { present: p.present, note, blocker },
+        })
+        const line = timelineEventFor.dailyParticipation({
+          dailyId: daily.id,
+          memberId: p.memberId,
+          date: daily.date,
+          note,
+          blocker,
+          authorUserId: daily.authorUserId,
+          reviewed: reviewedBy.get(p.memberId),
+        })
+        if (line) timeline.push(line)
+      }
+      // Revisados sem linha de participante (pessoa fora da lista na gravação) mantêm a linha da revisão.
+      for (const [memberId, reviewed] of reviewedBy) {
+        if (sent.has(memberId)) continue
+        const line = timelineEventFor.dailyParticipation({
+          dailyId: daily.id,
+          memberId,
+          date: daily.date,
+          note: null,
+          blocker: null,
+          authorUserId: daily.authorUserId,
+          reviewed,
+        })
+        if (line) timeline.push(line)
+      }
+      await replaceTimelineEvents(tx, { kind: "daily", id: daily.id }, "DAILY", timeline)
+      await writeAudit(
+        {
+          action: "daily.update",
+          entity: "Daily",
+          entityId: daily.id,
+          before: { summary: daily.summary, decisions: daily.decisions, participants: daily.participants },
+          after: {
+            summary: textOrNull(data.summary),
+            decisions: textOrNull(data.decisions),
+            participants: data.participants.map((p) => ({
+              memberId: p.memberId,
+              present: p.present,
+              note: p.isBlocker ? null : textOrNull(p.note),
+              blocker: p.isBlocker ? textOrNull(p.note) : null,
+            })),
+          },
+        },
+        { organizationId: user.organizationId, userId: user.id, tx },
+      )
+    },
+    { maxWait: 10_000, timeout: 30_000 },
+  )
+  return { ok: true }
 }
 
 export class ClosedAgreementError extends Error {

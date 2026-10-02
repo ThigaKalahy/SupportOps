@@ -40,6 +40,7 @@ type Tx = {
   timelineEvent: {
     createMany(args: { data: Prisma.TimelineEventCreateManyInput[] }): Promise<unknown>
     updateMany(args: { where: Prisma.TimelineEventWhereInput; data: Prisma.TimelineEventUpdateManyMutationInput }): Promise<unknown>
+    deleteMany(args: { where: Prisma.TimelineEventWhereInput }): Promise<unknown>
   }
 }
 
@@ -106,6 +107,33 @@ export async function syncTimelineVisibility(tx: Tx, source: TimelineSource, vis
   await tx.timelineEvent.updateMany({
     where: { [SOURCE_COLUMN[source.kind]]: source.id },
     data: { visibility },
+  })
+}
+
+/**
+ * Edição de um registro: troca as linhas de um tipo daquela origem pelas novas
+ * (ex.: as linhas DAILY de uma daily editada — pode sumir ou surgir gente).
+ */
+export async function replaceTimelineEvents(
+  tx: Tx,
+  source: TimelineSource,
+  type: TimelineEventType,
+  inputs: TimelineEventInput[],
+): Promise<void> {
+  await tx.timelineEvent.deleteMany({ where: { [SOURCE_COLUMN[source.kind]]: source.id, type } })
+  await recordTimelineEvents(tx, inputs)
+}
+
+/** Edição do texto de um registro: título e resumo de todas as linhas dele. */
+export async function syncTimelineContent(
+  tx: Tx,
+  source: TimelineSource,
+  content: { title: string; summary?: string | null },
+  type?: TimelineEventType,
+): Promise<void> {
+  await tx.timelineEvent.updateMany({
+    where: { [SOURCE_COLUMN[source.kind]]: source.id, ...(type ? { type } : {}) },
+    data: { title: clip(content.title), ...(content.summary === undefined ? {} : { summary: content.summary }) },
   })
 }
 

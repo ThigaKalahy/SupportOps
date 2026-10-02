@@ -13,12 +13,12 @@ import assert from "node:assert/strict"
 import { after, before, describe, test } from "node:test"
 
 import { db, dbIncludingDeleted } from "../src/server/db.ts"
-import { formatDate, nextBusinessDay, todayBusinessDate } from "../src/lib/dates.ts"
+import { formatDate, isNationalHoliday, nextBusinessDay, todayBusinessDate } from "../src/lib/dates.ts"
 import { buildDailyWhatsApp } from "../src/server/whatsapp.ts"
 import { getDailyDetail, getDailyForm } from "../src/server/queries/dailies.ts"
 import { createMemberRecord } from "../src/server/members.ts"
 import { createAgreementRecord } from "../src/server/agreements.ts"
-import { createDailyRecord } from "../src/server/dailies.ts"
+import { createDailyRecord, updateDailyRecord } from "../src/server/dailies.ts"
 
 const NAMES = ["Pessoa de Teste da Daily Um", "Pessoa de Teste da Daily Dois"]
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
@@ -308,5 +308,101 @@ describe("registro de daily", () => {
     const result = await createDailyRecord(ownerViewer, { ...base(), reviews: [review(doneId)] })
     assert.ok(!result.ok && result.error.startsWith("Um dos combinados revisados já foi encerrado"))
     assert.equal(await db.daily.count(), before)
+  })
+})
+
+describe("próxima daily: fins de semana e feriados nacionais", () => {
+  test("pula Sexta-feira Santa, Tiradentes, Consciência Negra e Natal", () => {
+    assert.ok(isNationalHoliday(utc(2026, 4, 3)), "Sexta-feira Santa de 2026")
+    assert.ok(isNationalHoliday(utc(2025, 4, 18)), "Sexta-feira Santa de 2025")
+    assert.ok(!isNationalHoliday(utc(2026, 2, 17)), "Carnaval é ponto facultativo")
+    assert.ok(!isNationalHoliday(utc(2023, 11, 20)), "20/11 só é nacional a partir de 2024")
+    assert.equal(nextBusinessDay(utc(2026, 4, 2)).getTime(), utc(2026, 4, 6).getTime())
+    assert.equal(nextBusinessDay(utc(2026, 4, 20)).getTime(), utc(2026, 4, 22).getTime())
+    assert.equal(nextBusinessDay(utc(2026, 11, 19)).getTime(), utc(2026, 11, 23).getTime())
+    assert.equal(nextBusinessDay(utc(2026, 12, 24)).getTime(), utc(2026, 12, 28).getTime())
+    assert.equal(nextBusinessDay(utc(2026, 10, 2)).getTime(), utc(2026, 10, 5).getTime())
+  })
+})
+
+describe("daily retroativa, aviso de mesmo dia e edição", () => {
+  let dailyId = ""
+  const past = (() => {
+    const d = new Date(today)
+    d.setUTCDate(d.getUTCDate() - 400)
+    return d
+  })()
+  const testIds = async () =>
+    (await db.teamMember.findMany({ where: { fullName: { in: NAMES } }, orderBy: { fullName: "asc" } })).map((m) => m.id)
+
+  test("o formulário de uma data passada usa aquela data e avisa quando já há daily nela", async () => {
+    const empty = await getDailyForm(ownerViewer, past)
+    assert.ok(empty)
+    assert.equal(empty.date.getTime(), past.getTime())
+    assert.equal(empty.sameDay.length, 0)
+
+    const ids = await testIds()
+    const result = await createDailyRecord(ownerViewer, {
+      date: formatDate(past, "business"),
+      summary: "Daily que ficou para trás",
+      decisions: "",
+      reviews: [],
+      participants: [
+        { memberId: ids[0]!, present: true, note: "Nota original", isBlocker: false },
+        { memberId: ids[1]!, present: true, note: "", isBlocker: false },
+      ],
+      newAgreements: [],
+    })
+    assert.ok(result.ok)
+    dailyId = result.id
+    const again = await getDailyForm(ownerViewer, past)
+    assert.deepEqual(again!.sameDay.map((d) => d.id), [dailyId])
+  })
+
+  test("editar troca resumo, notas e presença, e refaz as linhas DAILY na mesma transação", async () => {
+    const ids = await testIds()
+    assert.deepEqual((await db.timelineEvent.findMany({ where: { dailyId } })).map((l) => l.memberId), [ids[0]])
+
+    const result = await updateDailyRecord(ownerViewer, {
+      id: dailyId,
+      summary: "Resumo corrigido",
+      decisions: "Decisão nova",
+      participants: [
+        { memberId: ids[0]!, present: false, note: "", isBlocker: false },
+        { memberId: ids[1]!, present: true, note: "Aguardando acesso ao ERP", isBlocker: true },
+      ],
+    })
+    assert.ok(result.ok)
+    const daily = await db.daily.findUniqueOrThrow({ where: { id: dailyId }, include: { participants: true } })
+    assert.equal(daily.summary, "Resumo corrigido")
+    assert.equal(daily.decisions, "Decisão nova")
+    const byMember = new Map(daily.participants.map((p) => [p.memberId, p]))
+    assert.equal(byMember.get(ids[0]!)?.present, false)
+    assert.equal(byMember.get(ids[1]!)?.blocker, "Aguardando acesso ao ERP")
+    assert.equal(byMember.get(ids[1]!)?.note, null)
+
+    const lines = await db.timelineEvent.findMany({ where: { dailyId } })
+    assert.deepEqual(lines.map((l) => l.memberId), [ids[1]], "quem perdeu a nota perde a linha; quem ganhou passa a ter")
+    assert.equal(lines[0]?.title, "Aguardando acesso ao ERP")
+    assert.deepEqual(lines[0]?.tags, ["impeditivo"])
+    assert.equal(formatDate(lines[0]!.occurredAt), formatDate(past, "business"))
+    assert.equal(await db.auditLog.count({ where: { action: "daily.update", entityId: dailyId } }), 1)
+  })
+
+  test("editar recusa participante que não estava na daily e recusa VIEWER", async () => {
+    const ids = await testIds()
+    const other = await db.teamMember.findFirstOrThrow({ where: { id: { notIn: ids } } })
+    const input = {
+      id: dailyId,
+      summary: "",
+      decisions: "",
+      participants: [
+        { memberId: ids[0]!, present: true, note: "", isBlocker: false },
+        { memberId: other.id, present: true, note: "Intrusa", isBlocker: false },
+      ],
+    }
+    assert.ok(!(await updateDailyRecord(ownerViewer, input)).ok)
+    assert.ok(!(await updateDailyRecord(viewerOnly, input)).ok)
+    assert.equal((await db.daily.findUniqueOrThrow({ where: { id: dailyId } })).summary, "Resumo corrigido")
   })
 })

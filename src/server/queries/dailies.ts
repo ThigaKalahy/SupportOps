@@ -52,7 +52,7 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
     select: { id: true, date: true },
   })
 
-  const [agreements, members, reasons] = await Promise.all([
+  const [agreements, members, reasons, sameDay] = await Promise.all([
     db.agreement.findMany({
       where: {
         status: { in: ["OPEN", "IN_PROGRESS"] },
@@ -79,6 +79,12 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
       orderBy: { order: "asc" },
       select: { id: true, label: true, category: true },
     }),
+    // Já existe daily nesta data? A tela avisa, mas não impede (pode haver duas no dia).
+    db.daily.findMany({
+      where: { teamId: team.id, date },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, createdAt: true },
+    }),
   ])
 
   const groups = new Map<string, ReviewGroup>()
@@ -103,6 +109,7 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
     review: [...groups.values()].sort((a, b) => a.member.preferredName.localeCompare(b.member.preferredName)),
     members,
     reasons,
+    sameDay,
   }
 }
 

@@ -15,7 +15,12 @@ import { deadlineSeverity } from "../src/lib/severity.ts"
 import { parseAgreementFilters, type AgreementFilters } from "../src/lib/agreement-filters.ts"
 import { getAgreementDetail, listAgreements } from "../src/server/queries/agreements.ts"
 import { createMemberRecord } from "../src/server/members.ts"
-import { completeAgreementRecord, createAgreementRecord } from "../src/server/agreements.ts"
+import {
+  cancelAgreementRecord,
+  completeAgreementRecord,
+  createAgreementRecord,
+  updateAgreementRecord,
+} from "../src/server/agreements.ts"
 
 const TEST_NAME = "Pessoa de Teste dos Combinados"
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
@@ -233,5 +238,67 @@ describe("conclusão", () => {
     const second = await db.agreement.findFirstOrThrow({ where: { memberId, status: "OPEN" } })
     assert.ok((await completeAgreementRecord(ownerViewer, { id: second.id, outcome: "" })).ok)
     assert.equal((await db.agreement.findUniqueOrThrow({ where: { id: second.id } })).outcome, null)
+  })
+})
+
+describe("editar e cancelar fora da daily", () => {
+  let memberId = ""
+  let agreementId = ""
+
+  before(async () => {
+    memberId = (await db.teamMember.findFirstOrThrow({ where: { fullName: TEST_NAME } })).id
+    assert.ok(
+      (
+        await createAgreementRecord(ownerViewer, {
+          memberId,
+          title: "Revisar o roteiro de atendimento N1",
+          dueDate: display(4),
+          description: "Primeira versão",
+          priority: "NORMAL",
+          origin: "MANAGER",
+        })
+      ).ok,
+    )
+    agreementId = (await db.agreement.findFirstOrThrow({ where: { memberId, title: "Revisar o roteiro de atendimento N1" } })).id
+  })
+
+  test("editar muda título, detalhes e prioridade, e a linha da timeline acompanha; prazo não muda", async () => {
+    const before = await db.agreement.findUniqueOrThrow({ where: { id: agreementId } })
+    const result = await updateAgreementRecord(ownerViewer, {
+      id: agreementId,
+      title: "Revisar o roteiro de atendimento N1 e N2",
+      description: "Incluir o N2",
+      priority: "HIGH",
+      dueDate: display(30),
+    })
+    assert.ok(result.ok)
+    const after = await db.agreement.findUniqueOrThrow({ where: { id: agreementId } })
+    assert.equal(after.title, "Revisar o roteiro de atendimento N1 e N2")
+    assert.equal(after.description, "Incluir o N2")
+    assert.equal(after.priority, "HIGH")
+    assert.equal(after.dueDate.getTime(), before.dueDate.getTime(), "o prazo só se move na daily")
+    const line = await db.timelineEvent.findFirstOrThrow({ where: { agreementId, type: "AGREEMENT" } })
+    assert.equal(line.title, "Revisar o roteiro de atendimento N1 e N2")
+    assert.equal(line.summary, "Incluir o N2")
+    assert.equal(await db.auditLog.count({ where: { action: "agreement.update", entityId: agreementId } }), 1)
+  })
+
+  test("cancelar exige motivo, grava CANCELLED com o motivo e sai da aba em aberto", async () => {
+    const empty = await cancelAgreementRecord(ownerViewer, { id: agreementId, reason: " " })
+    assert.ok(!empty.ok && empty.fieldErrors?.reason)
+    assert.ok((await cancelAgreementRecord(ownerViewer, { id: agreementId, reason: "O cliente desistiu" })).ok)
+    const after = await db.agreement.findUniqueOrThrow({ where: { id: agreementId } })
+    assert.equal(after.status, "CANCELLED")
+    assert.equal(after.outcome, "O cliente desistiu")
+    const { rows } = await listAgreements(ownerViewer, { ...base, view: "open" })
+    assert.ok(!rows.some((r) => r.id === agreementId))
+    assert.equal(await db.auditLog.count({ where: { action: "agreement.cancel", entityId: agreementId } }), 1)
+    const again = await cancelAgreementRecord(ownerViewer, { id: agreementId, reason: "De novo" })
+    assert.ok(!again.ok && again.error === "Este combinado já está encerrado.")
+  })
+
+  test("VIEWER não edita nem cancela", async () => {
+    assert.ok(!(await updateAgreementRecord(viewerOnly, { id: agreementId, title: "Invadido", description: "", priority: "LOW" })).ok)
+    assert.ok(!(await cancelAgreementRecord(viewerOnly, { id: agreementId, reason: "Invadido" })).ok)
   })
 })

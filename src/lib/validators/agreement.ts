@@ -33,3 +33,25 @@ export const completeAgreementSchema = z.object({
 })
 
 export type CompleteAgreementInput = z.infer<typeof completeAgreementSchema>
+
+/**
+ * Edição fora da daily: só o texto e a prioridade. Prazo e responsável não se
+ * editam — prazo muda na daily, com checkin (D12); trocar o responsável
+ * reescreveria o histórico de cumprimento de outra pessoa.
+ */
+export const editAgreementSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().trim().min(3, v.tooShort).max(160, v.tooLong),
+  description: optionalText(2000),
+  priority: z.enum(AGREEMENT_PRIORITIES),
+})
+
+export type EditAgreementInput = z.infer<typeof editAgreementSchema>
+
+/** Cancelamento fora da daily: o motivo é obrigatório e fica no resultado do combinado. */
+export const cancelAgreementSchema = z.object({
+  id: z.string().min(1),
+  reason: z.string().trim().min(3, v.tooShort).max(300, v.tooLong),
+})
+
+export type CancelAgreementInput = z.infer<typeof cancelAgreementSchema>

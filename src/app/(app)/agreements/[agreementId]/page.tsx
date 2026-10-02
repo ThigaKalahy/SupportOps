@@ -18,7 +18,7 @@ import type { Severity } from "@/lib/severity"
 import { canWrite, requireUser } from "@/server/access"
 import { getAgreementDetail, type AgreementCheckinRow } from "@/server/queries/agreements"
 
-import { CompleteAgreementButton } from "./_components/complete-agreement-button"
+import { AgreementActions } from "./_components/agreement-actions"
 
 const D = labels.agreements.detail
 
@@ -63,9 +63,17 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
   return (
     <div className="flex flex-col gap-8">
       <CrumbLabel segment={agreement.id} label={agreement.title} />
-      {canWrite(user) && agreement.open ? (
+      {canWrite(user) ? (
         <ContextActions>
-          <CompleteAgreementButton agreement={{ id: agreement.id, title: agreement.title }} />
+          <AgreementActions
+            open={agreement.open}
+            agreement={{
+              id: agreement.id,
+              title: agreement.title,
+              description: agreement.description ?? "",
+              priority: agreement.priority,
+            }}
+          />
         </ContextActions>
       ) : null}
 
@@ -133,7 +141,7 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
             </Section>
           ) : null}
           {agreement.outcome ? (
-            <Section title={D.outcome}>
+            <Section title={agreement.status === "CANCELLED" ? D.cancelReason : D.outcome}>
               <p className="text-sm whitespace-pre-line text-ink">{agreement.outcome}</p>
             </Section>
           ) : null}

@@ -3,7 +3,12 @@
 import type { ActionResult } from "@/lib/validators/fields"
 import { requireOwner } from "@/server/access"
 import { memberIdOf, runAction } from "@/server/action-runner"
-import { completeAgreementRecord, createAgreementRecord } from "@/server/agreements"
+import {
+  cancelAgreementRecord,
+  completeAgreementRecord,
+  createAgreementRecord,
+  updateAgreementRecord,
+} from "@/server/agreements"
 
 /**
  * Server Actions de combinados: requireOwner → núcleo em
@@ -21,6 +26,24 @@ export async function createAgreement(input: unknown): Promise<ActionResult> {
 export async function completeAgreement(input: unknown): Promise<ActionResult> {
   const id = memberIdOf(input, "id")
   return runAction("agreements", async () => completeAgreementRecord(await requireOwner(), input), [
+    "/agreements",
+    `/agreements/${id}`,
+    ["/team", "layout"],
+  ])
+}
+
+export async function updateAgreement(input: unknown): Promise<ActionResult> {
+  const id = memberIdOf(input, "id")
+  return runAction("agreements", async () => updateAgreementRecord(await requireOwner(), input), [
+    "/agreements",
+    `/agreements/${id}`,
+    ["/team", "layout"],
+  ])
+}
+
+export async function cancelAgreement(input: unknown): Promise<ActionResult> {
+  const id = memberIdOf(input, "id")
+  return runAction("agreements", async () => cancelAgreementRecord(await requireOwner(), input), [
     "/agreements",
     `/agreements/${id}`,
     ["/team", "layout"],

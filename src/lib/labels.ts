@@ -387,6 +387,10 @@ export const labels = {
     rowActions: "Ações do combinado",
     open: "Abrir combinado",
     complete: "Marcar como concluído",
+    edit: "Editar",
+    cancel: "Cancelar combinado",
+    showMore: "Mostrar mais {count}",
+    showing: "{shown} de {total}",
     new: "Novo combinado",
     newShortcut: "C",
     emptyByView: {
@@ -405,6 +409,21 @@ export const labels = {
       outcomePlaceholder: "Ex.: macro revisada e publicada na base",
       confirm: "Marcar como concluído",
     },
+    cancelDialog: {
+      title: "Cancelar combinado",
+      description:
+        "O combinado sai das listas em aberto e não volta para a daily. Ele continua no histórico, com o motivo. Para trocar por outro, use Substituir na daily.",
+      reason: "Motivo do cancelamento",
+      reasonPlaceholder: "Ex.: o cliente desistiu da integração",
+      keep: "Manter combinado",
+      confirm: "Cancelar combinado",
+    },
+    editDialog: {
+      title: "Editar combinado",
+      description: "Texto e prioridade. A timeline acompanha a edição.",
+      dueDateHint: "Prazo e responsável não mudam aqui: o prazo se move na daily, onde o reagendamento fica registrado.",
+      submit: "Salvar alterações",
+    },
     detail: {
       responsible: "Responsável",
       origin: "Origem",
@@ -415,6 +434,7 @@ export const labels = {
       priority: "Prioridade",
       completedAt: "Concluído em",
       outcome: "Resultado",
+      cancelReason: "Motivo do cancelamento",
       description: "Detalhes",
       replaces: "Substitui",
       replacedBy: "Substituído por",
@@ -436,11 +456,36 @@ export const labels = {
     save: "Salvar daily",
     saveHint: "Ctrl+Enter salva tudo",
     forbidden: "Só quem escreve registra dailies.",
+    otherDate: {
+      label: "Data da daily",
+      open: "Abrir",
+      today: "Voltar para hoje",
+      future: "A daily não pode ser no futuro.",
+      retroactive:
+        "Registro retroativo: combinados marcados como feitos ficam concluídos em {date}, e os prazos contam a partir desse dia.",
+    },
+    sameDay: {
+      notice: {
+        one: "Já existe uma daily registrada em {date}, salva às {time}.",
+        other: "Já existem {count} dailies registradas em {date}; a primeira foi salva às {time}.",
+      },
+      open: "Abrir a daily registrada",
+      hint: "Registrar outra continua possível.",
+    },
+    edit: {
+      button: "Editar",
+      title: "Editar daily",
+      description: "Resumo, decisões, presença e notas. As linhas da timeline de cada pessoa acompanham a edição.",
+      notEditable:
+        "Revisões e combinados criados não se editam aqui: eles já mudaram os combinados. Corrija pelo próprio combinado.",
+      shortcut: "Ctrl+Enter salva",
+      submit: "Salvar alterações",
+    },
     review: {
       title: "Revisão dos combinados",
-      direction: "Criados na daily anterior e em aberto com prazo até hoje.",
-      emptyTitle: "Nada para revisar hoje",
-      emptyDirection: "A daily anterior não gerou combinados e nenhum combinado em aberto vence até hoje.",
+      direction: "Criados na daily anterior e em aberto com prazo até o dia da daily.",
+      emptyTitle: "Nada para revisar",
+      emptyDirection: "A daily anterior não gerou combinados e nenhum combinado em aberto vence até o dia da daily.",
       outcomes: "Desfecho",
       done: "Feito",
       partial: "Parcial",

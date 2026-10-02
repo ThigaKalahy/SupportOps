@@ -20,10 +20,14 @@ import { avatarColors, initials } from "@/lib/people"
 import type { AgreementRow } from "@/server/queries/agreements"
 import { ATTENTION_THRESHOLDS } from "@/server/alerts"
 
+import { CancelAgreementDialog } from "./cancel-agreement-dialog"
 import { CompleteAgreementDialog } from "./complete-agreement-dialog"
 
 const A = labels.agreements
 const C = A.columns
+
+/** Linhas por vez: a central acumula meses de combinados; "Mostrar mais" acrescenta outra página. */
+export const AGREEMENTS_PAGE_SIZE = 50
 
 /** Arrasto: 1–2 reagendamentos em texto; 3 ou mais é sinal gerencial, em vermelho, sem depender de hover. */
 export function DragIndicator({ reschedules }: { reschedules: number }) {
@@ -66,6 +70,12 @@ export function AgreementsTable({
   showMember?: boolean
 }) {
   const [completing, setCompleting] = React.useState<AgreementRow | null>(null)
+  const [cancelling, setCancelling] = React.useState<AgreementRow | null>(null)
+  const [limit, setLimit] = React.useState(AGREEMENTS_PAGE_SIZE)
+  // Outra aba ou outro filtro: volta para a primeira página.
+  React.useEffect(() => setLimit(AGREEMENTS_PAGE_SIZE), [rows])
+  const visible = rows.slice(0, limit)
+  const remaining = rows.length - visible.length
 
   const columns: DataTableColumn<AgreementRow>[] = [
     {
@@ -152,6 +162,9 @@ export function AgreementsTable({
               <DropdownMenuItem asChild>
                 <Link href={`/agreements/${r.id}`}>{A.open}</Link>
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setCancelling(r)} className="text-overdue focus:text-overdue">
+                {A.cancel}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null,
@@ -166,13 +179,24 @@ export function AgreementsTable({
     <>
       <DataTable
         columns={columns}
-        rows={rows}
+        rows={visible}
         getRowId={(r) => r.id}
         rowHref={(r) => `/agreements/${r.id}`}
         label={A.tableLabel}
         empty={empty}
       />
+      {remaining > 0 ? (
+        <div className="flex items-center justify-center gap-3 pt-3">
+          <Button variant="secondary" size="sm" onClick={() => setLimit((n) => n + AGREEMENTS_PAGE_SIZE)}>
+            {fill(A.showMore, { count: Math.min(remaining, AGREEMENTS_PAGE_SIZE) })}
+          </Button>
+          <span className="font-mono text-xs text-ink-secondary">
+            {fill(A.showing, { shown: visible.length, total: rows.length })}
+          </span>
+        </div>
+      ) : null}
       <CompleteAgreementDialog agreement={completing} onOpenChange={(open) => !open && setCompleting(null)} />
+      <CancelAgreementDialog agreement={cancelling} onOpenChange={(open) => !open && setCancelling(null)} />
     </>
   )
 }
