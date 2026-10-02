@@ -15,7 +15,7 @@
 | P10 Dailies com rollover       | concluída | f3c0304 | 02/10/2026 |
 | P11 Validação de prioridade    | concluída | e45bc5a | 02/10/2026 |
 | P12 Cumprimento de combinados  | concluída | bd143e2 | 02/10/2026 |
-| P13 1:1 e feedbacks            | pendente | | |
+| P13 1:1 e feedbacks            | concluída | | 02/10/2026 |
 | P14 Desenvolvimento e PDI      | pendente | | |
 | P15 Hoje e motor de alertas    | pendente | | |
 | P16 Busca global               | pendente | | |
@@ -161,4 +161,36 @@
     - Equipe: 1440 e 360px, ordem por taxa, 6 meses, "Registrar feedback" abrindo com o contexto vazio e a sugestão à parte; VIEWER sem a ação.
 - **Corrigido do processo de verificação (fora do código do app):** as capturas deixavam processos do Edge sem janela vivos; 340 deles somavam 6,7 GB e derrubaram um build por falta de memória. Foram encerrados só os da verificação, e o script agora encerra os seus ao terminar.
 - **A próxima fase assume:** `adherenceDropAlert`, `isDropping`, `getAdherenceTrend` e `getTeamAdherence` prontos para o motor de alertas e o "Ritmo de gestão" do P15.
+
+### P13 — 1:1 e feedbacks (branch `fase/13-records`)
+
+- **Ficou de fora:**
+  - editar ou excluir 1:1 e feedback já salvos (o índice abre o registro só para leitura);
+  - registrar 1:1 ou feedback direto do /records (continua pelo perfil da pessoa);
+  - o cabeçalho do perfil continua considerando só follow-up de feedback futuro, e a timeline continua sem sangrar follow-up de feedback vencido (decisão do P8) — o índice novo mostra o vencido;
+  - checagem visual do /ui-lab (seção nova, só em desenvolvimento).
+- **Decisões tomadas sem perguntar (revise):**
+  - **Painel de contexto:** aberto por padrão (o critério de aceite pede ver sem navegar); dá para ocultar.
+  - **"Pendente do 1:1 anterior":** a revisão marcada, desenvolvimento, dificuldades, assuntos e os combinados gerados naquele 1:1. Percepções e conquistas ficam fora, para o painel caber.
+  - **Quando um follow-up deixa de ser pendente:** a próxima revisão do 1:1 se encerra com qualquer 1:1 posterior (mesma regra do cabeçalho do perfil). O follow-up de feedback se encerra com um 1:1 ou feedback na data ou depois. O modelo não tem campo "feito"; essa é a leitura que o histórico permite.
+  - **Combinados gerados:** só título e prazo; responsável fixo na pessoa; prioridade Normal; até 10 por registro; prazo não pode estar no passado.
+  - **Feedback:** aceita mais de um combinado gerado (o prompt diz "combinado gerado"), com o mesmo bloco do 1:1.
+  - **Período padrão do índice:** 3 meses.
+  - **Detalhe do registro:** painel lateral em vez de página nova.
+- **Verificado:**
+  - **Testes:** 128 no total, 11 novos em `tests/records.test.ts`.
+    - regra do follow-up nos dois tipos;
+    - combinados gerados no 1:1 e no feedback (origem, vínculo, D17, timeline, auditoria);
+    - linha inválida derrubando o 1:1 inteiro;
+    - contexto mostrando o que ficou do anterior;
+    - VIEWER sem o 1:1 privado no contexto e no índice, e 1:1 privado não encerrando pendência para ele;
+    - Henrique com a revisão vencida no contexto;
+    - filtros e ordem.
+    - O teste estático de visibilidade cobre as leituras novas, e exigiu o filtro escrito em cada chamada.
+  - **Servidor de produção, contas temporárias** (apagadas, junto com o 1:1 e o combinado criados):
+    - 1:1 do Henrique abre com o painel trazendo o 1:1 de 05/08, a revisão de 19/08 "provavelmente esquecida", desenvolvimento, dificuldades, combinados em aberto, último feedback e PDI;
+    - 1:1 salvo pela tela com combinado gerado, aparecendo no índice com o combinado;
+    - /records em 1440 e 360px, filtro de reconhecimento, detalhe lateral, aba do perfil;
+    - VIEWER sem nenhum registro privado.
+- **A próxima fase assume:** `getOneOnOneContext` mostra o PDI ativo com as ações em aberto; o P14 pode reaproveitar `GeneratedAgreements` e `FollowUpCell`.
 

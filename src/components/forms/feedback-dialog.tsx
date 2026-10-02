@@ -15,16 +15,17 @@ import { enumLabel, fill, labels } from "@/lib/labels"
 import { FEEDBACK_CATEGORIES, feedbackSchema, type FeedbackInput } from "@/lib/validators/records"
 
 import { applyFieldErrors, FormError, VisibilityField, zodResolver } from "./form-kit"
+import { GeneratedAgreements, isBlankAgreement, type GeneratedRowErrors } from "./generated-agreements"
 import type { RecordTarget } from "./note-dialog"
 
 const L = labels.forms.feedback
-const FIELDS = ["date", "category", "context", "behavior", "impact", "guidance", "followUpAt", "visibility"] as const
+const FIELDS = ["date", "category", "context", "behavior", "impact", "guidance", "followUpAt", "visibility", "agreements"] as const
 
 /**
  * Feedback no modelo SCI, com rótulos que ajudam a escrever bem. Nasce
  * PRIVATE; a categoria Reconhecimento SUGERE compartilhar — troca o padrão
  * enquanto a pessoa não escolheu a visibilidade, nunca depois.
- * (Combinado gerado a partir do feedback: P13.)
+ * Combinado gerado no próprio formulário (responsável = a pessoa).
  *
  * `suggestion`: contexto sugerido por quem abriu (ex.: o bloco de validação
  * de prioridade do perfil). Aparece acima do campo e só entra nele se a
@@ -52,6 +53,7 @@ export function FeedbackDialog({
       guidance: "",
       followUpAt: "",
       visibility: "PRIVATE",
+      agreements: [],
     }),
     [member.id],
   )
@@ -84,6 +86,15 @@ export function FeedbackDialog({
     })
   })
 
+  // Linhas de combinado vazias não vão para a validação nem para o servidor.
+  function submit(event: React.FormEvent) {
+    form.setValue(
+      "agreements",
+      form.getValues("agreements").filter((row) => !isBlankAgreement(row)),
+    )
+    return onSubmit(event)
+  }
+
   const err = form.formState.errors
   const dateProps = (name: "date" | "followUpAt") =>
     form.register(name, { onChange: (e) => form.setValue(name, maskDateInput(e.target.value)) })
@@ -103,7 +114,7 @@ export function FeedbackDialog({
           <DialogTitle>{L.title}</DialogTitle>
           <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
             <FieldGroup label={L.category} error={err.category?.message} required>
               {(control) => (
@@ -175,6 +186,14 @@ export function FeedbackDialog({
                 form.setValue("visibility", v)
               }}
               help={category === "RECOGNITION" ? L.recognitionHint : undefined}
+            />
+          </div>
+          <div className="border-t border-line pt-3">
+            <GeneratedAgreements
+              memberName={member.preferredName}
+              value={form.watch("agreements")}
+              onChange={(rows) => form.setValue("agreements", rows, { shouldValidate: form.formState.isSubmitted })}
+              errors={form.formState.errors.agreements as GeneratedRowErrors[] | undefined}
             />
           </div>
           <FormError message={formError} />

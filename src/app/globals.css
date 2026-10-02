@@ -74,6 +74,8 @@
   /* Larguras nomeadas. Contêiner fluido até 1600px; sem max-w-4xl/5xl. */
   --container-page: 1600px;
   --container-dialog: 480px;
+  /* Dialog com painel lateral (1:1 com o contexto do encontro anterior). */
+  --container-dialog-wide: 960px;
   --container-drawer: 384px;
   --container-tooltip: 280px;
 

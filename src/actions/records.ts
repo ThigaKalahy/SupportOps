@@ -1,8 +1,9 @@
 "use server"
 
 import type { ActionResult } from "@/lib/validators/fields"
-import { requireOwner } from "@/server/access"
+import { requireOwner, requireUser } from "@/server/access"
 import { memberIdOf, runAction } from "@/server/action-runner"
+import { getOneOnOneContext, type OneOnOneContext } from "@/server/queries/records"
 import { createFeedbackRecord, createNoteRecord, createOneOnOneRecord, setRecordVisibilityRecord } from "@/server/records"
 
 /**
@@ -11,7 +12,7 @@ import { createFeedbackRecord, createNoteRecord, createOneOnOneRecord, setRecord
  */
 
 function paths(input: unknown): (string | [string, "layout"])[] {
-  return ["/team", [`/team/${memberIdOf(input)}`, "layout"]]
+  return ["/team", "/records", "/agreements", [`/team/${memberIdOf(input)}`, "layout"]]
 }
 
 export async function createOneOnOne(input: unknown): Promise<ActionResult> {
@@ -32,4 +33,13 @@ export async function setRecordVisibility(input: unknown, memberId: string): Pro
     "/team",
     [`/team/${memberId}`, "layout"],
   ])
+}
+
+/**
+ * Painel de contexto do 1:1 (somente leitura), carregado quando o formulário
+ * abre. É leitura — passa pela query com visibilityFilter; existe como Server
+ * Action só porque o dialog é aberto no cliente. Sem rota de API (D8).
+ */
+export async function loadOneOnOneContext(memberId: string): Promise<OneOnOneContext> {
+  return getOneOnOneContext(await requireUser(), memberId)
 }

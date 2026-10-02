@@ -1,7 +1,13 @@
 import { businessDateAtNoon, parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
-import { feedbackSchema, noteSchema, oneOnOneSchema, recordVisibilitySchema } from "../lib/validators/records.ts"
+import {
+  feedbackSchema,
+  noteSchema,
+  oneOnOneSchema,
+  recordVisibilitySchema,
+  type GeneratedAgreementInput,
+} from "../lib/validators/records.ts"
 
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
@@ -14,6 +20,10 @@ import { canWrite, memberScope, type Viewer } from "./visibility.ts"
  * src/actions/records.ts). Recebe o usuário já autenticado — testável sem
  * sessão. Cada escrita: zod → transação (registro + TimelineEvent + AuditLog).
  * A linha da timeline nasce com a MESMA visibilidade do registro.
+ *
+ * Combinados gerados no 1:1 ou no feedback nascem na mesma transação, com a
+ * pessoa do registro como responsável, origem ONE_ON_ONE/FEEDBACK e o vínculo
+ * (sourceOneOnOneId/sourceFeedbackId); originalDueDate = dueDate (D17).
  */
 
 function forbidden(): ActionResult {
@@ -38,6 +48,28 @@ function businessDate(value: string): Date {
 
 function optionalBusinessDate(value: string): Date | null {
   return value.trim() === "" ? null : businessDate(value)
+}
+
+type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0]
+
+/** Cria os combinados gerados por um 1:1 ou feedback, com a linha da timeline de cada um. */
+async function createGeneratedAgreements(
+  tx: Tx,
+  user: Viewer,
+  memberId: string,
+  source: { origin: "ONE_ON_ONE"; sourceOneOnOneId: string } | { origin: "FEEDBACK"; sourceFeedbackId: string },
+  rows: GeneratedAgreementInput[],
+): Promise<string[]> {
+  const ids: string[] = []
+  for (const row of rows) {
+    const due = businessDate(row.dueDate)
+    const created = await tx.agreement.create({
+      data: { memberId, title: row.title, originalDueDate: due, dueDate: due, authorUserId: user.id, ...source },
+    })
+    await recordTimelineEvents(tx, [timelineEventFor.agreementCreated(created)])
+    ids.push(created.id)
+  }
+  return ids
 }
 
 export async function createOneOnOneRecord(user: Viewer, input: unknown): Promise<ActionResult> {
@@ -65,12 +97,19 @@ export async function createOneOnOneRecord(user: Viewer, input: unknown): Promis
       },
     })
     await recordTimelineEvents(tx, [timelineEventFor.oneOnOne(created)])
+    const agreementIds = await createGeneratedAgreements(
+      tx,
+      user,
+      created.memberId,
+      { origin: "ONE_ON_ONE", sourceOneOnOneId: created.id },
+      data.agreements,
+    )
     await writeAudit(
       {
         action: "oneOnOne.create",
         entity: "OneOnOne",
         entityId: created.id,
-        after: { memberId: created.memberId, date: data.date, visibility: created.visibility },
+        after: { memberId: created.memberId, date: data.date, visibility: created.visibility, agreementIds },
       },
       { organizationId: user.organizationId, userId: user.id, tx },
     )
@@ -101,12 +140,25 @@ export async function createFeedbackRecord(user: Viewer, input: unknown): Promis
       },
     })
     await recordTimelineEvents(tx, [timelineEventFor.feedback(created)])
+    const agreementIds = await createGeneratedAgreements(
+      tx,
+      user,
+      created.memberId,
+      { origin: "FEEDBACK", sourceFeedbackId: created.id },
+      data.agreements,
+    )
     await writeAudit(
       {
         action: "feedback.create",
         entity: "Feedback",
         entityId: created.id,
-        after: { memberId: created.memberId, date: data.date, category: created.category, visibility: created.visibility },
+        after: {
+          memberId: created.memberId,
+          date: data.date,
+          category: created.category,
+          visibility: created.visibility,
+          agreementIds,
+        },
       },
       { organizationId: user.organizationId, userId: user.id, tx },
     )

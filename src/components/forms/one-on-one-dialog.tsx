@@ -9,11 +9,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { oneOnOneSchema, type OneOnOneInput } from "@/lib/validators/records"
 
 import { applyFieldErrors, DisclosureToggle, FormError, VisibilityField, zodResolver } from "./form-kit"
+import { GeneratedAgreements, isBlankAgreement, type GeneratedRowErrors } from "./generated-agreements"
+import { OneOnOneContextPanel } from "./one-on-one-context"
 import type { RecordTarget } from "./note-dialog"
 
 const L = labels.forms.oneOnOne
@@ -28,6 +31,7 @@ const FIELDS = [
   "development",
   "nextReviewAt",
   "visibility",
+  "agreements",
 ] as const
 
 type Group = "perceptions" | "progress" | "next"
@@ -35,8 +39,12 @@ type Group = "perceptions" | "progress" | "next"
 /**
  * Registro de 1:1. Data e assuntos de cara; percepções, conquistas e
  * dificuldades, desenvolvimento e próxima revisão em seções recolhidas —
- * ninguém preenche dez campos de uma vez. Nasce PRIVATE.
- * (Combinados gerados inline e o painel de contexto do 1:1 anterior: P13.)
+ * ninguém preenche dez campos de uma vez. Nasce PRIVATE. Combinados gerados
+ * no próprio formulário (responsável = a pessoa).
+ *
+ * Ao lado, o painel de contexto (somente leitura): o que ficou do 1:1
+ * anterior, combinados em aberto, último feedback e PDI ativo. Aberto por
+ * padrão; dá para ocultar.
  */
 export function OneOnOneDialog({
   open,
@@ -60,11 +68,13 @@ export function OneOnOneDialog({
       development: "",
       nextReviewAt: "",
       visibility: "PRIVATE",
+      agreements: [],
     }),
     [member.id],
   )
   const form = useForm<OneOnOneInput>({ resolver: zodResolver(oneOnOneSchema), defaultValues: defaults() })
   const [openGroups, setOpenGroups] = React.useState<Set<Group>>(new Set())
+  const [showContext, setShowContext] = React.useState(true)
   const [formError, setFormError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
 
@@ -111,13 +121,22 @@ export function OneOnOneDialog({
     },
   )
 
+  // Linhas de combinado vazias não vão para a validação nem para o servidor.
+  function submit(event: React.FormEvent) {
+    form.setValue(
+      "agreements",
+      form.getValues("agreements").filter((row) => !isBlankAgreement(row)),
+    )
+    return onSubmit(event)
+  }
+
   const dateProps = (name: "date" | "nextReviewAt") =>
     form.register(name, { onChange: (e) => form.setValue(name, maskDateInput(e.target.value)) })
 
   return (
     <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
       <DialogContent
-        className="max-h-[90svh] overflow-y-auto"
+        className="max-h-[90svh] max-w-dialog-wide overflow-y-auto"
         // Foco inicial no campo principal sem autoFocus: com autoFocus o Radix
         // registra o próprio campo como origem e não devolve o foco ao botão.
         onOpenAutoFocus={(event) => {
@@ -125,11 +144,26 @@ export function OneOnOneDialog({
           form.setFocus("topics")
         }}
       >
-        <DialogHeader>
-          <DialogTitle>{L.title}</DialogTitle>
-          <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
+        <DialogHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="flex flex-col gap-1.5">
+            <DialogTitle>{L.title}</DialogTitle>
+            <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="-ml-2 self-start shrink-0 sm:mr-8 sm:ml-0"
+            aria-expanded={showContext}
+            aria-controls="one-on-one-context"
+            onClick={() => setShowContext((v) => !v)}
+          >
+            {showContext ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+            {showContext ? labels.forms.context.hide : labels.forms.context.show}
+          </Button>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        <div className={showContext ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]" : "grid"}>
+        <form onSubmit={submit} className="flex min-w-0 flex-col gap-4" noValidate>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-[140px_180px]">
             <FieldGroup label={labels.forms.date} error={err.date?.message} required>
               <Input
@@ -181,6 +215,15 @@ export function OneOnOneDialog({
             </FieldGroup>
           </OptionalGroup>
 
+          <div className="border-t border-line pt-3">
+            <GeneratedAgreements
+              memberName={member.preferredName}
+              value={form.watch("agreements")}
+              onChange={(rows) => form.setValue("agreements", rows, { shouldValidate: form.formState.isSubmitted })}
+              errors={form.formState.errors.agreements as GeneratedRowErrors[] | undefined}
+            />
+          </div>
+
           <VisibilityField value={form.watch("visibility")} onChange={(v) => form.setValue("visibility", v)} />
           <FormError message={formError} />
           <DialogFooter>
@@ -192,6 +235,20 @@ export function OneOnOneDialog({
             </Button>
           </DialogFooter>
         </form>
+        {showContext ? (
+          <aside
+            id="one-on-one-context"
+            aria-label={labels.forms.context.title}
+            className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-surface-sunken p-4 lg:max-h-[70svh] lg:overflow-y-auto"
+          >
+            <div className="flex flex-col gap-0.5">
+              <h3 className="text-sm font-semibold text-ink">{labels.forms.context.title}</h3>
+              <p className="text-xs text-ink-secondary">{labels.forms.context.direction}</p>
+            </div>
+            <OneOnOneContextPanel memberId={member.id} />
+          </aside>
+        ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   )

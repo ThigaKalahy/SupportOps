@@ -3,7 +3,7 @@ import { z } from "zod"
 import { parseDisplayDate } from "../dates.ts"
 import { labels } from "../labels.ts"
 
-import { optionalDisplayDate, optionalText, pastDisplayDate, visibilityField } from "./fields.ts"
+import { optionalDisplayDate, optionalText, pastDisplayDate, upcomingDisplayDate, visibilityField } from "./fields.ts"
 
 /**
  * 1:1, feedback e anotação. O MESMO schema valida o formulário e a Server
@@ -22,6 +22,20 @@ function after(record: string, followUp: string): boolean {
   return start === null || end === null || end > start
 }
 
+/**
+ * Combinado gerado dentro do 1:1 ou do feedback: o responsável é a própria
+ * pessoa do registro; só o que foi combinado e o prazo. Linhas vazias são
+ * descartadas no cliente antes de enviar.
+ */
+export const generatedAgreementSchema = z.object({
+  title: z.string().trim().min(3, v.tooShort).max(160, v.tooLong),
+  dueDate: upcomingDisplayDate,
+})
+
+export const MAX_GENERATED_AGREEMENTS = 10
+
+const generatedAgreements = z.array(generatedAgreementSchema).max(MAX_GENERATED_AGREEMENTS).default([])
+
 export const oneOnOneSchema = z
   .object({
     memberId: z.string().min(1),
@@ -38,6 +52,7 @@ export const oneOnOneSchema = z
     development: optionalText(4000),
     nextReviewAt: optionalDisplayDate,
     visibility: visibilityField,
+    agreements: generatedAgreements,
   })
   .refine((data) => after(data.date, data.nextReviewAt), { message: v.beforeRecordDate, path: ["nextReviewAt"] })
 
@@ -54,6 +69,7 @@ export const feedbackSchema = z
     guidance: optionalText(2000),
     followUpAt: optionalDisplayDate,
     visibility: visibilityField,
+    agreements: generatedAgreements,
   })
   .refine((data) => after(data.date, data.followUpAt), { message: v.beforeRecordDate, path: ["followUpAt"] })
 
@@ -68,6 +84,7 @@ export const noteSchema = z.object({
 export type OneOnOneInput = z.infer<typeof oneOnOneSchema>
 export type FeedbackInput = z.infer<typeof feedbackSchema>
 export type NoteInput = z.infer<typeof noteSchema>
+export type GeneratedAgreementInput = z.infer<typeof generatedAgreementSchema>
 
 export const recordVisibilitySchema = z.object({
   eventId: z.string().min(1),

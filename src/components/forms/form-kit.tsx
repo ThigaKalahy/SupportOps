@@ -16,15 +16,28 @@ import { cn } from "@/lib/utils"
  * Server Action, via `zodResolver` — sem biblioteca extra.
  */
 
-/** Resolver zod mínimo: primeira mensagem de cada campo. */
+/**
+ * Resolver zod mínimo: primeira mensagem de cada campo. Caminhos aninhados
+ * (ex.: agreements.0.title) viram o objeto aninhado que o react-hook-form
+ * espera em `errors.agreements[0].title`.
+ */
 export function zodResolver<T extends FieldValues>(schema: ZodType): Resolver<T> {
   return async (values) => {
     const parsed = schema.safeParse(values)
     if (parsed.success) return { values, errors: {} }
-    const errors: Record<string, { type: string; message: string }> = {}
+    const errors: Record<string, unknown> = {}
     for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0] ?? "")
-      if (key && !errors[key]) errors[key] = { type: "zod", message: issue.message }
+      const path = issue.path.map(String)
+      if (path.length === 0) continue
+      let node = errors
+      for (const [i, key] of path.entries()) {
+        if (i === path.length - 1) {
+          if (!node[key]) node[key] = { type: "zod", message: issue.message }
+        } else {
+          node[key] ??= /^\d+$/.test(path[i + 1]!) ? [] : {}
+          node = node[key] as Record<string, unknown>
+        }
+      }
     }
     return { values: {}, errors: errors as FieldErrors<T> }
   }
