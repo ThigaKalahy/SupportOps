@@ -12,7 +12,7 @@
 | P7  Perfil do analista         | concluída | 2cbe624 | 02/10/2026 |
 | P8  Timeline                   | concluída | e308b39 | 02/10/2026 |
 | P9  Combinados                 | concluída | 66f1bb1 | 02/10/2026 |
-| P10 Dailies com rollover       | concluída | (hash) | 02/10/2026 |
+| P10 Dailies com rollover       | concluída | f3c0304 | 02/10/2026 |
 | P11 Validação de prioridade    | pendente | | |
 | P12 Cumprimento de combinados  | pendente | | |
 | P13 1:1 e feedbacks            | pendente | | |
