@@ -30,6 +30,7 @@ import { deadlineSeverity, SEVERITIES } from "@/lib/severity"
 import { LabDataTables } from "./_components/lab-data-tables"
 import { LabFieldRender } from "./_components/lab-field-render"
 import { LabDaily } from "./_components/lab-daily"
+import { LabPriorityValidation } from "./_components/lab-priority-validation"
 import { LabTimeline } from "./_components/lab-timeline"
 import { LabCalendar, LabOverlays } from "./_components/lab-overlays"
 import { LabShell } from "./_components/lab-shell"
@@ -535,6 +536,15 @@ export default function UiLabPage() {
       {/* Daily */}
       <LabSection id="daily" title={sectionCopy.daily.title} description={sectionCopy.daily.description}>
         <LabDaily />
+      </LabSection>
+
+      {/* Validação de prioridade */}
+      <LabSection
+        id="priority-validation"
+        title={sectionCopy.priorityValidation.title}
+        description={sectionCopy.priorityValidation.description}
+      >
+        <LabPriorityValidation />
       </LabSection>
 
       {/* RouteTabs */}

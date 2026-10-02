@@ -7,13 +7,13 @@
 | P2  App shell                  | concluída | 377ecce | 01/10/2026 |
 | P3  Schema Prisma              | concluída | aa6c80d | 01/10/2026 |
 | P4  Seed                       | concluída | b6b6411 | 01/10/2026 |
-| P5  Auth e visibilidade        | concluída — aguarda AUTH_SECRET | d04cfae | 01/10/2026 |
+| P5  Auth e visibilidade        | concluída | d04cfae | 01/10/2026 |
 | P6  Equipe e cadastro          | concluída | 9510608 | 01/10/2026 |
 | P7  Perfil do analista         | concluída | 2cbe624 | 02/10/2026 |
 | P8  Timeline                   | concluída | e308b39 | 02/10/2026 |
 | P9  Combinados                 | concluída | 66f1bb1 | 02/10/2026 |
 | P10 Dailies com rollover       | concluída | f3c0304 | 02/10/2026 |
-| P11 Validação de prioridade    | pendente | | |
+| P11 Validação de prioridade    | concluída | | 02/10/2026 |
 | P12 Cumprimento de combinados  | pendente | | |
 | P13 1:1 e feedbacks            | pendente | | |
 | P14 Desenvolvimento e PDI      | pendente | | |
@@ -89,4 +89,45 @@
 - **Decisões tomadas sem perguntar (revise):** "membros ativos" = Ativo e Em desligamento (Afastado não aparece); na revisão, combinado sem desfecho escolhido simplesmente não é revisado (não grava checkin); reagendar exige data depois da daily, combinado novo ou substituto aceita a própria data; o substituto herda a prioridade do antigo; presença e bloqueio ficam fora do Tab (Alt+A / Alt+B na nota) para o Tab andar de pessoa em pessoa — os atalhos estão escritos na tela; nota marcada como bloqueio é gravada em `DailyParticipant.blocker` (não em `note`); no WhatsApp, Parcial e Não feito usam ⚠️, Bloqueios vêm só das notas marcadas como bloqueio, e o substituto aparece como "Substituído por" (não se repete em "Combinados de hoje"); a linha DAILY de quem só teve revisão diz "Revisão de N combinados: X feitos, Y parciais"; `whatsapp.ts` continua em `src/server` (local fixado pelo CLAUDE.md) mas é função pura, importada também no cliente; o formulário usa estado próprio + o schema zod compartilhado, sem react-hook-form (lista dinâmica com rascunho).
 - **Verificado:** 80 testes (9 novos em `tests/dailies.test.ts`: texto do WhatsApp idêntico ao exemplo do prompt, seções vazias omitidas, marcadores do usuário neutralizados, varredura que só aceita emoji em `whatsapp.ts`; o que entra para revisão; VIEWER recusado; validação sem gravar nada; transação completa com Feito, reagendar com prazo original intacto, substituir, combinado novo, uma linha DAILY por pessoa e nenhuma para presença simples, auditoria; a daily seguinte puxa o que esta criou; combinado já encerrado recusa a daily inteira). No servidor de produção com contas temporárias: **daily inteira só com teclado** — 5 revisões (3 feitas, 2 com impeditivo e reagendamento), notas para 4 pessoas (uma como bloqueio), 3 combinados novos, Ctrl+Enter — salva de primeira, ~37 toques além do texto; banco conferido (status, prazos, prazo original, origens, 6 linhas DAILY); copiar para WhatsApp com clique real, texto lido de volta da área de transferência no formato pedido; rascunho salvo, restaurado e descartado; histórico expandindo; 1440 e 360px (o celular precisou de ajuste: a nota passou para a linha de baixo); VIEWER sem registrar e com copiar. Depois: contas e tudo o que gravaram apagados e seed reaplicado.
 - **A próxima fase assume:** checkins com `blockerReasonId` e categoria (D18) já gravados pela daily — base do cumprimento ajustado do P12; `getDailyDetail` e `buildDailyWhatsApp` reaproveitáveis.
+
+### Complementos do P9 e do P10 (commit `dfd061e`, no branch `fase/11-priority-validations`)
+
+- **Feito:** editar combinado (título, detalhes, prioridade) e cancelar com motivo, fora da daily; central com 50 linhas por vez; daily de data passada (`?date=DD-MM-AAAA`) com aviso de registro retroativo; aviso de daily já registrada na data; edição de daily salva (resumo, decisões, presença, notas — timeline refeita); feriados nacionais na próxima daily.
+- **Ficou de fora, de propósito:** mudar prazo ou responsável fora da daily (esconderia o arrasto e reescreveria o cumprimento de outra pessoa); editar revisões e combinados criados numa daily salva (já mudaram os combinados); excluir daily; Carnaval, Corpus Christi e feriados estaduais/municipais (não são feriado nacional).
+
+### P11 — Validação de prioridade (branch `fase/11-priority-validations`)
+
+- **Ficou de fora:** telas de relatório (o prompt pede só as queries; estão prontas e testadas); o cronômetro humano dos 10 chamados em menos de 2 minutos — o fluxo foi feito só pelo teclado por automação; a checagem visual do /ui-lab (ganhou a seção, mas o /ui-lab só existe em desenvolvimento e eu verifiquei o servidor de produção); edição de nível de prioridade com cor (`PriorityLevel.color` existe no schema, mas o produto não usa cor de prioridade em lugar nenhum); pessoas inativas no filtro de responsável (só ativas); o aviso passageiro de "registrado" é uma linha de status dentro do formulário, não um toast.
+- **Decisões tomadas sem perguntar (revise):**
+  - **Colar e reconhecer:** colar a URL com ID reconhecido leva o foco direto ao Responsável, e o campo de ID sai do Tab. Sem reconhecimento, o foco vai para o ID.
+  - **Prioridade validada:** não vem preenchida com a do analista. Validar é decisão explícita; pré-preencher faria "Mantida" por omissão.
+  - **Devolvida exige motivo:** o banco já exigia desde o P3.
+  - **"Outro":** virou o flag `requiresDetail` no motivo (migration nova), em vez de comparar o nome. Configurável e conferido por trigger.
+  - **Resumo:** segue o período e a pessoa, nunca o filtro de resultado ou motivo.
+  - **Edição de validação:** sem troca de prioridade, mantém resultado e ranks gravados (D14). Com troca, grava os ranks atuais.
+  - **Exclusão de validação:** é lógica, com confirmação.
+  - **Catálogos:** item em uso não se exclui, só se desativa. Nível novo entra no fim, com rank renumerado. A chave do nível é gerada do nome e não muda.
+  - **Atalho C:** não dispara mais com o foco dentro de formulário. Antes, "C" de Crítica num checkbox abria o novo combinado.
+  - **Bloco do perfil:** aparece também para pessoa sem validação ("Nenhuma validação nos últimos 90 dias"). "Registrar feedback sobre isto" só aparece com dados e para quem escreve.
+- **Corrigido de fases anteriores:** selects do Radix recebiam `undefined` ao limpar e mostravam o valor anterior com o estado vazio — o Ctrl+Enter do combinado (P9) e a linha nova da daily (P10) gravavam ou recusavam diferente do que a tela mostrava; `FieldGroup` escondia a ajuda quando o erro era texto vazio.
+- **Verificado:**
+  - **Testes:** 105 no total. São 18 novos em `tests/priority-validations.test.ts` e 7 dos complementos.
+    - extração do ID pelo padrão;
+    - resultado ao vivo;
+    - "Outro" barrado no zod e no banco;
+    - D14 com reordenação real dos níveis: snapshots, resumos e matriz idênticos antes e depois;
+    - D15 sem linha na timeline;
+    - exclusão lógica;
+    - os quatro resumos batendo com a contagem direta;
+    - plano de execução com o índice `(organizationId, validatedAt)`;
+    - bloco do Otávio com "Impacto superestimado";
+    - CRUD de /settings com nome repetido, item em uso e regex inválida.
+  - **Servidor de produção, contas temporárias** (apagadas, junto com o que gravaram; seed reaplicado):
+    - 10 chamados validados colando URLs e só com teclado: 6 mantidos, 2 elevados, 1 rebaixado com "Outro" + texto e 1 devolvido. Foram 84 toques no total, 73 s de automação com ~25 s de pausas artificiais. O foco voltou à URL a cada registro.
+    - Editar e excluir pela tabela; período de 30 dias com filtro e coluna de data; período personalizado; 360px.
+    - Configurações: Alta descida e subida pela tela, com os ranks renumerados; testador de URL na página e no dialog.
+    - Perfil do Otávio: 52% · 14 de 27, e a sugestão de contexto que só entra no feedback com clique.
+    - VIEWER sem formulário, sem ações e com configurações só leitura.
+    - Complementos do P9/P10 na tela.
+- **A próxima fase assume:** `summaryByMember` e `memberValidationSummary` prontos para o P12 e o P15; `isBusinessDay` para o alerta "daily não registrada nos últimos 2 dias úteis" (P15); `replaceTimelineEvents`/`syncTimelineContent` para as edições do P13/P14.
 

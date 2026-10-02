@@ -647,6 +647,9 @@ model ReclassificationReason {
   label          String
   isActive       Boolean @default(true)
   order          Int
+  /// Motivo genérico ("Outro"): a validação exige o texto em reasonOther.
+  /// Conferido no zod e por trigger no banco.
+  requiresDetail Boolean @default(false)
 
   organization Organization         @relation(fields: [organizationId], references: [id])
   validations  PriorityValidation[]

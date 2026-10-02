@@ -1,22 +1,15 @@
 import type { Metadata } from "next"
 
-import { EmptyState } from "@/components/ui/empty-state"
-import { PageHeader } from "@/components/ui/page-header"
+import { PriorityLevelsSettings } from "@/components/settings/catalogs"
 import { labels } from "@/lib/labels"
-
-const page = labels.pages.settings
+import { canWrite, requireUser } from "@/server/access"
+import { listPriorityLevels } from "@/server/queries/settings"
 
 export const metadata: Metadata = {
-  title: `${labels.nav.settings} · ${labels.app.name}`,
+  title: `${labels.settings.tabs.priorityLevels} · ${labels.app.name}`,
 }
 
-export default function SettingsPage() {
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={labels.nav.settings} subtitle={page.subtitle} />
-      <div className="rounded-lg border border-line bg-surface">
-        <EmptyState title={page.emptyTitle} direction={page.emptyDirection} />
-      </div>
-    </div>
-  )
+export default async function PriorityLevelsPage() {
+  const user = await requireUser()
+  return <PriorityLevelsSettings items={await listPriorityLevels(user)} canWrite={canWrite(user)} />
 }

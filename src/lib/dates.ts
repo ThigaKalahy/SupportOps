@@ -75,6 +75,27 @@ export function businessDateAtNoon(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 15));
 }
 
+/**
+ * Instante da meia-noite em São Paulo de uma data de negócio — o início do
+ * dia para filtrar timestamps (ex.: validações "de hoje"). O deslocamento é
+ * lido do fuso, não fixado em -3h.
+ */
+export function startOfBusinessDay(date: Date): Date {
+  const midnightUtc = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const probe = new Date(midnightUtc + 12 * 3_600_000);
+  const wall = toSaoPaulo(probe);
+  const offset =
+    Date.UTC(wall.getFullYear(), wall.getMonth(), wall.getDate(), wall.getHours(), wall.getMinutes()) - probe.getTime();
+  return new Date(midnightUtc - offset);
+}
+
+/** [início, fim) em instantes de um intervalo inclusivo de datas de negócio. */
+export function businessRangeInstants(from: Date, to: Date): { gte: Date; lt: Date } {
+  const after = new Date(to);
+  after.setUTCDate(after.getUTCDate() + 1);
+  return { gte: startOfBusinessDay(from), lt: startOfBusinessDay(after) };
+}
+
 /** Domingo de Páscoa (algoritmo gregoriano anônimo), como data de negócio. */
 function easterSunday(year: number): Date {
   const a = year % 19;

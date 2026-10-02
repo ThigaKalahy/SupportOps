@@ -128,7 +128,7 @@ export function AgreementDialog({
               <FieldGroup label={L.member} error={err.memberId?.message} required>
                 {(control) => (
                   <Select
-                    value={form.watch("memberId") || undefined}
+                    value={form.watch("memberId")}
                     onValueChange={(v) => form.setValue("memberId", v, { shouldValidate: form.formState.isSubmitted })}
                   >
                     <SelectTrigger {...control} className="w-full">

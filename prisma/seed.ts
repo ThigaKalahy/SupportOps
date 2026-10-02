@@ -124,7 +124,7 @@ const RECLASSIFICATION_REASONS = [
   "Evidência insuficiente",
   "Critério de prioridade aplicado incorretamente",
   "Outro",
-].map((label, i) => ({ id: `seed_rr_${i + 1}`, label, order: i + 1 }))
+].map((label, i) => ({ id: `seed_rr_${i + 1}`, label, order: i + 1, requiresDetail: label === "Outro" }))
 const REASON = {
   overestimated: "seed_rr_1",
   underestimated: "seed_rr_2",
@@ -1628,7 +1628,7 @@ async function main() {
         await tx.priorityLevel.upsert({ where: { id: p.id }, create: { ...p, organizationId: ORG_ID }, update: { label: p.label, rank: p.rank } })
       }
       for (const r of RECLASSIFICATION_REASONS) {
-        await tx.reclassificationReason.upsert({ where: { id: r.id }, create: { ...r, organizationId: ORG_ID }, update: { label: r.label, order: r.order } })
+        await tx.reclassificationReason.upsert({ where: { id: r.id }, create: { ...r, organizationId: ORG_ID }, update: { label: r.label, order: r.order, requiresDetail: r.requiresDetail } })
       }
       for (const p of TICKET_URL_PATTERNS) {
         await tx.ticketUrlPattern.upsert({ where: { id: p.id }, create: { ...p, organizationId: ORG_ID }, update: { label: p.label, regex: p.regex } })

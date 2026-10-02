@@ -26,7 +26,8 @@ Preciso de: confirmar a fonte do modelo de dados. O P3 pede "Leia a seção 5 do
 Onde consigo: responder "ok" ou corrigir.
 Enquanto isso: não bloqueia, se a leitura acima estiver certa.
 
-## [ ] AUTH_SECRET do .env.local ainda é um marcador
+## [x] AUTH_SECRET do .env.local ainda é um marcador
+Resolvido em 02/10/2026: `AUTH_SECRET` com 32 bytes aleatórios em base64 (conferido sem exibir o valor) e senha do OWNER definida. Fica para quando houver o e-mail: o VIEWER (passo 4 abaixo) — não bloqueia nenhuma fase.
 Fase: P5
 Preciso de: um valor aleatório real em `AUTH_SECRET` no `.env.local`. Hoje o valor contém `<...>`. Sem ele, o login não funciona (os testes do P5 rodaram com um segredo temporário passado só ao processo, nunca gravado).
 Onde consigo:

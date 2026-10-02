@@ -25,11 +25,15 @@ function originFor(pathname: string): Origin {
   return "MANAGER"
 }
 
-/** Campo editável ou dialog aberto: o atalho não pode roubar a tecla. */
+/**
+ * Campo editável, qualquer controle de formulário ou dialog aberto: o atalho
+ * não pode roubar a tecla (ex.: "C" de Crítica num formulário de validação,
+ * com o foco num checkbox).
+ */
 function shortcutBlocked(event: KeyboardEvent): boolean {
   if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat) return true
   const target = event.target as HTMLElement | null
-  if (target?.closest("input, textarea, select, [contenteditable=true], [role=combobox], [role=listbox], [role=menu]")) {
+  if (target?.closest("form, input, textarea, select, [contenteditable=true], [role=combobox], [role=listbox], [role=menu]")) {
     return true
   }
   return document.querySelector("[role=dialog], [role=alertdialog]") !== null

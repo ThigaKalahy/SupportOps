@@ -25,15 +25,21 @@ const FIELDS = ["date", "category", "context", "behavior", "impact", "guidance",
  * PRIVATE; a categoria Reconhecimento SUGERE compartilhar — troca o padrão
  * enquanto a pessoa não escolheu a visibilidade, nunca depois.
  * (Combinado gerado a partir do feedback: P13.)
+ *
+ * `suggestion`: contexto sugerido por quem abriu (ex.: o bloco de validação
+ * de prioridade do perfil). Aparece acima do campo e só entra nele se a
+ * pessoa escolher usar — sugerido, nunca escrito automaticamente.
  */
 export function FeedbackDialog({
   open,
   onOpenChange,
   member,
+  suggestion,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   member: RecordTarget
+  suggestion?: string
 }) {
   const defaults = React.useCallback(
     (): FeedbackInput => ({
@@ -125,6 +131,21 @@ export function FeedbackDialog({
               />
             </FieldGroup>
           </div>
+          {suggestion ? (
+            <div className="flex flex-col gap-1.5 rounded-sm border border-line bg-surface-sunken px-3 py-2">
+              <span className="text-xs text-ink-secondary">{L.suggestion}</span>
+              <p className="text-sm text-ink">{suggestion}</p>
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="self-start"
+                onClick={() => form.setValue("context", suggestion, { shouldDirty: true })}
+              >
+                {L.useSuggestion}
+              </Button>
+            </div>
+          ) : null}
           <FieldGroup label={L.context} help={L.contextHelp} error={err.context?.message}>
             <Textarea rows={2} {...form.register("context")} />
           </FieldGroup>

@@ -43,7 +43,8 @@ function FieldGroup({
   const isRender = typeof children === "function"
   const controlId = (!isRender && children.props.id) || `${generatedId}-control`
   const messageId = `${generatedId}-message`
-  const message = error ?? help
+  // Erro vazio ("") conta como sem erro: a ajuda continua visível.
+  const message = error || help
   const controlProps = {
     id: controlId,
     "aria-describedby": message ? messageId : undefined,

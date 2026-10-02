@@ -47,6 +47,9 @@ const subrouteLabels: Record<string, string> = {
   development: labels.nav.development,
   records: labels.nav.records,
   new: labels.dailies.new,
+  "reclassification-reasons": labels.settings.tabs.reclassificationReasons,
+  "blocker-reasons": labels.settings.tabs.blockerReasons,
+  "ticket-patterns": labels.settings.tabs.ticketPatterns,
 }
 
 export interface Crumb {

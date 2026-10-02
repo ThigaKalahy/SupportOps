@@ -1,0 +1,125 @@
+import type { BlockerCategory } from "@prisma/client"
+
+import type { CatalogKind } from "../../lib/validators/settings.ts"
+import { db } from "../db.ts"
+import type { Viewer } from "../visibility.ts"
+
+/**
+ * Leituras de /settings: cada catálogo na ordem de exibição, com quantos
+ * registros usam cada item (item em uso não se exclui, só se desativa).
+ */
+
+/** Uso de cada item: validações (níveis e motivos de reclassificação) ou checkins (motivos de impeditivo). */
+export async function catalogUsage(kind: CatalogKind, ids: string[]): Promise<Map<string, number>> {
+  const usage = new Map<string, number>(ids.map((id) => [id, 0]))
+  const add = (id: string | null, count: number) => {
+    if (id && usage.has(id)) usage.set(id, (usage.get(id) ?? 0) + count)
+  }
+  // `deletedAt: undefined` no where desliga o filtro automático do db: validação excluída
+  // (soft delete) também conta, porque ainda aponta para o item no banco.
+  if (kind === "priorityLevel") {
+    const [analyst, supervisor] = await Promise.all([
+      db.priorityValidation.groupBy({
+        by: ["analystPriorityId"],
+        where: { analystPriorityId: { in: ids }, deletedAt: undefined },
+        _count: { _all: true },
+      }),
+      db.priorityValidation.groupBy({
+        by: ["supervisorPriorityId"],
+        where: { supervisorPriorityId: { in: ids }, deletedAt: undefined },
+        _count: { _all: true },
+      }),
+    ])
+    for (const row of analyst) add(row.analystPriorityId, row._count._all)
+    for (const row of supervisor) add(row.supervisorPriorityId, row._count._all)
+  } else if (kind === "reclassificationReason") {
+    const rows = await db.priorityValidation.groupBy({
+      by: ["reasonId"],
+      where: { reasonId: { in: ids }, deletedAt: undefined },
+      _count: { _all: true },
+    })
+    for (const row of rows) add(row.reasonId, row._count._all)
+  } else if (kind === "blockerReason") {
+    const rows = await db.agreementCheckin.groupBy({
+      by: ["blockerReasonId"],
+      where: { blockerReasonId: { in: ids } },
+      _count: { _all: true },
+    })
+    for (const row of rows) add(row.blockerReasonId, row._count._all)
+  }
+  return usage
+}
+
+export interface PriorityLevelItem {
+  id: string
+  label: string
+  key: string
+  rank: number
+  isActive: boolean
+  usage: number
+}
+
+export async function listPriorityLevels(viewer: Viewer): Promise<PriorityLevelItem[]> {
+  const rows = await db.priorityLevel.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: [{ rank: "desc" }, { label: "asc" }],
+    select: { id: true, label: true, key: true, rank: true, isActive: true },
+  })
+  const usage = await catalogUsage("priorityLevel", rows.map((r) => r.id))
+  return rows.map((r) => ({ ...r, usage: usage.get(r.id) ?? 0 }))
+}
+
+export interface ReclassificationReasonItem {
+  id: string
+  label: string
+  requiresDetail: boolean
+  isActive: boolean
+  usage: number
+}
+
+export async function listReclassificationReasons(viewer: Viewer): Promise<ReclassificationReasonItem[]> {
+  const rows = await db.reclassificationReason.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: [{ order: "asc" }, { label: "asc" }],
+    select: { id: true, label: true, requiresDetail: true, isActive: true },
+  })
+  const usage = await catalogUsage("reclassificationReason", rows.map((r) => r.id))
+  return rows.map((r) => ({ ...r, usage: usage.get(r.id) ?? 0 }))
+}
+
+export interface BlockerReasonItem {
+  id: string
+  label: string
+  category: BlockerCategory
+  isActive: boolean
+  usage: number
+}
+
+export async function listBlockerReasons(viewer: Viewer): Promise<BlockerReasonItem[]> {
+  const rows = await db.blockerReason.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: [{ order: "asc" }, { label: "asc" }],
+    select: { id: true, label: true, category: true, isActive: true },
+  })
+  const usage = await catalogUsage("blockerReason", rows.map((r) => r.id))
+  return rows.map((r) => ({ ...r, usage: usage.get(r.id) ?? 0 }))
+}
+
+export interface TicketPatternItem {
+  id: string
+  label: string
+  regex: string
+  captureGroup: number
+  isActive: boolean
+  usage: number
+}
+
+/** Padrões não são referenciados por registro (o ID é gravado na validação): sempre excluíveis. */
+export async function listTicketPatterns(viewer: Viewer): Promise<TicketPatternItem[]> {
+  const rows = await db.ticketUrlPattern.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: [{ order: "asc" }, { label: "asc" }],
+    select: { id: true, label: true, regex: true, captureGroup: true, isActive: true },
+  })
+  return rows.map((r) => ({ ...r, usage: 0 }))
+}

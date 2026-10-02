@@ -477,7 +477,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             return (
               <li key={row.key} className="flex flex-col gap-1 border-b border-line px-3 py-1.5 last:border-b-0">
                 <div className="grid grid-cols-[132px_minmax(0,1fr)_112px_32px] items-center gap-2 max-sm:grid-cols-[1fr_120px_32px]">
-                  <Select value={row.memberId || undefined} onValueChange={(v) => patchRow(row.key, { memberId: v })}>
+                  <Select value={row.memberId} onValueChange={(v) => patchRow(row.key, { memberId: v })}>
                     <SelectTrigger
                       ref={(el) => {
                         rowMemberRefs.current[row.key] = el
