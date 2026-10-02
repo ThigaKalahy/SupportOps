@@ -8,6 +8,7 @@ import type {
 } from "@prisma/client"
 
 // Import relativo com extensão: este arquivo também roda no Node puro (seed).
+import { businessDateAtNoon } from "../lib/dates.ts"
 import { fill, labels } from "../lib/labels.ts"
 
 /**
@@ -25,6 +26,10 @@ import { fill, labels } from "../lib/labels.ts"
  *
  * Não geram linha: PriorityValidation (D15), métricas e score (D5),
  * AgreementCheckin (o arrasto aparece no próprio combinado).
+ *
+ * occurredAt é `timestamptz`. Registros datados por dia (1:1, feedback, daily,
+ * conclusão de combinado) entram como meio-dia em São Paulo daquele dia
+ * (`businessDateAtNoon`); os demais recebem o instante real.
  */
 
 /**
@@ -198,7 +203,7 @@ export const timelineEventFor = {
   agreementDone(a: AgreementLike & { completedAt: Date }): TimelineEventInput {
     return {
       memberId: a.memberId,
-      occurredAt: a.completedAt,
+      occurredAt: businessDateAtNoon(a.completedAt),
       type: "AGREEMENT_DONE",
       title: a.title,
       summary: a.outcome,
@@ -212,7 +217,7 @@ export const timelineEventFor = {
   oneOnOne(o: OneOnOneLike): TimelineEventInput {
     return {
       memberId: o.memberId,
-      occurredAt: o.date,
+      occurredAt: businessDateAtNoon(o.date),
       type: "ONE_ON_ONE",
       title: o.topics ?? labels.timeline.oneOnOneFallback,
       summary: o.managerPerception,
@@ -225,7 +230,7 @@ export const timelineEventFor = {
   feedback(f: FeedbackLike): TimelineEventInput {
     return {
       memberId: f.memberId,
-      occurredAt: f.date,
+      occurredAt: businessDateAtNoon(f.date),
       type: f.category === "RECOGNITION" ? "RECOGNITION" : "FEEDBACK",
       title: f.behavior,
       summary: f.impact,
@@ -242,7 +247,7 @@ export const timelineEventFor = {
     if (!title) return null
     return {
       memberId: p.memberId,
-      occurredAt: p.date,
+      occurredAt: businessDateAtNoon(p.date),
       type: "DAILY",
       title,
       summary: p.note ? p.blocker : null,

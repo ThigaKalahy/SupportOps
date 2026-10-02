@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -48,6 +49,12 @@ export interface DataTableProps<T> {
   /** Linha selecionada: fundo --accent-wash e barra inset de 2px em --accent. */
   selectedRowId?: string | null
   onRowSelect?: (row: T) => void
+  /**
+   * Linha que leva a uma página (ex.: perfil da pessoa). O clique em qualquer
+   * ponto da linha navega; o teclado usa o link que a coluna principal precisa
+   * conter (a linha não vira um segundo ponto de foco).
+   */
+  rowHref?: (row: T) => string
   density?: "default" | "compact"
   /** Estado vazio com texto de direção. Obrigatório: tabela vazia nunca fica muda. */
   empty: { title: string; direction: string; action?: React.ReactNode }
@@ -85,6 +92,7 @@ function DataTable<T>({
   state = "ready",
   selectedRowId = null,
   onRowSelect,
+  rowHref,
   density = "default",
   empty,
   error,
@@ -93,16 +101,37 @@ function DataTable<T>({
   groupBy,
   className,
 }: DataTableProps<T>) {
-  const interactive = Boolean(onRowSelect)
+  const router = useRouter()
+  const interactive = Boolean(onRowSelect || rowHref)
   const rowHeight = density === "compact" ? "h-8" : "h-10"
   const isEmpty = state === "ready" && rows.length === 0
 
+  /** Evento vindo de um controle dentro da linha (botão, link, menu): a linha não reage. */
+  function fromNestedControl(event: React.SyntheticEvent) {
+    const target = event.target as HTMLElement
+    const control = target.closest("a, button, input, select, textarea, [role=menuitem], [tabindex]")
+    return control !== null && control !== event.currentTarget
+  }
+
   function rowHandlers(row: T) {
+    if (rowHref) {
+      return {
+        onClick: (event: React.MouseEvent) => {
+          if (fromNestedControl(event)) return
+          const href = rowHref(row)
+          if (event.ctrlKey || event.metaKey) window.open(href, "_blank")
+          else router.push(href)
+        },
+      }
+    }
     if (!onRowSelect) return {}
     return {
       tabIndex: 0,
-      onClick: () => onRowSelect(row),
+      onClick: (event: React.MouseEvent) => {
+        if (!fromNestedControl(event)) onRowSelect(row)
+      },
       onKeyDown: (event: React.KeyboardEvent) => {
+        if (fromNestedControl(event)) return
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()
           onRowSelect(row)

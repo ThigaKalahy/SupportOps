@@ -65,6 +65,16 @@ export function todayBusinessDate(now: Date = new Date()): Date {
   return new Date(Date.UTC(sp.getFullYear(), sp.getMonth(), sp.getDate()));
 }
 
+/**
+ * Instante que representa uma data de negócio numa coluna `timestamptz`
+ * (ex.: TimelineEvent.occurredAt de um 1:1): meio-dia em São Paulo do mesmo
+ * dia. Gravar a meia-noite UTC faria o dia aparecer como o anterior no fuso
+ * de São Paulo.
+ */
+export function businessDateAtNoon(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 15));
+}
+
 /** Chave ISO "AAAA-MM-DD" de uma data de negócio. Uso interno — nunca exibir. */
 export function toBusinessDateKey(date: Date): string {
   return format(fromBusinessDate(date), "yyyy-MM-dd");

@@ -55,6 +55,17 @@ function weight(r: { severity: Severity; strong: boolean }): number {
   return 0
 }
 
+/**
+ * Cadência de 1:1: referência de dias por senioridade e a severidade de
+ * quantos dias se passaram. Acima da referência: atenção; acima de 1,5x:
+ * atenção forte; acima do dobro: vencido. Usada pelo alerta e pelo perfil.
+ */
+export function oneOnOneCadence(seniorityKey: string, days: number): { limit: number; severity: Severity; strong: boolean } {
+  const limit = ATTENTION_THRESHOLDS.oneOnOneDays[seniorityKey] ?? ATTENTION_THRESHOLDS.defaultOneOnOneDays
+  if (days <= limit) return { limit, severity: "neutral", strong: false }
+  return { limit, severity: days > limit * 2 ? "overdue" : "attention", strong: days > limit * 1.5 }
+}
+
 export function memberAttention(facts: MemberFacts, today: Date): MemberAttention | null {
   const t = ATTENTION_THRESHOLDS
   const reasons: AttentionReason[] = []
@@ -77,22 +88,22 @@ export function memberAttention(facts: MemberFacts, today: Date): MemberAttentio
     })
   }
 
-  const oneOnOneLimit = t.oneOnOneDays[facts.seniorityKey] ?? t.defaultOneOnOneDays
   if (facts.lastOneOnOne === null) {
     const days = businessDaysBetween(facts.joinedAt, today)
-    if (days > oneOnOneLimit) {
+    if (days > oneOnOneCadence(facts.seniorityKey, days).limit) {
       reasons.push({ severity: "attention", strong: true, text: fill(labels.attention.noOneOnOne, { days }) })
     }
   } else {
     const days = businessDaysBetween(facts.lastOneOnOne, today)
-    if (days > oneOnOneLimit) {
+    const cadence = oneOnOneCadence(facts.seniorityKey, days)
+    if (days > cadence.limit) {
       reasons.push({
-        severity: days > oneOnOneLimit * 2 ? "overdue" : "attention",
-        strong: days > oneOnOneLimit * 1.5,
+        severity: cadence.severity,
+        strong: cadence.strong,
         text: fill(labels.attention.lateOneOnOne, {
           days,
           seniority: facts.seniorityLabel,
-          limit: oneOnOneLimit,
+          limit: cadence.limit,
         }),
       })
     }

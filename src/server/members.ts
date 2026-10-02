@@ -8,6 +8,7 @@ import {
   createMemberSchema,
   deactivateMemberSchema,
   fieldErrorsOf,
+  managerSummarySchema,
   updateMemberSchema,
   type ActionResult,
 } from "../lib/validators/member.ts"
@@ -319,5 +320,35 @@ export async function deactivateMemberRecord(user: Writer, input: unknown): Prom
     )
   })
 
+  return { ok: true }
+}
+
+/**
+ * Resumo gerencial do perfil, editado inline. Não é evento de carreira nem
+ * registro: não gera linha na timeline, só AuditLog com o texto anterior.
+ */
+export async function updateManagerSummaryRecord(user: Writer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = managerSummarySchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+
+  const before = await db.teamMember.findFirst({ where: { id: parsed.data.id, ...memberScope(user) } })
+  if (!before) return { ok: false, error: labels.validation.generic }
+  const summary = parsed.data.managerSummary === "" ? null : parsed.data.managerSummary
+  if (summary === before.managerSummary) return { ok: true }
+
+  await db.$transaction(async (tx) => {
+    await tx.teamMember.update({ where: { id: before.id }, data: { managerSummary: summary } })
+    await writeAudit(
+      {
+        action: "member.summary.update",
+        entity: "TeamMember",
+        entityId: before.id,
+        before: { managerSummary: before.managerSummary },
+        after: { managerSummary: summary },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
   return { ok: true }
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { EllipsisIcon } from "lucide-react"
 
 import { DeactivateMemberDialog } from "@/components/member/deactivate-member-dialog"
@@ -56,7 +57,9 @@ function PersonCell({ row }: { row: TeamTableRow }) {
       <Avatar size="sm">
         <AvatarFallback style={avatarColors(row.id)}>{initials(row.fullName)}</AvatarFallback>
       </Avatar>
-      <span className="truncate font-medium text-ink">{row.preferredName}</span>
+      <Link href={`/team/${row.id}`} className="truncate font-medium text-ink hover:underline">
+        {row.preferredName}
+      </Link>
       <span className="truncate text-xs text-ink-secondary">{row.position}</span>
     </span>
   )
@@ -165,6 +168,7 @@ export function TeamTable({
         columns={columns}
         rows={rows}
         getRowId={(r) => r.id}
+        rowHref={(r) => `/team/${r.id}`}
         label={labels.team.tableLabel}
         groupBy={grouped ? (r) => ({ id: r.seniorityKey, label: r.seniorityLabel }) : undefined}
         empty={

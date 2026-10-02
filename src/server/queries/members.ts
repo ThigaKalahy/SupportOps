@@ -17,6 +17,8 @@ export interface TeamListFilters {
   /** "current" (padrão: ativos, afastados e em desligamento) ou "inactive". */
   status?: "current" | "inactive"
   needsAttention?: boolean
+  /** Uma pessoa só (perfil), ativa ou não — ignora o filtro de status. */
+  id?: string
 }
 
 export interface TeamListRow {
@@ -100,28 +102,35 @@ export async function listTeamMembers(viewer: Viewer, filters: TeamListFilters =
     JOIN "Seniority" s ON s."id" = m."seniorityId"
     WHERE t."organizationId" = ${viewer.organizationId}
       ${scope}
-      ${inactive ? Prisma.sql`AND m."deletedAt" IS NOT NULL` : Prisma.sql`AND m."deletedAt" IS NULL`}
+      ${
+        filters.id
+          ? Prisma.sql`AND m."id" = ${filters.id}`
+          : inactive
+            ? Prisma.sql`AND m."deletedAt" IS NOT NULL`
+            : Prisma.sql`AND m."deletedAt" IS NULL`
+      }
       ${filters.seniority ? Prisma.sql`AND s."key" = ${filters.seniority}` : Prisma.empty}
     ORDER BY s."order" DESC, m."preferredName" ASC
   `
 
   const result = rows.map((row): TeamListRow => {
-    const attention = inactive
-      ? null
-      : memberAttention(
-          {
-            seniorityKey: row.seniorityKey,
-            seniorityLabel: row.seniorityLabel,
-            joinedAt: row.joinedAt,
-            lastOneOnOne: row.lastOneOnOne,
-            overdueAgreements: row.overdueAgreements,
-            oldestOverdueDue: row.oldestOverdueDue,
-            dueSoonAgreements: row.dueSoonAgreements,
-            chronicAgreements: row.chronicAgreements,
-            oldestPlanReview: row.oldestPlanReview,
-          },
-          today,
-        )
+    const attention =
+      inactive || row.status === "INACTIVE"
+        ? null
+        : memberAttention(
+            {
+              seniorityKey: row.seniorityKey,
+              seniorityLabel: row.seniorityLabel,
+              joinedAt: row.joinedAt,
+              lastOneOnOne: row.lastOneOnOne,
+              overdueAgreements: row.overdueAgreements,
+              oldestOverdueDue: row.oldestOverdueDue,
+              dueSoonAgreements: row.dueSoonAgreements,
+              chronicAgreements: row.chronicAgreements,
+              oldestPlanReview: row.oldestPlanReview,
+            },
+            today,
+          )
     return {
       id: row.id,
       fullName: row.fullName,

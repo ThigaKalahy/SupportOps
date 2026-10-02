@@ -18,7 +18,7 @@
     "db:studio": "node --env-file=.env.local node_modules/prisma/build/index.js studio",
     "user:create": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/user-create.ts",
     "user:password": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/user-password.ts",
-    "test": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.ts\""
+    "test": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 \"tests/**/*.test.ts\""
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

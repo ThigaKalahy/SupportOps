@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { PageHeader } from "@/components/ui/page-header"
+import { RouteTabs } from "@/components/ui/route-tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { SeverityDot } from "@/components/ui/severity-dot"
@@ -26,6 +28,7 @@ import { avatarColors, initials } from "@/lib/people"
 import { deadlineSeverity, SEVERITIES } from "@/lib/severity"
 
 import { LabDataTables } from "./_components/lab-data-tables"
+import { LabFieldRender } from "./_components/lab-field-render"
 import { LabCalendar, LabOverlays } from "./_components/lab-overlays"
 import { LabShell } from "./_components/lab-shell"
 import { LabSection, Specimen } from "./_components/specimen"
@@ -297,22 +300,7 @@ export default function UiLabPage() {
             </FieldGroup>
           </Specimen>
           <Specimen state="FieldGroup + Select (render prop)">
-            <FieldGroup label={demo.fieldSeniority} help={demo.fieldTitleHelp} className="w-full">
-              {(control) => (
-                <Select defaultValue="Pleno">
-                  <SelectTrigger {...control} className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {seniorities.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </FieldGroup>
+            <LabFieldRender label={demo.fieldSeniority} help={demo.fieldTitleHelp} options={seniorities} />
           </Specimen>
           <Specimen state={`Select · ${S.disabled}`}>
             <FieldGroup label={demo.fieldSeniority} className="w-full">
@@ -533,6 +521,56 @@ export default function UiLabPage() {
                 <TabsTrigger value="all">{demo.periodAll}</TabsTrigger>
               </TabsList>
             </Tabs>
+          </Specimen>
+        </div>
+      </LabSection>
+
+      {/* RouteTabs */}
+      <LabSection id="route-tabs" title={sectionCopy.routeTabs.title} description={sectionCopy.routeTabs.description}>
+        <Specimen state={`${S.selected} · ${S.hover}`} className="w-full">
+          <RouteTabs
+            className="w-full"
+            label={demo.tabsOverview}
+            activeHref="#aba-visao-geral"
+            tabs={[
+              { href: "#aba-visao-geral", label: demo.tabsOverview, exact: true },
+              { href: "#aba-timeline", label: demo.tabsTimeline },
+              { href: "#aba-combinados", label: demo.tabsAgreements },
+              { href: "#aba-desenvolvimento", label: demo.tabsDevelopment },
+              { href: "#aba-registros", label: demo.tabsRecords },
+            ]}
+          />
+        </Specimen>
+      </LabSection>
+
+      {/* Section */}
+      <LabSection id="section" title={sectionCopy.section.title} description={sectionCopy.section.description}>
+        <div className="grid gap-8 lg:grid-cols-2">
+          <Specimen state={`${S.default} · contagem e ação`} className="w-full">
+            <Section
+              className="w-full"
+              title={demo.sectionTitle}
+              count={3}
+              action={
+                <Button variant="link" size="sm" className="text-xs">
+                  {demo.buttonLink}
+                </Button>
+              }
+            >
+              <ul className="flex flex-col">
+                {notes.slice(0, 3).map((note, i) => (
+                  <li key={i} className="flex gap-3 border-b border-line py-2 text-sm last:border-b-0">
+                    <DateStamp date={addDays(today, i * 4)} kind="business" className="text-ink-secondary" />
+                    <span className="truncate">{note}</span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          </Specimen>
+          <Specimen state={S.empty} className="w-full">
+            <Section className="w-full" title={sectionCopy.section.title}>
+              <EmptyState size="compact" className="items-start px-0 py-2 text-left" title={demo.emptyTitle} direction={demo.emptyDirection} />
+            </Section>
           </Specimen>
         </div>
       </LabSection>

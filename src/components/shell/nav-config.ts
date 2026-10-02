@@ -37,7 +37,10 @@ export function isActive(item: NavItem, pathname: string): boolean {
   return pathname === item.href || pathname.startsWith(`${item.href}/`)
 }
 
-/** Rótulos de sub-rotas conhecidas, para o breadcrumb. Segmentos dinâmicos (ids) são omitidos. */
+/**
+ * Rótulos de sub-rotas conhecidas, para o breadcrumb. Segmentos dinâmicos
+ * (ids) só aparecem quando a página informa o rótulo (<CrumbLabel>).
+ */
 const subrouteLabels: Record<string, string> = {
   timeline: labels.nav.timeline,
   agreements: labels.nav.agreements,
@@ -51,7 +54,7 @@ export interface Crumb {
 }
 
 /** Breadcrumb derivado da rota: seção da navegação + sub-rotas conhecidas. */
-export function crumbsFor(pathname: string): Crumb[] {
+export function crumbsFor(pathname: string, segmentLabels: Record<string, string> = {}): Crumb[] {
   const section = [...mainNav, ...footerNav].find((item) => isActive(item, pathname))
   if (!section) return []
 
@@ -62,7 +65,7 @@ export function crumbsFor(pathname: string): Crumb[] {
   let href = section.href
   for (const segment of rest) {
     href = `${href}/${segment}`
-    const label = subrouteLabels[segment]
+    const label = segmentLabels[segment] ?? subrouteLabels[segment]
     if (label) crumbs.push({ label, href })
   }
   return crumbs

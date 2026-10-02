@@ -1,0 +1,200 @@
+"use client"
+
+import * as React from "react"
+import { useForm } from "react-hook-form"
+
+import { createAgreement } from "@/actions/agreements"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { FieldGroup } from "@/components/ui/field-group"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { maskDateInput } from "@/lib/dates"
+import { enumLabel, fill, labels } from "@/lib/labels"
+import {
+  AGREEMENT_ORIGINS,
+  AGREEMENT_PRIORITIES,
+  createAgreementSchema,
+  type CreateAgreementInput,
+} from "@/lib/validators/agreement"
+
+import { applyFieldErrors, DisclosureToggle, FormError, zodResolver } from "./form-kit"
+import type { RecordTarget } from "./note-dialog"
+
+const L = labels.forms.agreement
+const FIELDS = ["title", "dueDate", "description", "priority", "origin"] as const
+
+/**
+ * Criação rápida de combinado. Obrigatórios: título e prazo (o responsável
+ * vem do contexto). Enter salva; Ctrl/⌘+Enter salva e reabre em branco, para
+ * lançar vários seguidos. Origem pré-preenchida pelo contexto.
+ * (Seleção de responsável e abertura de qualquer lugar: P9.)
+ */
+export function AgreementDialog({
+  open,
+  onOpenChange,
+  member,
+  origin = "MANAGER",
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  member: RecordTarget
+  origin?: CreateAgreementInput["origin"]
+}) {
+  const defaults = React.useCallback(
+    (): CreateAgreementInput => ({
+      memberId: member.id,
+      title: "",
+      dueDate: "",
+      description: "",
+      priority: "NORMAL",
+      origin,
+    }),
+    [member.id, origin],
+  )
+  const form = useForm<CreateAgreementInput>({ resolver: zodResolver(createAgreementSchema), defaultValues: defaults() })
+  const [showDetails, setShowDetails] = React.useState(false)
+  const [formError, setFormError] = React.useState<string | null>(null)
+  const [savedNotice, setSavedNotice] = React.useState(false)
+  const [pending, startTransition] = React.useTransition()
+  const another = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!open) return
+    form.reset(defaults())
+    setShowDetails(false)
+    setFormError(null)
+    setSavedNotice(false)
+  }, [open, defaults, form])
+
+  const onSubmit = form.handleSubmit((values) => {
+    setFormError(null)
+    const keepOpen = another.current
+    another.current = false
+    startTransition(async () => {
+      const result = await createAgreement(values)
+      if (result.ok) {
+        if (!keepOpen) return onOpenChange(false)
+        form.reset(defaults())
+        setSavedNotice(true)
+        form.setFocus("title")
+        return
+      }
+      setFormError(result.error)
+      applyFieldErrors(result.fieldErrors, FIELDS, form.setError)
+    })
+  })
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      another.current = true
+      void onSubmit()
+    }
+  }
+
+  const err = form.formState.errors
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
+      <DialogContent
+        className="max-h-[90svh] overflow-y-auto"
+        // Foco inicial no campo principal sem autoFocus: com autoFocus o Radix
+        // registra o próprio campo como origem e não devolve o foco ao botão.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          form.setFocus("title")
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{L.title}</DialogTitle>
+          <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={onSubmit} onKeyDown={onKeyDown} className="flex flex-col gap-4" noValidate>
+          <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
+            <FieldGroup label={L.agreementTitle} error={err.title?.message} required>
+              <Input autoComplete="off" {...form.register("title", { onChange: () => setSavedNotice(false) })} />
+            </FieldGroup>
+            <FieldGroup label={L.dueDate} error={err.dueDate?.message} required>
+              <Input
+                inputMode="numeric"
+                placeholder={labels.forms.datePlaceholder}
+                autoComplete="off"
+                className="font-mono"
+                {...form.register("dueDate", { onChange: (e) => form.setValue("dueDate", maskDateInput(e.target.value)) })}
+              />
+            </FieldGroup>
+          </div>
+
+          <DisclosureToggle open={showDetails} onToggle={() => setShowDetails((v) => !v)} />
+          {showDetails ? (
+            <div className="flex flex-col gap-4">
+              <FieldGroup label={L.details} error={err.description?.message}>
+                <Textarea rows={2} {...form.register("description")} />
+              </FieldGroup>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FieldGroup label={L.priority}>
+                  {(control) => (
+                    <Select
+                      value={form.watch("priority")}
+                      onValueChange={(v) => form.setValue("priority", v as CreateAgreementInput["priority"])}
+                    >
+                      <SelectTrigger {...control} className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGREEMENT_PRIORITIES.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {enumLabel("agreementPriority", p)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </FieldGroup>
+                <FieldGroup label={L.origin}>
+                  {(control) => (
+                    <Select
+                      value={form.watch("origin")}
+                      onValueChange={(v) => form.setValue("origin", v as CreateAgreementInput["origin"])}
+                    >
+                      <SelectTrigger {...control} className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGREEMENT_ORIGINS.map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {enumLabel("agreementOrigin", o)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </FieldGroup>
+              </div>
+            </div>
+          ) : null}
+
+          {savedNotice ? (
+            <p role="status" className="text-xs text-ink-secondary">
+              {L.savedAnother}
+            </p>
+          ) : null}
+          <FormError message={formError} />
+          <DialogFooter className="items-center sm:justify-between">
+            <p className="font-mono text-2xs text-ink-secondary max-sm:hidden">{L.shortcut}</p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>
+                {labels.common.cancel}
+              </Button>
+              <Button type="submit" loading={pending}>
+                {L.submit}
+              </Button>
+            </div>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}

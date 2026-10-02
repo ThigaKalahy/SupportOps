@@ -38,14 +38,22 @@ function DialogOverlay({ className, ...props }: React.ComponentProps<typeof Dial
   )
 }
 
+/**
+ * Conteúdo do dialog. Devolve o foco ao elemento que estava focado quando o
+ * dialog abriu — o Radix só devolve a um <DialogTrigger>, e no produto os
+ * dialogs abrem por estado (botão, item de menu, atalho).
+ */
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const returnFocus = React.useRef<HTMLElement | null>(null)
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -57,6 +65,18 @@ function DialogContent({
           className
         )}
         {...props}
+        onOpenAutoFocus={(event) => {
+          returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          const origin = returnFocus.current
+          if (!event.defaultPrevented && origin?.isConnected && origin !== document.body) {
+            event.preventDefault()
+            origin.focus()
+          }
+        }}
       >
         {children}
         {showCloseButton && (

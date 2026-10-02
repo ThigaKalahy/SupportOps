@@ -13,6 +13,7 @@ import {
   SIDEBAR_COOKIE_MAX_AGE,
 } from "./constants"
 import { ContextBar } from "./context-bar"
+import { CrumbLabelsContext } from "./crumb-label"
 import { crumbsFor } from "./nav-config"
 import { CurrentUser, ProductIdentity, Sidebar, SidebarNav, type ShellUser } from "./sidebar"
 
@@ -37,6 +38,14 @@ export function AppShell({
   const pathname = usePathname()
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
   const [drawerOpen, setDrawerOpen] = React.useState(false)
+  const [segmentLabels, setSegmentLabels] = React.useState<Record<string, string>>({})
+  const crumbLabels = React.useMemo(
+    () => ({
+      set: (segment: string, label: string) =>
+        setSegmentLabels((current) => (current[segment] === label ? current : { ...current, [segment]: label })),
+    }),
+    [],
+  )
 
   // Fecha o drawer quando a rota muda (inclusive por voltar/avançar do navegador).
   React.useEffect(() => {
@@ -76,13 +85,13 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <ContextBar
           className="sticky top-0 z-30"
-          crumbs={crumbsFor(pathname)}
+          crumbs={crumbsFor(pathname, segmentLabels)}
           onOpenNavigation={() => setDrawerOpen(true)}
           actionsSlotId={CONTEXT_ACTIONS_ID}
           readOnly={user.role === "VIEWER"}
         />
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">
-          {children}
+          <CrumbLabelsContext value={crumbLabels}>{children}</CrumbLabelsContext>
         </main>
       </div>
     </div>

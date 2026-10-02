@@ -22,7 +22,7 @@ export function Breadcrumb({ crumbs }: { crumbs: Crumb[] }) {
           return (
             <li key={crumb.href} className={cn("flex min-w-0 items-center gap-1.5", !last && "max-md:hidden")}>
               {index > 0 ? (
-                <span aria-hidden className="text-ink-tertiary">
+                <span aria-hidden className={cn("text-ink-tertiary", last && "max-md:hidden")}>
                   /
                 </span>
               ) : null}

@@ -144,7 +144,7 @@ pnpm db:seed             # popular dados de demonstração
 pnpm db:studio           # inspecionar dados
 pnpm user:create         # criar usuário (único meio de criar conta)
 pnpm user:password       # redefinir senha de usuário
-pnpm test                # node:test (tests/); parte lê o banco com os dados do seed
+pnpm test                # node:test (tests/), arquivos em série; parte lê o banco com os dados do seed
 pnpm lint && pnpm typecheck
 ```
 
@@ -280,6 +280,16 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Cadastro, edição e desativação: `MemberDialog` e `DeactivateMemberDialog` em `src/components/member/` (reutilizáveis no header do perfil, P7), Server Actions em `src/actions/members.ts`, núcleo testável em `src/server/members.ts`. Mudança de senioridade, cargo ou status exige motivo e grava MemberChange + TimelineEvent; desativar = INACTIVE + `deletedAt`, nunca apaga. Responsabilidades com histórico (`endedAt`), competências com nível 1–5.
 - Primitivos ampliados: DataTable (`groupBy`, `stacked: "aside"`, vazio/erro fora da tabela), FieldGroup (filho como função, para Select). Data em DD/MM/AAAA com máscara (`maskDateInput`, `parseDisplayDate`), tempo no time (`formatTenure`), `plural()` em labels.
 - `db.ts` tem `queryCounter`, ligado só com `PRISMA_COUNT_QUERIES=1` (testes).
+
+**P7 — Perfil do analista**
+- `/team/[memberId]`: `layout.tsx` com cabeçalho sempre visível (avatar, nome, cargo, senioridade, status, entrada com tempo no time, gestor, último 1:1, próximo acompanhamento com severidade, responsabilidades em MetaLabel e — só quando há — a linha de atenção com cada motivo em frase) e abas em rota (`RouteTabs`): Visão geral, Timeline, Combinados, Desenvolvimento, 1:1 e feedbacks. Breadcrumb mostra o nome da pessoa (`<CrumbLabel>` em `src/components/shell/crumb-label.tsx`). Pessoa desativada continua acessível, só leitura.
+- Visão geral em duas colunas assimétricas: resumo gerencial editável no lugar (Ctrl+Enter salva, Esc cancela; auditado, sem linha na timeline), últimos 5 registros com cadeado nos privados, pontos fortes e de desenvolvimento lado a lado; coluna estreita com combinados em aberto (severidade de prazo e arrasto), PDIs ativos (ações concluídas e último acompanhamento; > 45 dias em destaque), mentorias nos dois sentidos e ritmo (dias desde o último 1:1 com a referência da senioridade, último feedback, último registro). O ponto de entrada dos blocos de cumprimento (P12) e validação de prioridade (P11) está marcado em `page.tsx`.
+- Leituras em `src/server/queries/profile.ts` (`getMemberProfile`, `getMemberOverview`), com `visibilityFilter` em toda leitura de 1:1, feedback e timeline: para o VIEWER, último 1:1, próximo acompanhamento, ritmo e últimos registros contam só o que é SHARED. `listTeamMembers` aceita `id` (atenção de uma pessoa, inclusive inativa). `loadProfile` (React `cache`) evita repetir as consultas entre layout e página.
+- Ações do cabeçalho (só para quem escreve), cada uma em dialog: Registrar 1:1, Dar feedback, Novo combinado, Anotação, Editar cadastro (+ Desativar no menu). ≥ 1280px viram botões; abaixo, um botão "Registrar" com menu. Formulários em `src/components/forms/` com o mesmo schema zod da action (`src/lib/validators/records.ts`, `agreement.ts`, `fields.ts`): 1:1 com data e assuntos de cara e o resto em seções recolhidas; feedback SCI com rótulos de ajuda, reconhecimento sugere SHARED enquanto a pessoa não escolheu; anotação; combinado rápido (Enter salva, Ctrl/⌘+Enter salva e reabre em branco, origem pelo contexto, originalDueDate = dueDate). Núcleos testáveis em `src/server/records.ts` e `src/server/agreements.ts`; actions em `src/actions/records.ts` e `src/actions/agreements.ts`; casca comum em `src/server/action-runner.ts`.
+- `/team`: clicar na linha abre o perfil (`DataTable.rowHref`; o nome é link para teclado e nova aba). As abas Timeline, Combinados, Desenvolvimento e 1:1 e feedbacks ainda mostram aviso de "ainda não disponível" (P8, P9, P14, P13).
+- Primitivos novos no /ui-lab: `RouteTabs` (abas em rota) e `Section` (bloco de página sem card). `DialogContent` devolve o foco ao elemento que abriu o dialog (o Radix só devolvia a um `DialogTrigger`).
+- Datas de negócio na timeline: `businessDateAtNoon` grava 1:1, feedback, daily e conclusão de combinado ao meio-dia de São Paulo — meia-noite UTC aparecia como o dia anterior.
+- `pnpm test` roda os arquivos em série (`--test-concurrency=1`): eles compartilham o banco.
 
 ## Backlog de curto prazo
 
