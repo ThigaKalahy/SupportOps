@@ -9,7 +9,7 @@ import type {
 
 // Import relativo com extensão: este arquivo também roda no Node puro (seed).
 import { businessDateAtNoon } from "../lib/dates.ts"
-import { fill, labels } from "../lib/labels.ts"
+import { fill, labels, plural } from "../lib/labels.ts"
 
 /**
  * ÚNICO lugar do código que escreve em TimelineEvent (D2, CLAUDE.md).
@@ -151,6 +151,23 @@ interface DailyParticipationLike {
   note: string | null
   blocker: string | null
   authorUserId: string
+  /** Desfechos dos combinados da pessoa revisados nesta daily. */
+  reviewed?: { DONE: number; PARTIAL: number; NOT_DONE: number }
+}
+
+/** "Revisão de 3 combinados: 2 feitos, 1 parcial". */
+export function dailyReviewText(reviewed: { DONE: number; PARTIAL: number; NOT_DONE: number }): string | null {
+  const parts = labels.timeline.dailyReviewParts
+  const total = reviewed.DONE + reviewed.PARTIAL + reviewed.NOT_DONE
+  if (total === 0) return null
+  const detail = [
+    reviewed.DONE ? fill(reviewed.DONE === 1 ? parts.done : parts.doneMany, { count: reviewed.DONE }) : null,
+    reviewed.PARTIAL ? fill(reviewed.PARTIAL === 1 ? parts.partial : parts.partialMany, { count: reviewed.PARTIAL }) : null,
+    reviewed.NOT_DONE ? fill(reviewed.NOT_DONE === 1 ? parts.notDone : parts.notDoneMany, { count: reviewed.NOT_DONE }) : null,
+  ]
+    .filter(Boolean)
+    .join(", ")
+  return plural(labels.timeline.dailyReview, total, { detail })
 }
 
 interface NoteLike {
@@ -241,16 +258,21 @@ export const timelineEventFor = {
     }
   },
 
-  /** Uma linha por participante com nota ou impeditivo; presença simples não vira evento. */
+  /**
+   * Uma linha por pessoa que teve nota, impeditivo ou combinado revisado na
+   * daily. Presença simples não vira evento — presença não é fato de prontuário.
+   */
   dailyParticipation(p: DailyParticipationLike): TimelineEventInput | null {
-    const title = p.note ?? p.blocker
+    const review = p.reviewed ? dailyReviewText(p.reviewed) : null
+    const title = p.note ?? p.blocker ?? review
     if (!title) return null
+    const rest = [p.note ? p.blocker : null, title === review ? null : review].filter(Boolean).join(" · ")
     return {
       memberId: p.memberId,
       occurredAt: businessDateAtNoon(p.date),
       type: "DAILY",
       title,
-      summary: p.note ? p.blocker : null,
+      summary: rest || null,
       authorUserId: p.authorUserId,
       visibility: "SHARED",
       tags: p.blocker ? ["impeditivo"] : [],

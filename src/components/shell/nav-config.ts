@@ -46,6 +46,7 @@ const subrouteLabels: Record<string, string> = {
   agreements: labels.nav.agreements,
   development: labels.nav.development,
   records: labels.nav.records,
+  new: labels.dailies.new,
 }
 
 export interface Crumb {

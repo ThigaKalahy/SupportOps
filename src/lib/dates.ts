@@ -75,6 +75,17 @@ export function businessDateAtNoon(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 15));
 }
 
+/**
+ * Próximo dia útil (segunda a sexta) depois de uma data de negócio — o padrão
+ * de "próxima daily". Feriados não são considerados.
+ */
+export function nextBusinessDay(date: Date): Date {
+  const next = new Date(date);
+  do next.setUTCDate(next.getUTCDate() + 1);
+  while (next.getUTCDay() === 0 || next.getUTCDay() === 6);
+  return next;
+}
+
 /** Chave ISO "AAAA-MM-DD" de uma data de negócio. Uso interno — nunca exibir. */
 export function toBusinessDateKey(date: Date): string {
   return format(fromBusinessDate(date), "yyyy-MM-dd");

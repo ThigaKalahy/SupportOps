@@ -13,11 +13,11 @@ import { ForbiddenError } from "./access"
  * `paths`: rota simples ou [rota, "layout"] para revalidar a rota e as filhas
  * (ex.: o perfil e todas as abas dele).
  */
-export async function runAction(
+export async function runAction<R extends ActionResult | { ok: true; id: string }>(
   scope: string,
-  write: () => Promise<ActionResult>,
+  write: () => Promise<R>,
   paths: (string | [string, "layout"])[],
-): Promise<ActionResult> {
+): Promise<R | Extract<ActionResult, { ok: false }>> {
   try {
     const result = await write()
     if (result.ok) {
