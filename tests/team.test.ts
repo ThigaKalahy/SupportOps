@@ -13,6 +13,7 @@ import { after, before, describe, test } from "node:test"
 
 const { db, dbIncludingDeleted, queryCounter } = await import("../src/server/db.ts")
 const { listTeamMembers } = await import("../src/server/queries/members.ts")
+const { getThresholds } = await import("../src/server/queries/thresholds.ts")
 const { memberAttention } = await import("../src/server/alerts.ts")
 const { createMemberRecord, updateMemberRecord, deactivateMemberRecord } = await import("../src/server/members.ts")
 
@@ -44,8 +45,10 @@ describe("listagem de /team", () => {
   before(cleanupTestMember)
 
   test("uma única consulta SQL, com os agregados (sem N+1)", async () => {
+    // Os limiares de alerta (P15) vêm carregados do layout; a listagem em si é UMA consulta.
+    const thresholds = await getThresholds(ownerViewer)
     const start = queryCounter.count
-    const rows = await listTeamMembers(ownerViewer)
+    const rows = await listTeamMembers(ownerViewer, {}, thresholds)
     assert.equal(queryCounter.count - start, 1)
     assert.equal(rows.length, 9)
     assert.ok(rows.every((r) => typeof r.openAgreements === "number"))

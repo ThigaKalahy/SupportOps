@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation"
 
 import { QuickAgreementProvider } from "@/components/forms/quick-agreement"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
+import { ToastProvider } from "@/components/ui/toast"
+import type { AlertThresholds } from "@/lib/alert-thresholds"
 import { labels } from "@/lib/labels"
 
 import {
@@ -16,7 +18,8 @@ import {
 import { ContextBar } from "./context-bar"
 import { CrumbLabelsContext } from "./crumb-label"
 import { crumbsFor } from "./nav-config"
-import { CurrentUser, ProductIdentity, Sidebar, SidebarNav, type ShellUser } from "./sidebar"
+import { CurrentUser, ProductIdentity, Sidebar, SidebarNav, type NavCounts, type ShellUser } from "./sidebar"
+import { ThresholdsProvider } from "./thresholds-context"
 
 function persistCollapsed(collapsed: boolean) {
   const value = collapsed ? SIDEBAR_COLLAPSED_VALUE : "expanded"
@@ -31,12 +34,17 @@ export function AppShell({
   defaultCollapsed,
   user,
   agreementMembers,
+  counts,
+  thresholds,
   children,
 }: {
   defaultCollapsed: boolean
   user: ShellUser
   /** Pessoas para a criação rápida de combinado (atalho C); null para quem só lê. */
   agreementMembers: { id: string; preferredName: string }[] | null
+  /** Contadores discretos da sidebar (mesma fonte da lista da home). */
+  counts: NavCounts
+  thresholds: AlertThresholds
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -63,6 +71,7 @@ export function AppShell({
   }
 
   return (
+    <ToastProvider>
     <div className="flex min-h-svh">
       <a
         href="#conteudo"
@@ -71,7 +80,7 @@ export function AppShell({
         {labels.shell.skipToContent}
       </a>
 
-      <Sidebar pathname={pathname} collapsed={collapsed} onToggle={toggleCollapsed} user={user} />
+      <Sidebar pathname={pathname} collapsed={collapsed} onToggle={toggleCollapsed} user={user} counts={counts} />
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="left" className="w-[264px] gap-0 p-0">
@@ -80,6 +89,7 @@ export function AppShell({
           <ProductIdentity />
           <SidebarNav
             pathname={pathname}
+            counts={counts}
             onNavigate={() => setDrawerOpen(false)}
             footer={<CurrentUser user={user} />}
           />
@@ -96,10 +106,13 @@ export function AppShell({
         />
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">
           <CrumbLabelsContext value={crumbLabels}>
-            <QuickAgreementProvider members={agreementMembers}>{children}</QuickAgreementProvider>
+            <ThresholdsProvider value={thresholds}>
+              <QuickAgreementProvider members={agreementMembers}>{children}</QuickAgreementProvider>
+            </ThresholdsProvider>
           </CrumbLabelsContext>
         </main>
       </div>
     </div>
+    </ToastProvider>
   )
 }

@@ -39,6 +39,9 @@ export const deactivateMemberSchema = z.object({
   reason: z.string().trim().min(3, v.reasonRequired).max(500, v.tooLong),
 })
 
+/** Reativar quem foi desativado: também é evento de carreira, com motivo. */
+export const reactivateMemberSchema = deactivateMemberSchema
+
 /** Resumo gerencial do perfil, editado inline. Vazio apaga o resumo. */
 export const managerSummarySchema = z.object({
   id: z.string().min(1),

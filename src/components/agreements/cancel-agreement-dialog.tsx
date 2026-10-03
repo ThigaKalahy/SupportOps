@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/toast"
 import { labels } from "@/lib/labels"
 import { cancelAgreementSchema } from "@/lib/validators/agreement"
 
@@ -27,6 +28,7 @@ export function CancelAgreementDialog({
   const [reason, setReason] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const toast = useToast()
   const inputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
@@ -46,7 +48,10 @@ export function CancelAgreementDialog({
     setError(null)
     startTransition(async () => {
       const result = await cancelAgreement(parsed.data)
-      if (result.ok) onOpenChange(false)
+      if (result.ok) {
+        toast.show(labels.toast.agreementCancelled)
+        onOpenChange(false)
+      }
       else setError(result.fieldErrors?.reason ?? result.error)
     })
   }

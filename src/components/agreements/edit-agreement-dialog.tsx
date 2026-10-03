@@ -11,6 +11,7 @@ import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { enumLabel, labels } from "@/lib/labels"
 import { AGREEMENT_PRIORITIES, editAgreementSchema, type EditAgreementInput } from "@/lib/validators/agreement"
 
@@ -34,6 +35,7 @@ export function EditAgreementDialog({
   const form = useForm<EditAgreementInput>({ resolver: zodResolver(editAgreementSchema), defaultValues: agreement })
   const [formError, setFormError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const toast = useToast()
 
   React.useEffect(() => {
     if (!open) return
@@ -45,7 +47,10 @@ export function EditAgreementDialog({
     setFormError(null)
     startTransition(async () => {
       const result = await updateAgreement(values)
-      if (result.ok) return onOpenChange(false)
+      if (result.ok) {
+        toast.show(labels.toast.agreementUpdated)
+        return onOpenChange(false)
+      }
       setFormError(result.error)
       applyFieldErrors(result.fieldErrors, FIELDS, form.setError)
     })

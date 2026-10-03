@@ -1,6 +1,7 @@
 "use client"
 
 import { CompetencyList } from "@/components/development/competency-list"
+import { MentorshipSection } from "@/components/development/mentorship-section"
 import { PlanBlock } from "@/components/development/plan-block"
 import { TraitsSection } from "@/components/development/traits-section"
 import { LevelBar } from "@/components/ui/level-bar"
@@ -58,7 +59,7 @@ export function LabDevelopment() {
       </Specimen>
       <Specimen state="PlanBlock · ativo parado (nunca acompanhado há 90 dias)" className="w-full">
         <div className="w-full">
-          <PlanBlock plan={plan("p1", {})} canWrite />
+          <PlanBlock plan={plan("p1", {})} canWrite edit={{ competencies: [{ id: "c1", name: "Análise de log" }], mentors: [{ id: "m2", preferredName: "Rafael" }] }} />
         </div>
       </Specimen>
       <Specimen state="PlanBlock · ativo em dia · concluído (leitura)" className="w-full">
@@ -86,6 +87,21 @@ export function LabDevelopment() {
               { id: "c3", name: "Escalonamento", category: "Processo", level: null, assessedAt: null, evidence: null, expectedCurrent: 3, expectedNext: null },
             ]}
           />
+        </div>
+      </Specimen>
+      <Specimen state="MentorshipSection · nos dois sentidos, com registrar e encerrar · vazia (leitura)" className="w-full">
+        <div className="grid w-full gap-6 lg:grid-cols-2">
+          <MentorshipSection
+            canWrite
+            member={{ id: "m1", preferredName: "Henrique" }}
+            people={[{ id: "m2", preferredName: "Rafael" }, { id: "m3", preferredName: "Larissa" }]}
+            competencies={[{ id: "c1", name: "Análise de log" }]}
+            mentorships={[
+              { id: "l1", role: "mentee", other: { id: "m2", preferredName: "Rafael" }, competency: "Análise de log", startedAt: day(-60) },
+              { id: "l2", role: "mentor", other: { id: "m3", preferredName: "Larissa" }, competency: null, startedAt: day(-20) },
+            ]}
+          />
+          <MentorshipSection canWrite={false} member={{ id: "m1", preferredName: "Henrique" }} people={[]} competencies={[]} mentorships={[]} />
         </div>
       </Specimen>
       <Specimen state="TraitsSection · com histórico" className="w-full">

@@ -1,10 +1,13 @@
 import { Prisma, type MemberStatus } from "@prisma/client"
 
 import { trendWindows } from "../../lib/adherence.ts"
+import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
 import { todayBusinessDate } from "../../lib/dates.ts"
-import { memberAttention, ATTENTION_THRESHOLDS, type MemberAttention } from "../alerts.ts"
+import { memberAttention, type MemberAttention } from "../alerts.ts"
 import { db } from "../db.ts"
 import { visibilitySql, type Viewer } from "../visibility.ts"
+
+import { getThresholds } from "./thresholds.ts"
 
 /**
  * Leituras de pessoas do time. A listagem de /team sai de UMA consulta SQL,
@@ -68,10 +71,16 @@ interface RawRow {
  * Pessoas do time com agregados. Ordem: senioridade (mais alta primeiro) e
  * nome — nunca por métrica de desempenho (sem ranking, D7).
  */
-export async function listTeamMembers(viewer: Viewer, filters: TeamListFilters = {}): Promise<TeamListRow[]> {
+export async function listTeamMembers(
+  viewer: Viewer,
+  filters: TeamListFilters = {},
+  /** Limiares de /settings (os mesmos do motor da home). As páginas passam os já carregados no layout. */
+  thresholds?: AlertThresholds,
+): Promise<TeamListRow[]> {
   const today = todayBusinessDate()
+  const t = thresholds ?? (await getThresholds(viewer))
   const dueSoonLimit = new Date(today)
-  dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + ATTENTION_THRESHOLDS.dueSoonDays)
+  dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + t.dueSoonDays)
 
   // Janelas da tendência de cumprimento (mesmas regras de src/lib/adherence.ts, conferidas em teste).
   const windows = trendWindows(today)
@@ -106,7 +115,7 @@ export async function listTeamMembers(viewer: Viewer, filters: TeamListFilters =
       (SELECT count(*)::int FROM "Agreement" a
         WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
           AND (SELECT count(*) FROM "AgreementCheckin" c
-                WHERE c."agreementId" = a."id" AND c."newDueDate" IS NOT NULL) >= ${ATTENTION_THRESHOLDS.chronicReschedules}
+                WHERE c."agreementId" = a."id" AND c."newDueDate" IS NOT NULL) >= ${t.chronicReschedules}
       ) AS "chronicAgreements",
       (SELECT min(coalesce((p."lastReviewedAt" AT TIME ZONE 'America/Sao_Paulo')::date, p."startedAt"))
         FROM "DevelopmentPlan" p
@@ -152,6 +161,7 @@ export async function listTeamMembers(viewer: Viewer, filters: TeamListFilters =
               },
             },
             today,
+            t,
           )
     return {
       id: row.id,

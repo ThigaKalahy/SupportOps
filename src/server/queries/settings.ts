@@ -46,6 +46,19 @@ export async function catalogUsage(kind: CatalogKind, ids: string[]): Promise<Ma
       _count: { _all: true },
     })
     for (const row of rows) add(row.blockerReasonId, row._count._all)
+  } else if (kind === "competency") {
+    // Nível avaliado, PDI (inclusive excluído), célula da matriz e mentoria apontam para a competência.
+    const [levels, plans, expectations, mentorships] = await Promise.all([
+      db.memberCompetency.groupBy({ by: ["competencyId"], where: { competencyId: { in: ids } }, _count: { _all: true } }),
+      db.developmentPlan.groupBy({
+        by: ["competencyId"],
+        where: { competencyId: { in: ids }, deletedAt: undefined },
+        _count: { _all: true },
+      }),
+      db.competencyExpectation.groupBy({ by: ["competencyId"], where: { competencyId: { in: ids } }, _count: { _all: true } }),
+      db.mentorshipLink.groupBy({ by: ["competencyId"], where: { competencyId: { in: ids } }, _count: { _all: true } }),
+    ])
+    for (const row of [...levels, ...plans, ...expectations, ...mentorships]) add(row.competencyId, row._count._all)
   }
   return usage
 }
@@ -122,4 +135,24 @@ export async function listTicketPatterns(viewer: Viewer): Promise<TicketPatternI
     select: { id: true, label: true, regex: true, captureGroup: true, isActive: true },
   })
   return rows.map((r) => ({ ...r, usage: 0 }))
+}
+
+export interface CompetencyItem {
+  id: string
+  label: string
+  category: string | null
+  description: string | null
+  isActive: boolean
+  usage: number
+}
+
+/** Competências por categoria e nome (sem posição própria). Base da matriz, dos níveis e dos PDIs. */
+export async function listCompetencies(viewer: Viewer): Promise<CompetencyItem[]> {
+  const rows = await db.competency.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, category: true, description: true, isActive: true },
+  })
+  const usage = await catalogUsage("competency", rows.map((r) => r.id))
+  return rows.map(({ name, ...r }) => ({ ...r, label: name, usage: usage.get(r.id) ?? 0 }))
 }

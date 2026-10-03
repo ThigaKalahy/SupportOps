@@ -38,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
+import { Toast, ToastProvider, useToast } from "@/components/ui/toast"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -214,7 +215,26 @@ export function LabOverlays() {
           <PaletteContent />
         </Command>
       </Specimen>
+
+      <Specimen state="Toast · confirmação (calm) · neutro · disparo real (some em 4 s, pausa com o ponteiro)" className="w-full">
+        <div className="flex w-full max-w-[360px] flex-col gap-2">
+          <Toast static item={{ message: labels.toast.feedbackCreated, tone: "calm" }} onDismiss={() => {}} />
+          <Toast static item={{ message: labels.toast.recordUpdated, tone: "neutral" }} onDismiss={() => {}} />
+          <ToastProvider>
+            <ToastTrigger />
+          </ToastProvider>
+        </div>
+      </Specimen>
     </div>
+  )
+}
+
+function ToastTrigger() {
+  const toast = useToast()
+  return (
+    <Button variant="secondary" className="self-start" onClick={() => toast.show(labels.toast.oneOnOneCreated)}>
+      {labels.uiLab.showToast}
+    </Button>
   )
 }
 

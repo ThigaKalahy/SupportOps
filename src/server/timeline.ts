@@ -124,6 +124,31 @@ export async function replaceTimelineEvents(
   await recordTimelineEvents(tx, inputs)
 }
 
+/**
+ * Edição de um registro de linha única (1:1, feedback, anotação): refaz todas
+ * as linhas daquela origem — data, título, tipo e visibilidade podem mudar.
+ */
+export async function rebuildTimelineEvents(tx: Tx, source: TimelineSource, inputs: TimelineEventInput[]): Promise<void> {
+  await tx.timelineEvent.deleteMany({ where: { [SOURCE_COLUMN[source.kind]]: source.id } })
+  await recordTimelineEvents(tx, inputs)
+}
+
+/** Registro excluído (soft delete): as linhas-espelho saem da timeline. */
+export async function removeTimelineEvents(tx: Tx, source: TimelineSource): Promise<void> {
+  await tx.timelineEvent.deleteMany({ where: { [SOURCE_COLUMN[source.kind]]: source.id } })
+}
+
+/**
+ * Edição de um PDI: só a linha de criação (sem tag) acompanha o texto novo —
+ * acompanhamentos e conclusão registraram o objetivo como era naquele dia.
+ */
+export async function syncPlanCreatedEvent(tx: Tx, planId: string, content: { title: string; summary: string }): Promise<void> {
+  await tx.timelineEvent.updateMany({
+    where: { developmentPlanId: planId, type: "DEVELOPMENT", tags: { isEmpty: true } },
+    data: { title: clip(content.title), summary: content.summary },
+  })
+}
+
 /** Edição do texto de um registro: título e resumo de todas as linhas dele. */
 export async function syncTimelineContent(
   tx: Tx,

@@ -6,6 +6,7 @@ import { memberIdOf, runAction } from "@/server/action-runner"
 import {
   createMemberRecord,
   deactivateMemberRecord,
+  reactivateMemberRecord,
   updateManagerSummaryRecord,
   updateMemberRecord,
 } from "@/server/members"
@@ -33,4 +34,9 @@ export async function deactivateMember(input: unknown): Promise<ActionResult> {
 export async function updateManagerSummary(input: unknown): Promise<ActionResult> {
   const id = memberIdOf(input, "id")
   return runAction("members", async () => updateManagerSummaryRecord(await requireOwner(), input), [`/team/${id}`])
+}
+
+export async function reactivateMember(input: unknown): Promise<ActionResult> {
+  const id = memberIdOf(input, "id")
+  return runAction("members", async () => reactivateMemberRecord(await requireOwner(), input), ["/team", [`/team/${id}`, "layout"]])
 }

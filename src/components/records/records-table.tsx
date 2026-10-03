@@ -5,11 +5,13 @@ import Link from "next/link"
 import { LockIcon } from "lucide-react"
 
 import { AgreementStatusCell } from "@/components/agreements/agreements-table"
+import { RecordActions } from "@/components/forms/record-actions"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { formatDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { avatarColors, initials } from "@/lib/people"
 import type { RecordRow } from "@/server/queries/records"
@@ -44,11 +46,14 @@ export function RecordsTable({
   rows,
   showMember = true,
   empty,
+  canWrite = false,
 }: {
   rows: RecordRow[]
   /** Falso na aba do perfil (a pessoa já está no cabeçalho). */
   showMember?: boolean
   empty: { title: string; direction: string }
+  /** Mostra editar/excluir no painel do registro. */
+  canWrite?: boolean
 }) {
   const [selected, setSelected] = React.useState<RecordRow | null>(null)
 
@@ -127,7 +132,9 @@ export function RecordsTable({
         onRowSelect={setSelected}
       />
       <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent className="overflow-y-auto sm:max-w-dialog">{selected ? <RecordDetail row={selected} /> : null}</SheetContent>
+        <SheetContent className="overflow-y-auto sm:max-w-dialog">{selected ? (
+            <RecordDetail row={selected} canWrite={canWrite} onChanged={() => setSelected(null)} />
+          ) : null}</SheetContent>
       </Sheet>
     </>
   )
@@ -144,7 +151,7 @@ function Field({ label, text }: { label: string; text: string | null | undefined
 }
 
 /** O registro inteiro, somente leitura, com o follow-up e os combinados gerados. */
-function RecordDetail({ row }: { row: RecordRow }) {
+function RecordDetail({ row, canWrite, onChanged }: { row: RecordRow; canWrite: boolean; onChanged: () => void }) {
   return (
     <div className="flex flex-col gap-5">
       <SheetHeader>
@@ -199,9 +206,25 @@ function RecordDetail({ row }: { row: RecordRow }) {
         ) : null}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-xs text-ink-secondary">
           <span>{fill(R.detail.by, { name: row.author })}</span>
-          <Link href={`/team/${row.member.id}/timeline`} className="text-accent hover:underline">
-            {R.detail.timeline}
-          </Link>
+          <span className="flex items-center gap-2">
+            {canWrite ? (
+              <>
+                <RecordActions
+                  source={{ kind: row.kind, id: row.id }}
+                  member={row.member}
+                  typeLabel={row.kind === "oneOnOne" ? R.types.oneOnOne : enumLabel("timelineEventType", row.category === "RECOGNITION" ? "RECOGNITION" : "FEEDBACK")}
+                  dateText={formatDate(row.date, "business")}
+                  onChanged={onChanged}
+                />
+                <span aria-hidden className="text-ink-tertiary">
+                  ·
+                </span>
+              </>
+            ) : null}
+            <Link href={`/team/${row.member.id}/timeline`} className="text-accent hover:underline">
+              {R.detail.timeline}
+            </Link>
+          </span>
         </div>
       </div>
     </div>

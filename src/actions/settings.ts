@@ -8,6 +8,7 @@ import {
   moveCatalogItemRecord,
   saveCatalogItemRecord,
   setCatalogItemActiveRecord,
+  setThresholdRecord,
 } from "@/server/settings"
 
 /**
@@ -16,7 +17,13 @@ import {
  * e a validação de prioridade, que também são revalidadas.
  */
 
-const PATHS: (string | [string, "layout"])[] = [["/settings", "layout"], "/priority-validations", "/dailies/new"]
+const PATHS: (string | [string, "layout"])[] = [
+  ["/settings", "layout"],
+  "/priority-validations",
+  "/dailies/new",
+  "/development",
+  ["/team", "layout"],
+]
 
 export async function saveCatalogItem(kind: string, input: unknown): Promise<ActionResult> {
   return runAction("settings", async () => saveCatalogItemRecord(await requireOwner(), kind, input), PATHS)
@@ -32,4 +39,12 @@ export async function setCatalogItemActive(input: unknown): Promise<ActionResult
 
 export async function deleteCatalogItem(input: unknown): Promise<ActionResult> {
   return runAction("settings", async () => deleteCatalogItemRecord(await requireOwner(), input), PATHS)
+}
+
+/** Limiar do motor de alertas: muda a home, os contadores, /team e o perfil. */
+export async function setThreshold(input: unknown): Promise<ActionResult> {
+  return runAction("settings", async () => setThresholdRecord(await requireOwner(), input), [
+    ["/", "layout"],
+    ["/settings", "layout"],
+  ])
 }

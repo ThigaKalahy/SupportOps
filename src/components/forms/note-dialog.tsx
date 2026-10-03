@@ -3,12 +3,13 @@
 import * as React from "react"
 import { useForm } from "react-hook-form"
 
-import { createNote } from "@/actions/records"
+import { createNote, updateNote } from "@/actions/records"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { noteSchema, type NoteInput } from "@/lib/validators/records"
@@ -28,20 +29,26 @@ export function NoteDialog({
   open,
   onOpenChange,
   member,
+  editing,
+  onSaved,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   member: RecordTarget
+  editing?: { id: string; values: NoteInput }
+  /** Chamado depois de salvar, antes de fechar. */
+  onSaved?: () => void
 }) {
+  const toast = useToast()
   const defaults = React.useCallback(
-    (): NoteInput => ({
+    (): NoteInput => editing?.values ?? ({
       memberId: member.id,
       date: formatDate(todayBusinessDate(), "business"),
       title: "",
       body: "",
       visibility: "PRIVATE",
     }),
-    [member.id],
+    [member.id, editing],
   )
   const form = useForm<NoteInput>({ resolver: zodResolver(noteSchema), defaultValues: defaults() })
   const [formError, setFormError] = React.useState<string | null>(null)
@@ -51,13 +58,17 @@ export function NoteDialog({
     if (!open) return
     form.reset(defaults())
     setFormError(null)
-  }, [open, defaults, form])
+  }, [open, defaults, form, editing])
 
   const onSubmit = form.handleSubmit((values) => {
     setFormError(null)
     startTransition(async () => {
-      const result = await createNote(values)
-      if (result.ok) return onOpenChange(false)
+      const result = editing ? await updateNote(editing.id, values) : await createNote(values)
+      if (result.ok) {
+        toast.show(editing ? labels.toast.recordUpdated : labels.toast.noteCreated)
+        onSaved?.()
+        return onOpenChange(false)
+      }
       setFormError(result.error)
       applyFieldErrors(result.fieldErrors, FIELDS, form.setError)
     })
@@ -77,8 +88,8 @@ export function NoteDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{L.title}</DialogTitle>
-          <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
+          <DialogTitle>{editing ? L.editTitle : L.title}</DialogTitle>
+          <DialogDescription>{fill(editing ? labels.forms.editDescription : L.description, { name: member.preferredName })}</DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
@@ -105,7 +116,7 @@ export function NoteDialog({
               {labels.common.cancel}
             </Button>
             <Button type="submit" loading={pending}>
-              {L.submit}
+              {editing ? labels.forms.saveChanges : L.submit}
             </Button>
           </DialogFooter>
         </form>

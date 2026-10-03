@@ -12,6 +12,8 @@ import {
 import { db } from "../db.ts"
 import { memberScope, type Viewer } from "../visibility.ts"
 
+import { getThresholds } from "./thresholds.ts"
+
 /**
  * Leituras de desenvolvimento. PDI, competência, ponto forte/de
  * desenvolvimento e mentoria não têm visibilidade própria: seguem o escopo de
@@ -66,7 +68,7 @@ function findPlans(viewer: Viewer, memberId?: string) {
   })
 }
 
-function toPlanView(p: PlanWithRelations, today: Date): PlanView {
+function toPlanView(p: PlanWithRelations, today: Date, staleDays: number): PlanView {
   return {
     id: p.id,
     member: p.member,
@@ -80,7 +82,7 @@ function toPlanView(p: PlanWithRelations, today: Date): PlanView {
     dueDate: p.dueDate,
     completedAt: p.completedAt,
     lastReviewedAt: p.lastReviewedAt,
-    staleness: planStaleness(p, today),
+    staleness: planStaleness(p, today, staleDays),
     progress: planProgress(p.actions),
     actions: p.actions.map((a) => ({
       id: a.id,
@@ -133,7 +135,7 @@ export async function getMemberDevelopment(viewer: Viewer, memberId: string, tod
     select: { id: true, seniorityId: true },
   })
   if (!member) return null
-  const [plans, competencies, levels, traits, seniorities, mentorships] = await Promise.all([
+  const [plans, competencies, levels, traits, seniorities, mentorships, thresholds] = await Promise.all([
     findPlans(viewer, memberId),
     db.competency.findMany({ where: { organizationId: viewer.organizationId, isActive: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     db.memberCompetency.findMany({ where: { memberId } }),
@@ -153,6 +155,7 @@ export async function getMemberDevelopment(viewer: Viewer, memberId: string, tod
         competency: { select: { name: true } },
       },
     }),
+    getThresholds(viewer),
   ])
   const index = seniorities.findIndex((s) => s.seniorityId === member.seniorityId)
   const current = seniorities[index]
@@ -174,7 +177,7 @@ export async function getMemberDevelopment(viewer: Viewer, memberId: string, tod
   })
 
   return {
-    plans: sortPlans(plans.map((p) => toPlanView(p, today))),
+    plans: sortPlans(plans.map((p) => toPlanView(p, today, thresholds.stalePlanDays))),
     competencies: competencyViews,
     seniority: { current: current?.label ?? null, next: next?.label ?? null },
     matrixEmpty: seniorities.every((s) => s.expected.size === 0),
@@ -204,13 +207,8 @@ export interface ReadinessRow {
 
 /** /development: PDIs por status, parados, mapa de mentorias e prontidão. */
 export async function getDevelopmentOverview(viewer: Viewer, today = todayBusinessDate()) {
-  const [plans, members, links, seniorities, levels] = await Promise.all([
+  const [plans, links, ready, thresholds] = await Promise.all([
     findPlans(viewer),
-    db.teamMember.findMany({
-      where: { ...memberScope(viewer), status: { not: "INACTIVE" } },
-      orderBy: { preferredName: "asc" },
-      select: { id: true, preferredName: true, seniorityId: true, seniority: { select: { label: true } } },
-    }),
     db.mentorshipLink.findMany({
       where: {
         endedAt: null,
@@ -224,11 +222,11 @@ export async function getDevelopmentOverview(viewer: Viewer, today = todayBusine
         competency: { select: { name: true } },
       },
     }),
-    seniorityLevels(viewer),
-    db.memberCompetency.findMany({ where: { member: { ...memberScope(viewer), deletedAt: null } } }),
+    getReadinessRows(viewer),
+    getThresholds(viewer),
   ])
 
-  const views = sortPlans(plans.map((p) => toPlanView(p, today)))
+  const views = sortPlans(plans.map((p) => toPlanView(p, today, thresholds.stalePlanDays)))
   const counts = Object.fromEntries((Object.keys(STATUS_ORDER) as DevelopmentPlanStatus[]).map((s) => [s, 0])) as Record<
     DevelopmentPlanStatus,
     number
@@ -243,18 +241,6 @@ export async function getDevelopmentOverview(viewer: Viewer, today = todayBusine
     groups.set(l.mentor.id, group)
   }
 
-  const levelsByMember = new Map<string, Map<string, number>>()
-  for (const l of levels) {
-    const map = levelsByMember.get(l.memberId) ?? new Map<string, number>()
-    map.set(l.competencyId, l.currentLevel)
-    levelsByMember.set(l.memberId, map)
-  }
-  // Prontidão: só quem atende a tudo da senioridade atual. Ordem alfabética, nunca por "quão perto".
-  const ready: ReadinessRow[] = members.flatMap((m) => {
-    const r = readiness(m.seniorityId, seniorities, levelsByMember.get(m.id) ?? new Map())
-    return r ? [{ member: { id: m.id, preferredName: m.preferredName, seniorityLabel: m.seniority.label }, readiness: r }] : []
-  })
-
   return {
     plans: views,
     counts,
@@ -262,9 +248,38 @@ export async function getDevelopmentOverview(viewer: Viewer, today = todayBusine
       .filter((p) => p.status === "ACTIVE" && p.staleness.stale)
       .sort((a, b) => b.staleness.days - a.staleness.days),
     mentorGroups: [...groups.values()].sort((a, b) => a.mentor.preferredName.localeCompare(b.mentor.preferredName)),
-    readiness: ready,
-    matrixEmpty: seniorities.every((s) => s.expected.size === 0),
+    readiness: ready.rows,
+    matrixEmpty: ready.matrixEmpty,
+    staleDays: thresholds.stalePlanDays,
   }
+}
+
+/**
+ * Prontidão de quem está no time (não desligado): só quem atende a tudo da
+ * senioridade atual. Ordem alfabética, nunca por "quão perto". Usada por
+ * /development e pelo alerta informativo do motor (P15).
+ */
+export async function getReadinessRows(viewer: Viewer): Promise<{ rows: ReadinessRow[]; matrixEmpty: boolean }> {
+  const [members, seniorities, levels] = await Promise.all([
+    db.teamMember.findMany({
+      where: { ...memberScope(viewer), status: { not: "INACTIVE" } },
+      orderBy: { preferredName: "asc" },
+      select: { id: true, preferredName: true, seniorityId: true, seniority: { select: { label: true } } },
+    }),
+    seniorityLevels(viewer),
+    db.memberCompetency.findMany({ where: { member: { ...memberScope(viewer), deletedAt: null } } }),
+  ])
+  const levelsByMember = new Map<string, Map<string, number>>()
+  for (const l of levels) {
+    const map = levelsByMember.get(l.memberId) ?? new Map<string, number>()
+    map.set(l.competencyId, l.currentLevel)
+    levelsByMember.set(l.memberId, map)
+  }
+  const rows = members.flatMap((m) => {
+    const r = readiness(m.seniorityId, seniorities, levelsByMember.get(m.id) ?? new Map())
+    return r ? [{ member: { id: m.id, preferredName: m.preferredName, seniorityLabel: m.seniority.label }, readiness: r }] : []
+  })
+  return { rows, matrixEmpty: seniorities.every((s) => s.expected.size === 0) }
 }
 
 export type DevelopmentOverview = Awaited<ReturnType<typeof getDevelopmentOverview>>

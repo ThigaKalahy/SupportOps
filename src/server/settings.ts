@@ -8,12 +8,15 @@ import {
   catalogSchemas,
   CATALOG_KINDS,
   moveCatalogSchema,
+  thresholdSchema,
+  UNORDERED_KINDS,
   type CatalogKind,
 } from "../lib/validators/settings.ts"
 
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
 import { catalogUsage } from "./queries/settings.ts"
+import { listThresholdSettings } from "./queries/thresholds.ts"
 import { canWrite, type Viewer } from "./visibility.ts"
 
 /**
@@ -55,6 +58,7 @@ const ENTITY: Record<CatalogKind, string> = {
   reclassificationReason: "ReclassificationReason",
   blockerReason: "BlockerReason",
   ticketPattern: "TicketUrlPattern",
+  competency: "Competency",
 }
 
 /** Ids na ordem de exibição. */
@@ -67,12 +71,15 @@ async function orderedIds(tx: Tx, kind: CatalogKind, organizationId: string): Pr
         ? await tx.reclassificationReason.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
         : kind === "blockerReason"
           ? await tx.blockerReason.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
-          : await tx.ticketUrlPattern.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
+          : kind === "ticketPattern"
+            ? await tx.ticketUrlPattern.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
+            : await tx.competency.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }], select: { id: true } })
   return rows.map((r) => r.id)
 }
 
 /** Grava a ordem: rank n..1 nos níveis, order 1..n nos demais. */
 async function renumber(tx: Tx, kind: CatalogKind, ids: string[]): Promise<void> {
+  if (UNORDERED_KINDS.includes(kind)) return
   for (const [i, id] of ids.entries()) {
     if (kind === "priorityLevel") await tx.priorityLevel.update({ where: { id }, data: { rank: ids.length - i } })
     else if (kind === "reclassificationReason") await tx.reclassificationReason.update({ where: { id }, data: { order: i + 1 } })
@@ -92,6 +99,8 @@ async function findItem(kind: CatalogKind, id: string, organizationId: string) {
       return db.blockerReason.findFirst({ where })
     case "ticketPattern":
       return db.ticketUrlPattern.findFirst({ where })
+    case "competency":
+      return db.competency.findFirst({ where })
   }
 }
 
@@ -107,7 +116,9 @@ async function labelTaken(kind: CatalogKind, organizationId: string, label: stri
         ? await db.reclassificationReason.findMany({ where, select })
         : kind === "blockerReason"
           ? await db.blockerReason.findMany({ where, select })
-          : await db.ticketUrlPattern.findMany({ where, select })
+          : kind === "ticketPattern"
+            ? await db.ticketUrlPattern.findMany({ where, select })
+            : (await db.competency.findMany({ where, select: { name: true } })).map((r) => ({ label: r.name }))
   return rows.some((r) => norm(r.label) === norm(label))
 }
 
@@ -162,6 +173,12 @@ export async function saveCatalogItemRecord(user: Viewer, kind: unknown, input: 
       after = before
         ? await tx.blockerReason.update({ where: { id: before.id }, data: { label: d.label, category: d.category } })
         : await tx.blockerReason.create({ data: { organizationId: org, label: d.label, category: d.category, order: 0 } })
+    } else if (k === "competency") {
+      const d = data as { label: string; category: string; description: string }
+      const fields = { name: d.label, category: d.category || null, description: d.description || null }
+      after = before
+        ? await tx.competency.update({ where: { id: before.id }, data: fields })
+        : await tx.competency.create({ data: { organizationId: org, ...fields } })
     } else {
       const d = data as { label: string; regex: string; captureGroup: number }
       after = before
@@ -191,6 +208,7 @@ export async function moveCatalogItemRecord(user: Viewer, input: unknown): Promi
   const parsed = moveCatalogSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
   const { kind, id, direction } = parsed.data
+  if (UNORDERED_KINDS.includes(kind)) return { ok: false, error: labels.validation.generic }
   const org = user.organizationId
   await db.$transaction(async (tx) => {
     const ids = await orderedIds(tx, kind, org)
@@ -218,6 +236,7 @@ export async function setCatalogItemActiveRecord(user: Viewer, input: unknown): 
     if (kind === "priorityLevel") await tx.priorityLevel.update({ where: { id }, data })
     else if (kind === "reclassificationReason") await tx.reclassificationReason.update({ where: { id }, data })
     else if (kind === "blockerReason") await tx.blockerReason.update({ where: { id }, data })
+    else if (kind === "competency") await tx.competency.update({ where: { id }, data })
     else await tx.ticketUrlPattern.update({ where: { id }, data })
     const a = audit(user, kind, active ? "activate" : "deactivate", id, { isActive: before.isActive }, { isActive: active })
     await writeAudit(a.entry, { ...a.context, tx })
@@ -240,10 +259,47 @@ export async function deleteCatalogItemRecord(user: Viewer, input: unknown): Pro
     if (kind === "priorityLevel") await tx.priorityLevel.delete({ where: { id } })
     else if (kind === "reclassificationReason") await tx.reclassificationReason.delete({ where: { id } })
     else if (kind === "blockerReason") await tx.blockerReason.delete({ where: { id } })
+    else if (kind === "competency") await tx.competency.delete({ where: { id } })
     else await tx.ticketUrlPattern.delete({ where: { id } })
     await renumber(tx, kind, await orderedIds(tx, kind, org))
     const a = audit(user, kind, "delete", id, before)
     await writeAudit(a.entry, { ...a.context, tx })
+  })
+  return { ok: true }
+}
+
+/**
+ * Um limiar do motor de alertas. Só chaves conhecidas (as escalares e a
+ * cadência de 1:1 de uma senioridade existente), dentro da faixa; null ou o
+ * próprio padrão apagam a linha (volta ao padrão). Auditado.
+ */
+export async function setThresholdRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+  const parsed = thresholdSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic }
+  const { key, value } = parsed.data
+  const setting = (await listThresholdSettings(user)).find((s) => s.key === key)
+  if (!setting) return { ok: false, error: labels.validation.generic }
+  if (value !== null && (value < setting.min || value > setting.max)) {
+    return { ok: false, error: fill(S.thresholds.outOfRange, { min: setting.min, max: setting.max }) }
+  }
+  const org = user.organizationId
+  const where = { organizationId_key: { organizationId: org, key } }
+  const reset = value === null || value === setting.defaultValue
+
+  await db.$transaction(async (tx) => {
+    if (reset) await tx.alertThreshold.deleteMany({ where: { organizationId: org, key } })
+    else await tx.alertThreshold.upsert({ where, create: { organizationId: org, key, value }, update: { value } })
+    await writeAudit(
+      {
+        action: "settings.alertThreshold.update",
+        entity: "AlertThreshold",
+        entityId: key,
+        before: { value: setting.value, custom: setting.custom },
+        after: { value: reset ? setting.defaultValue : value, custom: !reset },
+      },
+      { organizationId: org, userId: user.id, tx },
+    )
   })
   return { ok: true }
 }

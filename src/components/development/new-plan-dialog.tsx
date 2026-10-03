@@ -3,7 +3,7 @@
 import * as React from "react"
 import { PlusIcon, XIcon } from "lucide-react"
 
-import { createPlan } from "@/actions/development"
+import { createPlan, updatePlan } from "@/actions/development"
 import { FormError } from "@/components/forms/form-kit"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { fieldErrorsOf } from "@/lib/validators/fields"
@@ -19,6 +20,7 @@ import {
   ACTION_OWNERS,
   createPlanSchema,
   MAX_PLAN_ACTIONS,
+  updatePlanSchema,
   type CreatePlanInput,
   type PlanActionInput,
 } from "@/lib/validators/development"
@@ -48,6 +50,9 @@ const isBlank = (a: PlanActionInput) => !a.description.trim() && !a.dueDate.trim
  * Novo PDI: competência, situação atual, objetivo, evidência esperada, início
  * e prazo, e as ações com responsável (pessoa, gestor ou mentor) e prazo.
  * Ctrl/⌘+Enter salva.
+ *
+ * Com `editing`, o mesmo formulário edita o texto, a competência e o prazo de
+ * um PDI existente; início, status e ações ficam fora (têm caminho próprio).
  */
 export function NewPlanDialog({
   open,
@@ -55,6 +60,7 @@ export function NewPlanDialog({
   member,
   competencies,
   mentors,
+  editing,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -62,19 +68,22 @@ export function NewPlanDialog({
   competencies: { id: string; name: string }[]
   /** Pessoas que podem ser mentoras numa ação (o time, menos a própria pessoa). */
   mentors: { id: string; preferredName: string }[]
+  editing?: { planId: string; values: CreatePlanInput }
 }) {
-  const [values, setValues] = React.useState<CreatePlanInput>(() => emptyPlan(member.id))
+  const initial = React.useCallback(() => editing?.values ?? emptyPlan(member.id), [editing, member.id])
+  const [values, setValues] = React.useState<CreatePlanInput>(initial)
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [formError, setFormError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const toast = useToast()
   const firstRef = React.useRef<HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
     if (!open) return
-    setValues(emptyPlan(member.id))
+    setValues(initial())
     setErrors({})
     setFormError(null)
-  }, [open, member.id])
+  }, [open, initial])
 
   const set = (patch: Partial<CreatePlanInput>) => setValues((v) => ({ ...v, ...patch }))
   const setAction = (i: number, patch: Partial<PlanActionInput>) =>
@@ -82,6 +91,7 @@ export function NewPlanDialog({
 
   function submit(event?: React.FormEvent) {
     event?.preventDefault()
+    if (editing) return submitEdit(editing.planId)
     const input = { ...values, actions: values.actions.filter((a) => !isBlank(a)) }
     const parsed = createPlanSchema.safeParse(input)
     if (!parsed.success) {
@@ -92,7 +102,33 @@ export function NewPlanDialog({
     setFormError(null)
     startTransition(async () => {
       const result = await createPlan(parsed.data)
-      if (result.ok) return onOpenChange(false)
+      if (result.ok) {
+        toast.show(labels.toast.planCreated)
+        return onOpenChange(false)
+      }
+      setFormError(result.error)
+      setErrors(result.fieldErrors ?? {})
+    })
+  }
+
+  function submitEdit(planId: string) {
+    const parsed = updatePlanSchema.safeParse({
+      planId,
+      competencyId: values.competencyId,
+      currentSituation: values.currentSituation,
+      objective: values.objective,
+      expectedEvidence: values.expectedEvidence,
+      dueDate: values.dueDate,
+    })
+    if (!parsed.success) return setErrors(fieldErrorsOf(parsed.error))
+    setErrors({})
+    setFormError(null)
+    startTransition(async () => {
+      const result = await updatePlan(parsed.data)
+      if (result.ok) {
+        toast.show(labels.toast.planUpdated)
+        return onOpenChange(false)
+      }
       setFormError(result.error)
       setErrors(result.fieldErrors ?? {})
     })
@@ -102,6 +138,7 @@ export function NewPlanDialog({
     <FieldGroup label={label} required={required} optional={!required} error={errors[key]}>
       <Input
         value={values[key]}
+        disabled={Boolean(editing) && key === "startedAt"}
         inputMode="numeric"
         autoComplete="off"
         placeholder={labels.forms.datePlaceholder}
@@ -121,8 +158,8 @@ export function NewPlanDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{D.title}</DialogTitle>
-          <DialogDescription>{fill(D.description, { name: member.preferredName })}</DialogDescription>
+          <DialogTitle>{editing ? D.editTitle : D.title}</DialogTitle>
+          <DialogDescription>{fill(editing ? D.editDescription : D.description, { name: member.preferredName })}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={submit}
@@ -146,7 +183,11 @@ export function NewPlanDialog({
           <FieldGroup label={P.expectedEvidence} optional error={errors.expectedEvidence}>
             <Textarea rows={2} value={values.expectedEvidence} onChange={(e) => set({ expectedEvidence: e.target.value })} />
           </FieldGroup>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px_140px_140px]">
+          <div
+            className={
+              editing ? "grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px_140px]" : "grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px_140px_140px]"
+            }
+          >
             <FieldGroup label={P.competency} optional>
               {(control) => (
                 <Select value={values.competencyId || NONE} onValueChange={(v) => set({ competencyId: v === NONE ? "" : v })}>
@@ -166,6 +207,7 @@ export function NewPlanDialog({
             </FieldGroup>
             {date("startedAt", P.startedAt, true)}
             {date("dueDate", P.dueDate, false)}
+            {editing ? null : (
             <FieldGroup label={D.status}>
               {(control) => (
                 <Select value={values.status} onValueChange={(v) => set({ status: v as CreatePlanInput["status"] })}>
@@ -182,8 +224,10 @@ export function NewPlanDialog({
                 </Select>
               )}
             </FieldGroup>
+            )}
           </div>
 
+          {editing ? null : (
           <div className="flex flex-col gap-2 border-t border-line pt-3">
             <MetaLabel>{D.actions}</MetaLabel>
             {values.actions.map((a, i) => {
@@ -265,6 +309,7 @@ export function NewPlanDialog({
               </Button>
             ) : null}
           </div>
+          )}
 
           <FormError message={formError} />
           <DialogFooter>
@@ -272,7 +317,7 @@ export function NewPlanDialog({
               {labels.common.cancel}
             </Button>
             <Button type="submit" loading={pending}>
-              {D.submit}
+              {editing ? labels.forms.saveChanges : D.submit}
             </Button>
           </DialogFooter>
         </form>

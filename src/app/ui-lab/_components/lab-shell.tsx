@@ -6,7 +6,10 @@ import { PlusIcon } from "lucide-react"
 import { ContextBar } from "@/components/shell/context-bar"
 import { crumbsFor, mainNav } from "@/components/shell/nav-config"
 import { NavLink } from "@/components/shell/nav-link"
-import { CurrentUser, ProductIdentity, SidebarNav } from "@/components/shell/sidebar"
+import { CurrentUser, ProductIdentity, SidebarNav, type NavCounts } from "@/components/shell/sidebar"
+
+/** Contadores do motor de alertas (P15), como o seed os produz. */
+const LAB_COUNTS: NavCounts = { today: 11, team: 6, agreements: 6, dailies: 0, records: 4, development: 1 }
 import { Button } from "@/components/ui/button"
 import { labels } from "@/lib/labels"
 
@@ -55,13 +58,13 @@ export function LabShell() {
         <Specimen state="Sidebar · 232px">
           <div className="flex h-[460px] w-[232px] flex-col rounded-lg border border-line bg-surface">
             <ProductIdentity />
-            <SidebarNav pathname="/agreements" />
+            <SidebarNav pathname="/agreements" counts={LAB_COUNTS} />
           </div>
         </Specimen>
         <Specimen state="Sidebar · 56px">
           <div className="flex h-[460px] w-14 flex-col rounded-lg border border-line bg-surface">
             <ProductIdentity collapsed />
-            <SidebarNav pathname="/agreements" collapsed />
+            <SidebarNav pathname="/agreements" counts={LAB_COUNTS} collapsed />
           </div>
         </Specimen>
       </div>

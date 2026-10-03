@@ -12,7 +12,7 @@ import { enumLabel, labels } from "@/lib/labels"
 import { initials } from "@/lib/people"
 import { cn } from "@/lib/utils"
 
-import { footerNav, isActive, mainNav } from "./nav-config"
+import { footerNav, isActive, mainNav, type NavItem } from "./nav-config"
 import { NavLink } from "./nav-link"
 
 /** Identidade do produto: marca de 24px e nome, sem logo grande. */
@@ -29,6 +29,9 @@ export function ProductIdentity({ collapsed = false }: { collapsed?: boolean }) 
     </div>
   )
 }
+
+/** Contadores da sidebar (src/server/alerts.ts → alertCounts). */
+export type NavCounts = Record<NonNullable<NavItem["counter"]>, number>
 
 export interface ShellUser {
   name: string
@@ -69,8 +72,10 @@ export function SidebarNav({
   collapsed = false,
   onNavigate,
   footer,
+  counts,
 }: {
   pathname: string
+  counts?: NavCounts
   collapsed?: boolean
   onNavigate?: () => void
   /** Conteúdo extra no rodapé, abaixo de Configurações (ex.: botão de recolher). */
@@ -82,7 +87,13 @@ export function SidebarNav({
         <ul className="flex flex-col gap-0.5">
           {mainNav.map((item) => (
             <li key={item.href}>
-              <NavLink item={item} active={isActive(item, pathname)} collapsed={collapsed} onNavigate={onNavigate} />
+              <NavLink
+                item={item}
+                active={isActive(item, pathname)}
+                collapsed={collapsed}
+                onNavigate={onNavigate}
+                count={item.counter && counts ? counts[item.counter] : 0}
+              />
             </li>
           ))}
         </ul>
@@ -111,11 +122,13 @@ export function Sidebar({
   collapsed,
   onToggle,
   user,
+  counts,
 }: {
   pathname: string
   collapsed: boolean
   onToggle: () => void
   user: ShellUser
+  counts?: NavCounts
 }) {
   const ToggleIcon = collapsed ? PanelLeftOpenIcon : PanelLeftCloseIcon
   const toggleLabel = collapsed ? labels.shell.expandSidebar : labels.shell.collapseSidebar
@@ -131,6 +144,7 @@ export function Sidebar({
       <ProductIdentity collapsed={collapsed} />
       <SidebarNav
         pathname={pathname}
+        counts={counts}
         collapsed={collapsed}
         footer={
           <>

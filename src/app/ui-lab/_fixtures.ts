@@ -32,6 +32,7 @@ export const sectionCopy = {
   tabs: { title: "Tabs", description: "" },
   routeTabs: { title: "RouteTabs", description: "Abas em rota: cada aba é um link (linkável, sobrevive a refresh). Mesmo visual das Tabs line." },
   daily: { title: "Daily", description: "Revisão de combinado: três desfechos grandes (F/P/N), impeditivo inline e o arrasto à vista. Texto para WhatsApp copiado com confirmação no próprio botão." },
+  today: { title: "Hoje", description: "Uma lista única ordenada por urgência real (severidade, pessoa, o que aconteceu, há quanto tempo, ação direta), o vazio honesto e a barra de composição de 6px. Nada de grade de cards." },
   development: { title: "Desenvolvimento", description: "Barra de nível de 4px (atual em cinza, marca do esperado em tinta, da próxima senioridade em tinta clara), PDI ativo, parado e concluído, competências e pontos com histórico. Sem radar, sem cor de nota, sem porcentagem." },
   records: { title: "1:1 e feedbacks", description: "Follow-up com severidade quando vencido e \"feito\" quando a conversa seguinte aconteceu; combinados gerados no próprio registro; painel de contexto do 1:1 (somente leitura); índice com detalhe lateral." },
   adherence: { title: "Cumprimento", description: "Toda taxa com o total ao lado; amostra pequena sempre marcada; a ajustada ao lado da bruta, nunca no lugar. Tendência em pontos percentuais, só com amostra nas duas janelas." },

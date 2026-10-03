@@ -18,16 +18,18 @@ export interface NavItem {
   icon: LucideIcon
   /** Só "/" exige correspondência exata; o resto ativa também nas sub-rotas. */
   exact?: boolean
+  /** Contador do motor de alertas mostrado ao lado do item. */
+  counter?: "today" | "team" | "agreements" | "dailies" | "records" | "development"
 }
 
 export const mainNav: NavItem[] = [
-  { href: "/", label: labels.nav.today, icon: HouseIcon, exact: true },
-  { href: "/team", label: labels.nav.team, icon: UsersIcon },
-  { href: "/agreements", label: labels.nav.agreements, icon: ListChecksIcon },
+  { href: "/", label: labels.nav.today, icon: HouseIcon, exact: true, counter: "today" },
+  { href: "/team", label: labels.nav.team, icon: UsersIcon, counter: "team" },
+  { href: "/agreements", label: labels.nav.agreements, icon: ListChecksIcon, counter: "agreements" },
   { href: "/priority-validations", label: labels.nav.priorityValidations, icon: ClipboardCheckIcon },
-  { href: "/dailies", label: labels.nav.dailies, icon: CalendarCheckIcon },
-  { href: "/records", label: labels.nav.records, icon: MessagesSquareIcon },
-  { href: "/development", label: labels.nav.development, icon: SproutIcon },
+  { href: "/dailies", label: labels.nav.dailies, icon: CalendarCheckIcon, counter: "dailies" },
+  { href: "/records", label: labels.nav.records, icon: MessagesSquareIcon, counter: "records" },
+  { href: "/development", label: labels.nav.development, icon: SproutIcon, counter: "development" },
 ]
 
 export const footerNav: NavItem[] = [{ href: "/settings", label: labels.nav.settings, icon: SettingsIcon }]
@@ -52,6 +54,8 @@ const subrouteLabels: Record<string, string> = {
   "blocker-reasons": labels.settings.tabs.blockerReasons,
   "ticket-patterns": labels.settings.tabs.ticketPatterns,
   "competency-matrix": labels.settings.tabs.competencyMatrix,
+  competencies: labels.settings.tabs.competencies,
+  thresholds: labels.settings.tabs.thresholds,
 }
 
 export interface Crumb {

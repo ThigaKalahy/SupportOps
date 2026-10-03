@@ -5,6 +5,7 @@ import { RecordsToolbar } from "@/components/records/records-toolbar"
 import { ContextActions } from "@/components/shell/context-actions"
 import { labels } from "@/lib/labels"
 import { hasRecordFilters, parseRecordFilters } from "@/lib/records-filters"
+import { canWrite } from "@/server/access"
 import { listRecords } from "@/server/queries/records"
 
 import { loadProfile } from "../data"
@@ -34,6 +35,7 @@ export default async function MemberRecordsPage({
       <RecordsTable
         rows={rows}
         showMember={false}
+        canWrite={canWrite(user) && profile.status !== "INACTIVE"}
         empty={{ title: R.emptyTitle, direction: hasRecordFilters({ ...filters, memberId: null }) ? R.filteredDirection : R.emptyDirection }}
       />
     </>

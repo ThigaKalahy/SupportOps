@@ -3,13 +3,14 @@
 import * as React from "react"
 import { useForm } from "react-hook-form"
 
-import { createFeedback } from "@/actions/records"
+import { createFeedback, updateFeedback } from "@/actions/records"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { FEEDBACK_CATEGORIES, feedbackSchema, type FeedbackInput } from "@/lib/validators/records"
@@ -36,14 +37,21 @@ export function FeedbackDialog({
   onOpenChange,
   member,
   suggestion,
+  editing,
+  onSaved,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   member: RecordTarget
   suggestion?: string
+  /** Edição de um feedback salvo: sem combinados gerados (já existem). */
+  editing?: { id: string; values: FeedbackInput }
+  /** Chamado depois de salvar, antes de fechar. */
+  onSaved?: () => void
 }) {
+  const toast = useToast()
   const defaults = React.useCallback(
-    (): FeedbackInput => ({
+    (): FeedbackInput => editing?.values ?? ({
       memberId: member.id,
       date: formatDate(todayBusinessDate(), "business"),
       category: "DEVELOPMENT",
@@ -55,7 +63,7 @@ export function FeedbackDialog({
       visibility: "PRIVATE",
       agreements: [],
     }),
-    [member.id],
+    [member.id, editing],
   )
   const form = useForm<FeedbackInput>({ resolver: zodResolver(feedbackSchema), defaultValues: defaults() })
   const [visibilityTouched, setVisibilityTouched] = React.useState(false)
@@ -65,9 +73,10 @@ export function FeedbackDialog({
   React.useEffect(() => {
     if (!open) return
     form.reset(defaults())
-    setVisibilityTouched(false)
+    // Na edição, a visibilidade já foi escolhida: trocar a categoria não a muda.
+    setVisibilityTouched(Boolean(editing))
     setFormError(null)
-  }, [open, defaults, form])
+  }, [open, defaults, form, editing])
 
   const category = form.watch("category")
 
@@ -79,8 +88,12 @@ export function FeedbackDialog({
   const onSubmit = form.handleSubmit((values) => {
     setFormError(null)
     startTransition(async () => {
-      const result = await createFeedback(values)
-      if (result.ok) return onOpenChange(false)
+      const result = editing ? await updateFeedback(editing.id, values) : await createFeedback(values)
+      if (result.ok) {
+        toast.show(editing ? labels.toast.recordUpdated : labels.toast.feedbackCreated)
+        onSaved?.()
+        return onOpenChange(false)
+      }
       setFormError(result.error)
       applyFieldErrors(result.fieldErrors, FIELDS, form.setError)
     })
@@ -111,8 +124,8 @@ export function FeedbackDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{L.title}</DialogTitle>
-          <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
+          <DialogTitle>{editing ? L.editTitle : L.title}</DialogTitle>
+          <DialogDescription>{fill(editing ? labels.forms.editDescription : L.description, { name: member.preferredName })}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
@@ -188,6 +201,7 @@ export function FeedbackDialog({
               help={category === "RECOGNITION" ? L.recognitionHint : undefined}
             />
           </div>
+          {editing ? null : (
           <div className="border-t border-line pt-3">
             <GeneratedAgreements
               memberName={member.preferredName}
@@ -196,13 +210,14 @@ export function FeedbackDialog({
               errors={form.formState.errors.agreements as GeneratedRowErrors[] | undefined}
             />
           </div>
+          )}
           <FormError message={formError} />
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>
               {labels.common.cancel}
             </Button>
             <Button type="submit" loading={pending}>
-              {L.submit}
+              {editing ? labels.forms.saveChanges : L.submit}
             </Button>
           </DialogFooter>
         </form>

@@ -7,7 +7,6 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Section } from "@/components/ui/section"
 import { StatStrip } from "@/components/ui/stat-strip"
 import { formatDate } from "@/lib/dates"
-import { STALE_PLAN_DAYS } from "@/lib/development"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { canWrite, requireUser } from "@/server/access"
 import { getDevelopmentOverview } from "@/server/queries/development"
@@ -49,7 +48,7 @@ export default async function DevelopmentPage() {
       </Section>
 
       <Section title={O.stale} count={overview.stale.length}>
-        <p className="-mt-2 text-xs text-ink-secondary">{fill(O.staleDirection, { days: STALE_PLAN_DAYS })}</p>
+        <p className="-mt-2 text-xs text-ink-secondary">{fill(O.staleDirection, { days: overview.staleDays })}</p>
         {overview.stale.length === 0 ? (
           <p className="text-sm text-ink-tertiary">{O.staleNone}</p>
         ) : (

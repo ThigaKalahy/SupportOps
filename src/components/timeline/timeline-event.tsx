@@ -157,6 +157,7 @@ export function TimelineEvent({
   showVisibility,
   onToggleVisibility,
   pending = false,
+  actions,
 }: {
   item: TimelineItem
   /** Falso para o VIEWER. */
@@ -164,6 +165,8 @@ export function TimelineEvent({
   /** Presente só para quem escreve. */
   onToggleVisibility?: (item: TimelineItem) => void
   pending?: boolean
+  /** Editar/excluir o registro (só quem escreve, só 1:1, feedback e anotação). */
+  actions?: React.ReactNode
 }) {
   const typeLabel = enumLabel("timelineEventType", item.type)
   // Tag que só repete o tipo (ex.: "reconhecimento" num reconhecimento) não acrescenta nada.
@@ -196,6 +199,14 @@ export function TimelineEvent({
             </span>
           ))}
           <span>{fill(T.by, { name: item.author })}</span>
+          {actions ? (
+            <>
+              <span aria-hidden className="text-ink-tertiary">
+                ·
+              </span>
+              {actions}
+            </>
+          ) : null}
         </p>
       </article>
     </TimelineEntry>

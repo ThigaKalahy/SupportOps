@@ -9,16 +9,26 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { FieldGroup } from "@/components/ui/field-group"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { StatusPill } from "@/components/ui/status-pill"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { formatDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { reviewPlanSchema } from "@/lib/validators/development"
 import type { PlanView } from "@/server/queries/development"
+
+import { NewPlanDialog } from "./new-plan-dialog"
+import { PlanActionDialog } from "./plan-action-dialog"
 
 const P = labels.development.plans
 type PlanStatus = PlanView["status"]
@@ -58,8 +68,19 @@ const NEXT_STATUSES: Record<PlanStatus, PlanStatus[]> = {
  * acompanhamento há mais de 45 dias aparece em laranja/vermelho — um PDI sem
  * acompanhamento é um PDI morto.
  */
-export function PlanBlock({ plan, canWrite }: { plan: PlanView; canWrite: boolean }) {
+export interface PlanEditOptions {
+  competencies: { id: string; name: string }[]
+  /** Pessoas que podem ser mentoras numa ação (o time, menos a própria pessoa). */
+  mentors: { id: string; preferredName: string }[]
+}
+
+const d = (date: Date | null) => (date ? formatDate(date, "business") : "")
+
+export function PlanBlock({ plan, canWrite, edit }: { plan: PlanView; canWrite: boolean; edit?: PlanEditOptions }) {
   const [reviewing, setReviewing] = React.useState(false)
+  const [editing, setEditing] = React.useState(false)
+  const [adding, setAdding] = React.useState(false)
+  const closed = plan.status === "DONE" || plan.status === "CANCELLED"
   const [confirm, setConfirm] = React.useState<PlanStatus | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
@@ -122,6 +143,13 @@ export function PlanBlock({ plan, canWrite }: { plan: PlanView; canWrite: boolea
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {edit ? (
+                  <>
+                    <DropdownMenuItem onSelect={() => setEditing(true)}>{P.edit}</DropdownMenuItem>
+                    {closed ? null : <DropdownMenuItem onSelect={() => setAdding(true)}>{P.addAction}</DropdownMenuItem>}
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
                 {NEXT_STATUSES[plan.status].map((status) => (
                   <DropdownMenuItem
                     key={status}
@@ -186,6 +214,32 @@ export function PlanBlock({ plan, canWrite }: { plan: PlanView; canWrite: boolea
       <FormError message={error} />
 
       <ReviewDialog plan={reviewing ? plan : null} onOpenChange={(open) => !open && setReviewing(false)} />
+      {edit ? (
+        <>
+          <NewPlanDialog
+            open={editing}
+            onOpenChange={setEditing}
+            member={plan.member}
+            competencies={edit.competencies}
+            mentors={edit.mentors}
+            editing={{
+              planId: plan.id,
+              values: {
+                memberId: plan.member.id,
+                competencyId: plan.competency?.id ?? "",
+                currentSituation: plan.currentSituation,
+                objective: plan.objective,
+                expectedEvidence: plan.expectedEvidence ?? "",
+                startedAt: d(plan.startedAt),
+                dueDate: d(plan.dueDate),
+                status: "ACTIVE",
+                actions: [],
+              },
+            }}
+          />
+          <PlanActionDialog plan={adding ? plan : null} mentors={edit.mentors} onOpenChange={(open) => !open && setAdding(false)} />
+        </>
+      ) : null}
       <StatusConfirmDialog
         plan={plan}
         status={confirm}
@@ -210,6 +264,7 @@ function Text({ label, text }: { label: string; text: string | null }) {
 /** Registrar acompanhamento: o que mudou. Entra na timeline e zera o relógio do PDI. */
 function ReviewDialog({ plan, onOpenChange }: { plan: PlanView | null; onOpenChange: (open: boolean) => void }) {
   const R = labels.development.reviewDialog
+  const toast = useToast()
   const [note, setNote] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
@@ -229,8 +284,9 @@ function ReviewDialog({ plan, onOpenChange }: { plan: PlanView | null; onOpenCha
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? labels.validation.generic)
     startTransition(async () => {
       const result = await reviewPlan(parsed.data)
-      if (result.ok) onOpenChange(false)
-      else setError(result.error)
+      if (!result.ok) return setError(result.error)
+      toast.show(labels.toast.planReviewed)
+      onOpenChange(false)
     })
   }
 

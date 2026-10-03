@@ -4,8 +4,12 @@ import type { ActionResult } from "@/lib/validators/fields"
 import { requireOwner } from "@/server/access"
 import { memberIdOf, runAction } from "@/server/action-runner"
 import {
+  addPlanActionRecord,
   archiveTraitRecord,
+  createMentorshipRecord,
   createPlanRecord,
+  endMentorshipRecord,
+  updatePlanRecord,
   createTraitRecord,
   reviewPlanRecord,
   setActionStatusRecord,
@@ -53,4 +57,20 @@ export async function setExpectation(input: unknown): Promise<ActionResult> {
     ...PATHS,
     ["/settings", "layout"],
   ])
+}
+
+export async function updatePlan(input: unknown): Promise<ActionResult> {
+  return runAction("development", async () => updatePlanRecord(await requireOwner(), input), PATHS)
+}
+
+export async function addPlanAction(input: unknown): Promise<ActionResult> {
+  return runAction("development", async () => addPlanActionRecord(await requireOwner(), input), PATHS)
+}
+
+export async function createMentorship(input: unknown): Promise<ActionResult> {
+  return runAction("development", async () => createMentorshipRecord(await requireOwner(), input), PATHS)
+}
+
+export async function endMentorship(input: unknown): Promise<ActionResult> {
+  return runAction("development", async () => endMentorshipRecord(await requireOwner(), input), PATHS)
 }

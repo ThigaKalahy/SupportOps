@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
 import { ProfileActions } from "@/components/member/profile-actions"
+import { ReactivateMemberButton } from "@/components/member/reactivate-member-dialog"
 import { CrumbLabel } from "@/components/shell/crumb-label"
 import { RouteTabs } from "@/components/ui/route-tabs"
 import { labels } from "@/lib/labels"
@@ -42,7 +43,13 @@ export default async function MemberLayout({ children, params }: Params & { chil
       <div className="flex flex-col gap-4">
         <ProfileHeader
           profile={profile}
-          actions={catalogs && forEdit ? <ProfileActions member={forEdit} catalogs={catalogs} /> : null}
+          actions={
+            catalogs && forEdit ? (
+              <ProfileActions member={forEdit} catalogs={catalogs} />
+            ) : canWrite(user) && profile.status === "INACTIVE" ? (
+              <ReactivateMemberButton member={{ id: profile.id, preferredName: profile.preferredName }} />
+            ) : null
+          }
         />
         <RouteTabs
           label={T.label}

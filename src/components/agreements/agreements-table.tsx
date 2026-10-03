@@ -15,10 +15,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { StatusPill } from "@/components/ui/status-pill"
+import { useThresholds } from "@/components/shell/thresholds-context"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { avatarColors, initials } from "@/lib/people"
 import type { AgreementRow } from "@/server/queries/agreements"
-import { ATTENTION_THRESHOLDS } from "@/server/alerts"
 
 import { CancelAgreementDialog } from "./cancel-agreement-dialog"
 import { CompleteAgreementDialog } from "./complete-agreement-dialog"
@@ -31,8 +31,9 @@ export const AGREEMENTS_PAGE_SIZE = 50
 
 /** Arrasto: 1–2 reagendamentos em texto; 3 ou mais é sinal gerencial, em vermelho, sem depender de hover. */
 export function DragIndicator({ reschedules }: { reschedules: number }) {
+  const { chronicReschedules } = useThresholds()
   if (reschedules === 0) return <span className="text-ink-tertiary">—</span>
-  if (reschedules >= ATTENTION_THRESHOLDS.chronicReschedules) {
+  if (reschedules >= chronicReschedules) {
     return <StatusPill severity="overdue" label={fill(A.dragged, { count: reschedules })} />
   }
   return <span className="font-mono text-xs text-ink-secondary">{plural(A.drag, reschedules)}</span>

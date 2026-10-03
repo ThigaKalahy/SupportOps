@@ -1,18 +1,25 @@
-import { businessDateAtNoon, parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
+import { businessDateAtNoon, formatDate, parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import {
   feedbackSchema,
   noteSchema,
   oneOnOneSchema,
+  recordRefSchema,
   recordVisibilitySchema,
   type GeneratedAgreementInput,
 } from "../lib/validators/records.ts"
 
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
-import { findToggleableSource } from "./queries/records.ts"
-import { recordTimelineEvents, syncTimelineVisibility, timelineEventFor } from "./timeline.ts"
+import { findEditableRecord, findToggleableSource } from "./queries/records.ts"
+import {
+  rebuildTimelineEvents,
+  recordTimelineEvents,
+  removeTimelineEvents,
+  syncTimelineVisibility,
+  timelineEventFor,
+} from "./timeline.ts"
 import { canWrite, memberScope, type Viewer } from "./visibility.ts"
 
 /**
@@ -233,6 +240,163 @@ export async function setRecordVisibilityRecord(user: Viewer, input: unknown): P
         entityId: source.id,
         before: { visibility: found.visibility },
         after: { visibility },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/* ───────────────────────── Edição e exclusão ───────────────────────── */
+
+/** Campos que mudaram (para a auditoria), sem copiar o texto do registro. */
+function changedFields(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  const norm = (v: unknown) => (v instanceof Date ? v.toISOString() : (v ?? null))
+  return Object.keys(after).filter((key) => norm(before[key]) !== norm(after[key]))
+}
+
+/**
+ * Edição de 1:1: mesmos campos e regras da criação. A pessoa não muda e os
+ * combinados gerados não são refeitos (já existem por conta própria). A linha
+ * da timeline é refeita com a data, o texto e a visibilidade novos.
+ */
+export async function updateOneOnOneRecord(user: Viewer, id: string, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = oneOnOneSchema.safeParse(input)
+  if (!parsed.success) return invalid(parsed.error)
+  const data = parsed.data
+  const found = await findEditableRecord(user, "oneOnOne", id)
+  if (found?.kind !== "oneOnOne" || found.record.memberId !== data.memberId) return { ok: false, error: labels.validation.generic }
+  const before = found.record
+
+  const next = {
+    date: businessDate(data.date),
+    durationMinutes: data.durationMinutes === "" ? null : Number(data.durationMinutes),
+    topics: data.topics,
+    memberPerception: textOrNull(data.memberPerception),
+    managerPerception: textOrNull(data.managerPerception),
+    wins: textOrNull(data.wins),
+    difficulties: textOrNull(data.difficulties),
+    development: textOrNull(data.development),
+    nextReviewAt: optionalBusinessDate(data.nextReviewAt),
+    visibility: data.visibility,
+  }
+  await db.$transaction(async (tx) => {
+    const updated = await tx.oneOnOne.update({ where: { id }, data: next })
+    await rebuildTimelineEvents(tx, { kind: "oneOnOne", id }, [timelineEventFor.oneOnOne(updated)])
+    await writeAudit(
+      {
+        action: "oneOnOne.update",
+        entity: "OneOnOne",
+        entityId: id,
+        before: { visibility: before.visibility },
+        after: { visibility: updated.visibility, changed: changedFields(before, next) },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/** Edição de feedback. Trocar a categoria de/para Reconhecimento troca o tipo da linha. */
+export async function updateFeedbackRecord(user: Viewer, id: string, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = feedbackSchema.safeParse(input)
+  if (!parsed.success) return invalid(parsed.error)
+  const data = parsed.data
+  const found = await findEditableRecord(user, "feedback", id)
+  if (found?.kind !== "feedback" || found.record.memberId !== data.memberId) return { ok: false, error: labels.validation.generic }
+  const before = found.record
+
+  const next = {
+    date: businessDate(data.date),
+    category: data.category,
+    context: textOrNull(data.context),
+    behavior: data.behavior,
+    impact: textOrNull(data.impact),
+    guidance: textOrNull(data.guidance),
+    followUpAt: optionalBusinessDate(data.followUpAt),
+    visibility: data.visibility,
+  }
+  await db.$transaction(async (tx) => {
+    const updated = await tx.feedback.update({ where: { id }, data: next })
+    await rebuildTimelineEvents(tx, { kind: "feedback", id }, [timelineEventFor.feedback(updated)])
+    await writeAudit(
+      {
+        action: "feedback.update",
+        entity: "Feedback",
+        entityId: id,
+        before: { visibility: before.visibility, category: before.category },
+        after: { visibility: updated.visibility, category: updated.category, changed: changedFields(before, next) },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/** Edição de anotação. Mesmo dia: mantém o instante original; outro dia: meio-dia (ou agora, se hoje). */
+export async function updateNoteRecord(user: Viewer, id: string, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = noteSchema.safeParse(input)
+  if (!parsed.success) return invalid(parsed.error)
+  const data = parsed.data
+  const found = await findEditableRecord(user, "note", id)
+  if (found?.kind !== "note" || found.record.memberId !== data.memberId) return { ok: false, error: labels.validation.generic }
+  const before = found.record
+
+  const day = businessDate(data.date)
+  const occurredAt =
+    formatDate(before.occurredAt) === data.date
+      ? before.occurredAt
+      : day.getTime() === todayBusinessDate().getTime()
+        ? new Date()
+        : businessDateAtNoon(day)
+  const next = { occurredAt, title: data.title, body: data.body, visibility: data.visibility }
+
+  await db.$transaction(async (tx) => {
+    const updated = await tx.note.update({ where: { id }, data: next })
+    await rebuildTimelineEvents(tx, { kind: "note", id }, [timelineEventFor.note(updated)])
+    await writeAudit(
+      {
+        action: "note.update",
+        entity: "Note",
+        entityId: id,
+        before: { visibility: before.visibility },
+        after: { visibility: updated.visibility, changed: changedFields(before, next) },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/**
+ * Exclusão lógica (deletedAt, D10) de 1:1, feedback ou anotação. As linhas da
+ * timeline saem na mesma transação; os combinados gerados continuam — são
+ * compromissos com vida própria e já contam no cumprimento.
+ */
+export async function deleteRecordRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = recordRefSchema.safeParse(input)
+  if (!parsed.success) return invalid(parsed.error)
+  const { kind, id } = parsed.data
+  const found = await findEditableRecord(user, kind, id)
+  if (!found) return { ok: false, error: labels.validation.generic }
+
+  const deletedAt = new Date()
+  await db.$transaction(async (tx) => {
+    if (kind === "oneOnOne") await tx.oneOnOne.update({ where: { id }, data: { deletedAt } })
+    if (kind === "feedback") await tx.feedback.update({ where: { id }, data: { deletedAt } })
+    if (kind === "note") await tx.note.update({ where: { id }, data: { deletedAt } })
+    await removeTimelineEvents(tx, { kind, id })
+    await writeAudit(
+      {
+        action: `${kind}.delete`,
+        entity: SOURCE_ENTITY[kind],
+        entityId: id,
+        before: { memberId: found.record.memberId, visibility: found.record.visibility },
+        after: { deletedAt: deletedAt.toISOString() },
       },
       { organizationId: user.organizationId, userId: user.id, tx },
     )

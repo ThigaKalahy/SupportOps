@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { fill, labels } from "@/lib/labels"
 
 const L = labels.team.deactivateDialog
@@ -29,6 +30,7 @@ export function DeactivateMemberDialog({
   const [reason, setReason] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const toast = useToast()
 
   React.useEffect(() => {
     if (open) {
@@ -44,7 +46,10 @@ export function DeactivateMemberDialog({
     }
     startTransition(async () => {
       const result = await deactivateMember({ id: member.id, reason })
-      if (result.ok) onOpenChange(false)
+      if (result.ok) {
+        toast.show(labels.toast.memberDeactivated)
+        onOpenChange(false)
+      }
       else setError(result.fieldErrors?.reason ?? result.error)
     })
   }

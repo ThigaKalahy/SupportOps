@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { formatDate, maskDateInput } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
@@ -74,6 +75,7 @@ export function MemberDialog({
   const [showDetails, setShowDetails] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const toast = useToast()
 
   // Reabrir o dialog sempre começa do cadastro atual.
   React.useEffect(() => {
@@ -110,6 +112,7 @@ export function MemberDialog({
     startTransition(async () => {
       const result = member ? await updateMember({ ...payload, id: member.id }) : await createMember(payload)
       if (result.ok) {
+        toast.show(labels.toast.memberSaved)
         onOpenChange(false)
         return
       }

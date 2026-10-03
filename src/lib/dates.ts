@@ -181,6 +181,11 @@ export function formatDayMonth(date: Date, kind: DateKind = "timestamp"): string
 }
 
 /** "quinta-feira, 1 de outubro de 2026" (+ " às 14:05" em timestamps). Para o title. */
+/** "sexta-feira" — dia da semana por extenso. */
+export function formatWeekday(date: Date, kind: DateKind = "timestamp"): string {
+  return format(toDisplayDate(date, kind), "EEEE", { locale: ptBR });
+}
+
 export function formatDateLong(date: Date, kind: DateKind = "timestamp"): string {
   const day = format(toDisplayDate(date, kind), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR });
   return kind === "timestamp" ? `${day} às ${formatTime(date)}` : day;

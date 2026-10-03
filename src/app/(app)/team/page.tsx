@@ -7,6 +7,7 @@ import { fill, labels } from "@/lib/labels"
 import { canWrite, requireUser } from "@/server/access"
 import { getMemberFormCatalogs, listMembersForEdit, listTeamMembers } from "@/server/queries/members"
 
+import { loadThresholds } from "../alerts-data"
 import { TeamTable } from "./_components/team-table"
 import { TeamToolbar } from "./_components/team-toolbar"
 import { parseTeamView } from "./params"
@@ -25,11 +26,11 @@ export default async function TeamPage({
   const catalogs = await getMemberFormCatalogs(user)
   const view = parseTeamView(await searchParams, catalogs.seniorities.map((s) => s.key))
 
-  const rows = await listTeamMembers(user, {
-    seniority: view.seniority ?? undefined,
-    status: view.status,
-    needsAttention: view.needsAttention,
-  })
+  const rows = await listTeamMembers(
+    user,
+    { seniority: view.seniority ?? undefined, status: view.status, needsAttention: view.needsAttention },
+    await loadThresholds(),
+  )
   const editable = writer ? await listMembersForEdit(user, rows.map((r) => r.id)) : null
 
   const today = todayBusinessDate()

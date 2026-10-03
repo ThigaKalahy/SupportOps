@@ -57,6 +57,7 @@ export function CatalogSettings<T extends CatalogItemBase, V extends { id?: stri
   emptyValues,
   toValues,
   renderFields,
+  ordered = true,
   children,
 }: {
   kind: CatalogKind
@@ -69,6 +70,8 @@ export function CatalogSettings<T extends CatalogItemBase, V extends { id?: stri
   emptyValues: V
   toValues: (item: T) => V
   renderFields: FieldsRenderer<V>
+  /** Falso para catálogo sem posição própria (sem Subir/Descer). */
+  ordered?: boolean
   /** Conteúdo extra abaixo da lista (ex.: testador de URL). */
   children?: React.ReactNode
 }) {
@@ -85,7 +88,7 @@ export function CatalogSettings<T extends CatalogItemBase, V extends { id?: stri
     })
   }
 
-  const all: DataTableColumn<T>[] = [
+  const orderColumn: DataTableColumn<T>[] = [
     {
       id: "order",
       header: S.columns.order,
@@ -118,6 +121,9 @@ export function CatalogSettings<T extends CatalogItemBase, V extends { id?: stri
       title: () => undefined,
       width: canWrite ? "88px" : "64px",
     },
+  ]
+  const all: DataTableColumn<T>[] = [
+    ...(ordered ? orderColumn : []),
     {
       id: "label",
       header: S.columns.label,

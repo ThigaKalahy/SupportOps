@@ -7,6 +7,7 @@ import { enumLabel, labels } from "../lib/labels.ts"
 import {
   createMemberSchema,
   deactivateMemberSchema,
+  reactivateMemberSchema,
   fieldErrorsOf,
   managerSummarySchema,
   updateMemberSchema,
@@ -315,6 +316,45 @@ export async function deactivateMemberRecord(user: Writer, input: unknown): Prom
         entityId: before.id,
         before: memberSnapshot(before),
         after: { ...memberSnapshot(after), deletedAt: after.deletedAt?.toISOString() ?? null, reason: parsed.data.reason },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+
+  return { ok: true }
+}
+
+/**
+ * Reativa uma pessoa desativada: volta a ATIVO, sai do soft delete e grava o
+ * evento de carreira (com motivo) na timeline.
+ */
+export async function reactivateMemberRecord(user: Writer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = reactivateMemberSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.reasonRequired, fieldErrors: fieldErrorsOf(parsed.error) }
+
+  // deletedAt: undefined desliga o filtro automático de excluídos (a pessoa está desativada).
+  const before = await db.teamMember.findFirst({ where: { id: parsed.data.id, ...memberScope(user), deletedAt: undefined } })
+  if (!before || before.status !== "INACTIVE") return { ok: false, error: labels.validation.generic }
+
+  await db.$transaction(async (tx) => {
+    const after = await tx.teamMember.update({ where: { id: before.id }, data: { status: "ACTIVE", deletedAt: null } })
+    await recordCareerChanges(tx, user, before.id, parsed.data.reason, [
+      {
+        type: "STATUS",
+        from: before.status,
+        to: "ACTIVE",
+        fromLabel: enumLabel("memberStatus", before.status),
+        toLabel: enumLabel("memberStatus", "ACTIVE"),
+      },
+    ])
+    await writeAudit(
+      {
+        action: "member.reactivate",
+        entity: "TeamMember",
+        entityId: before.id,
+        before: { ...memberSnapshot(before), deletedAt: before.deletedAt?.toISOString() ?? null },
+        after: { ...memberSnapshot(after), deletedAt: null, reason: parsed.data.reason },
       },
       { organizationId: user.organizationId, userId: user.id, tx },
     )

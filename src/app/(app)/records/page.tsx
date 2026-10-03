@@ -6,7 +6,7 @@ import { ContextActions } from "@/components/shell/context-actions"
 import { PageHeader } from "@/components/ui/page-header"
 import { labels, plural } from "@/lib/labels"
 import { hasRecordFilters, parseRecordFilters } from "@/lib/records-filters"
-import { requireUser } from "@/server/access"
+import { canWrite, requireUser } from "@/server/access"
 import { listAgreementMembers } from "@/server/queries/agreements"
 import { listRecords } from "@/server/queries/records"
 
@@ -34,6 +34,7 @@ export default async function RecordsPage({
       <PageHeader title={R.title} subtitle={`${plural(R.count, rows.length)} · ${R.subtitle}`} />
       <RecordsTable
         rows={rows}
+        canWrite={canWrite(user)}
         empty={{ title: R.emptyTitle, direction: hasRecordFilters(filters) ? R.filteredDirection : R.emptyDirection }}
       />
     </div>

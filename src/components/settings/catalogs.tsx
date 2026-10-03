@@ -12,6 +12,7 @@ import { extractTicketRef, matchPattern } from "@/lib/priority-validation"
 import { BLOCKER_CATEGORIES, catalogSchemas, type CatalogInput } from "@/lib/validators/settings"
 import type {
   BlockerReasonItem,
+  CompetencyItem,
   PriorityLevelItem,
   ReclassificationReasonItem,
   TicketPatternItem,
@@ -323,5 +324,55 @@ function PatternTester({ patterns }: { patterns: TicketPatternItem[] }) {
         </p>
       ) : null}
     </section>
+  )
+}
+
+/** Competências: nome, categoria e descrição. Sem posição própria (categoria e nome). */
+export function CompetenciesSettings({ items, canWrite }: { items: CompetencyItem[]; canWrite: boolean }) {
+  const T = S.competencies
+  return (
+    <CatalogSettings<CompetencyItem, CatalogInput<"competency">>
+      kind="competency"
+      items={items}
+      canWrite={canWrite}
+      texts={T}
+      ordered={false}
+      schema={catalogSchemas.competency}
+      emptyValues={{ label: "", category: "", description: "" }}
+      toValues={(item) => ({ id: item.id, label: item.label, category: item.category ?? "", description: item.description ?? "" })}
+      columns={[
+        {
+          id: "category",
+          header: S.columns.category,
+          cell: (item) => (
+            <span className={item.category ? "text-ink-secondary" : "text-ink-tertiary"}>{item.category ?? T.noCategory}</span>
+          ),
+          width: "160px",
+        },
+      ]}
+      renderFields={({ values, set, errors }) => (
+        <>
+          <LabelField
+            label={T.label}
+            placeholder={T.labelPlaceholder}
+            value={values.label}
+            error={errors.label}
+            onChange={(label) => set({ label })}
+          />
+          <FieldGroup label={T.category} optional error={errors.category}>
+            <Input
+              value={values.category}
+              maxLength={60}
+              autoComplete="off"
+              placeholder={T.categoryPlaceholder}
+              onChange={(e) => set({ category: e.target.value })}
+            />
+          </FieldGroup>
+          <FieldGroup label={T.description} optional error={errors.description}>
+            <Input value={values.description} maxLength={300} autoComplete="off" onChange={(e) => set({ description: e.target.value })} />
+          </FieldGroup>
+        </>
+      )}
+    />
   )
 }

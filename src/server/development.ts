@@ -3,8 +3,12 @@ import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import {
   actionStatusSchema,
+  addPlanActionSchema,
   archiveTraitSchema,
   createPlanSchema,
+  endMentorshipSchema,
+  mentorshipSchema,
+  updatePlanSchema,
   expectationSchema,
   planStatusSchema,
   reviewPlanSchema,
@@ -13,7 +17,7 @@ import {
 
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
-import { recordTimelineEvents, timelineEventFor } from "./timeline.ts"
+import { recordTimelineEvents, syncPlanCreatedEvent, timelineEventFor } from "./timeline.ts"
 import { canWrite, memberScope, type Viewer } from "./visibility.ts"
 
 /**
@@ -265,6 +269,156 @@ export async function setExpectationRecord(user: Viewer, input: unknown): Promis
         before: { expectedLevel: before?.expectedLevel ?? null },
         after: { expectedLevel },
       },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/**
+ * Edição do PDI (texto, competência, prazo). A linha de criação na timeline
+ * acompanha o objetivo e a situação; os acompanhamentos já registrados ficam
+ * como foram escritos.
+ */
+export async function updatePlanRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = updatePlanSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  const data = parsed.data
+  const plan = await planInScope(user, data.planId)
+  if (!plan) return generic()
+  if (data.competencyId) {
+    const competency = await db.competency.findFirst({ where: { id: data.competencyId, organizationId: user.organizationId } })
+    if (!competency) return generic()
+  }
+  const dueDate = optionalDate(data.dueDate)
+  if (dueDate && dueDate <= plan.startedAt) {
+    return { ok: false, error: labels.validation.generic, fieldErrors: { dueDate: labels.validation.beforeRecordDate } }
+  }
+  const next = {
+    competencyId: data.competencyId || null,
+    currentSituation: data.currentSituation,
+    objective: data.objective,
+    expectedEvidence: textOrNull(data.expectedEvidence),
+    dueDate,
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.developmentPlan.update({ where: { id: plan.id }, data: next })
+    await syncPlanCreatedEvent(tx, plan.id, { title: next.objective, summary: next.currentSituation })
+    await writeAudit(
+      {
+        action: "developmentPlan.update",
+        entity: "DevelopmentPlan",
+        entityId: plan.id,
+        before: { objective: plan.objective, competencyId: plan.competencyId, dueDate: plan.dueDate?.toISOString() ?? null },
+        after: { objective: next.objective, competencyId: next.competencyId, dueDate: next.dueDate?.toISOString() ?? null },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/** Acrescenta uma ação a um PDI que não foi encerrado. */
+export async function addPlanActionRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = addPlanActionSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  const { planId, action } = parsed.data
+  const plan = await planInScope(user, planId)
+  if (!plan || plan.status === "DONE" || plan.status === "CANCELLED") return generic()
+  if (action.ownerType === "MENTOR") {
+    const mentor = await db.teamMember.findFirst({ where: { id: action.ownerMemberId, ...memberScope(user) }, select: { id: true } })
+    if (!mentor || mentor.id === plan.memberId) return generic()
+  }
+
+  await db.$transaction(async (tx) => {
+    const created = await tx.developmentAction.create({
+      data: {
+        planId: plan.id,
+        description: action.description,
+        ownerType: action.ownerType,
+        ownerMemberId: action.ownerType === "MENTOR" ? action.ownerMemberId : null,
+        dueDate: optionalDate(action.dueDate),
+      },
+    })
+    await writeAudit(
+      {
+        action: "developmentAction.create",
+        entity: "DevelopmentAction",
+        entityId: created.id,
+        after: { planId: plan.id, description: created.description, ownerType: created.ownerType },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/**
+ * Mentoria nova. Duas pessoas ativas do time, diferentes (o banco também
+ * confere); sem duplicar um vínculo aberto do mesmo par na mesma competência.
+ * Não entra na timeline (decisão do P4: o mapa de mentorias é a superfície).
+ */
+export async function createMentorshipRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = mentorshipSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  const data = parsed.data
+  const people = await db.teamMember.count({ where: { id: { in: [data.mentorMemberId, data.menteeMemberId] }, ...memberScope(user) } })
+  if (people !== 2) return generic()
+  if (data.competencyId) {
+    const competency = await db.competency.findFirst({ where: { id: data.competencyId, organizationId: user.organizationId } })
+    if (!competency) return generic()
+  }
+  const duplicate = await db.mentorshipLink.findFirst({
+    where: {
+      mentorMemberId: data.mentorMemberId,
+      menteeMemberId: data.menteeMemberId,
+      competencyId: data.competencyId || null,
+      endedAt: null,
+    },
+  })
+  if (duplicate) return { ok: false, error: labels.development.validation.duplicateMentorship }
+
+  await db.$transaction(async (tx) => {
+    const link = await tx.mentorshipLink.create({
+      data: {
+        mentorMemberId: data.mentorMemberId,
+        menteeMemberId: data.menteeMemberId,
+        competencyId: data.competencyId || null,
+        startedAt: date(data.startedAt),
+        note: textOrNull(data.note),
+      },
+    })
+    await writeAudit(
+      {
+        action: "mentorship.create",
+        entity: "MentorshipLink",
+        entityId: link.id,
+        after: { mentorMemberId: link.mentorMemberId, menteeMemberId: link.menteeMemberId, competencyId: link.competencyId },
+      },
+      { organizationId: user.organizationId, userId: user.id, tx },
+    )
+  })
+  return { ok: true }
+}
+
+/** Encerrar não apaga: grava endedAt (hoje) e o vínculo sai do mapa. */
+export async function endMentorshipRecord(user: Viewer, input: unknown): Promise<ActionResult> {
+  if (!canWrite(user)) return forbidden()
+  const parsed = endMentorshipSchema.safeParse(input)
+  if (!parsed.success) return generic()
+  const link = await db.mentorshipLink.findFirst({
+    where: { id: parsed.data.linkId, endedAt: null, mentor: memberScope(user), mentee: memberScope(user) },
+  })
+  if (!link) return generic()
+  const endedAt = todayBusinessDate()
+  await db.$transaction(async (tx) => {
+    await tx.mentorshipLink.update({ where: { id: link.id }, data: { endedAt } })
+    await writeAudit(
+      { action: "mentorship.end", entity: "MentorshipLink", entityId: link.id, before: { endedAt: null }, after: { endedAt: endedAt.toISOString() } },
       { organizationId: user.organizationId, userId: user.id, tx },
     )
   })

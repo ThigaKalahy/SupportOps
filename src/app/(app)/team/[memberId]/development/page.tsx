@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation"
 
 import { CompetencyList } from "@/components/development/competency-list"
+import { MentorshipSection } from "@/components/development/mentorship-section"
 import { NewPlanButton } from "@/components/development/new-plan-button"
 import { PlanBlock } from "@/components/development/plan-block"
 import { TraitsSection } from "@/components/development/traits-section"
 import { ContextActions } from "@/components/shell/context-actions"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Section } from "@/components/ui/section"
-import { formatDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { canWrite } from "@/server/access"
 import { listAgreementMembers } from "@/server/queries/agreements"
@@ -33,6 +33,8 @@ export default async function MemberDevelopmentPage({ params }: { params: Promis
   const writer = canWrite(user) && profile.status !== "INACTIVE"
   const active = dev.plans.filter((p) => p.status === "ACTIVE" || p.status === "PAUSED")
   const others = dev.plans.filter((p) => p.status !== "ACTIVE" && p.status !== "PAUSED")
+  const mentors = members.filter((m) => m.id !== profile.id)
+  const editOptions = { competencies: dev.competencies.map((c) => ({ id: c.id, name: c.name })), mentors }
 
   return (
     <div className="flex flex-col gap-8">
@@ -41,7 +43,7 @@ export default async function MemberDevelopmentPage({ params }: { params: Promis
           <NewPlanButton
             member={{ id: profile.id, preferredName: profile.preferredName }}
             competencies={dev.competencies.map((c) => ({ id: c.id, name: c.name }))}
-            mentors={members.filter((m) => m.id !== profile.id)}
+            mentors={mentors}
           />
         </ContextActions>
       ) : null}
@@ -54,7 +56,7 @@ export default async function MemberDevelopmentPage({ params }: { params: Promis
         ) : (
           <div className="flex flex-col gap-4">
             {active.map((p) => (
-              <PlanBlock key={p.id} plan={p} canWrite={writer} />
+              <PlanBlock key={p.id} plan={p} canWrite={writer} edit={writer ? editOptions : undefined} />
             ))}
             {others.length > 0 ? (
               <details className="group" open={active.length === 0}>
@@ -63,7 +65,7 @@ export default async function MemberDevelopmentPage({ params }: { params: Promis
                 </summary>
                 <div className="mt-3 flex flex-col gap-4">
                   {others.map((p) => (
-                    <PlanBlock key={p.id} plan={p} canWrite={writer} />
+                    <PlanBlock key={p.id} plan={p} canWrite={writer} edit={writer ? editOptions : undefined} />
                   ))}
                 </div>
               </details>
@@ -86,27 +88,13 @@ export default async function MemberDevelopmentPage({ params }: { params: Promis
               </p>
             </Section>
           ) : null}
-          <Section title={D.mentorships.title} count={dev.mentorships.length}>
-            {dev.mentorships.length === 0 ? (
-              <p className="text-sm text-ink-tertiary">{D.mentorships.empty}</p>
-            ) : (
-              <ul className="flex flex-col">
-                {dev.mentorships.map((m) => (
-                  <li key={m.id} className="flex flex-col gap-0.5 border-b border-line py-2 last:border-b-0">
-                    <span className="text-sm text-ink">
-                      <span className="font-mono text-2xs tracking-wide text-ink-secondary uppercase">
-                        {m.role === "mentor" ? labels.profile.mentorship.mentors : labels.profile.mentorship.mentoredBy}
-                      </span>{" "}
-                      {m.other.preferredName}
-                    </span>
-                    <span className="text-xs text-ink-secondary">
-                      {m.competency ?? D.mentorships.noCompetency} · {fill(D.mentorships.since, { date: formatDate(m.startedAt, "business") })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
+          <MentorshipSection
+            member={{ id: profile.id, preferredName: profile.preferredName }}
+            mentorships={dev.mentorships}
+            people={mentors}
+            competencies={editOptions.competencies}
+            canWrite={writer}
+          />
         </div>
       </div>
 

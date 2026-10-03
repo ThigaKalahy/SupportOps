@@ -12,6 +12,7 @@ import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { editDailySchema, type EditDailyInput } from "@/lib/validators/daily"
@@ -47,6 +48,7 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
   const [state, setState] = React.useState(() => initial(daily))
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const toast = useToast()
   const summaryRef = React.useRef<HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
@@ -72,7 +74,10 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
     setError(null)
     startTransition(async () => {
       const result = await updateDaily(parsed.data)
-      if (result.ok) setOpen(false)
+      if (result.ok) {
+        toast.show(labels.toast.dailyUpdated)
+        setOpen(false)
+      }
       else setError(result.error)
     })
   }

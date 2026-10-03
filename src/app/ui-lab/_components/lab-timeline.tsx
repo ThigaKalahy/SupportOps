@@ -2,6 +2,7 @@
 
 import * as React from "react"
 
+import { RecordActions } from "@/components/forms/record-actions"
 import { TimelineEvent } from "@/components/timeline/timeline-event"
 import { TimelineMonth } from "@/components/timeline/timeline-rail"
 import { businessDateAtNoon, todayBusinessDate } from "@/lib/dates"
@@ -19,10 +20,11 @@ function day(offset: number): Date {
   return d
 }
 
-const base: Pick<TimelineItem, "tags" | "author" | "toggleable" | "agreements" | "summary"> = {
+const base: Pick<TimelineItem, "tags" | "author" | "toggleable" | "source" | "agreements" | "summary"> = {
   tags: [],
   author: "Thiago Silva",
   toggleable: false,
+  source: null,
   agreements: null,
   summary: null,
 }
@@ -106,7 +108,22 @@ export function LabTimeline() {
     <div className="w-full rounded-lg border border-line bg-canvas px-4 pt-2">
       <TimelineMonth label="out/2026">
         {items.map((item) => (
-          <TimelineEvent key={item.id} item={item} showVisibility onToggleVisibility={toggle} />
+          <TimelineEvent
+            key={item.id}
+            item={item}
+            showVisibility
+            onToggleVisibility={toggle}
+            actions={
+              item.toggleable ? (
+                <RecordActions
+                  source={{ kind: "oneOnOne", id: item.id }}
+                  member={{ id: "lab", preferredName: "Henrique" }}
+                  typeLabel="1:1"
+                  dateText="28/09/2026"
+                />
+              ) : undefined
+            }
+          />
         ))}
       </TimelineMonth>
     </div>

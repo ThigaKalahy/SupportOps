@@ -172,6 +172,7 @@ model Organization {
   competencies            Competency[]
   metricDefinitions       MetricDefinition[]
   scoreDefinitions        ScoreDefinition[]
+  alertThresholds         AlertThreshold[]
 }
 
 /// Quem autentica: o gestor (OWNER) e o superior dele (VIEWER). Os analistas
@@ -249,6 +250,22 @@ model AuditLog {
   @@index([organizationId, at(sort: Desc)])
   @@index([entity, entityId])
   @@index([userId, at(sort: Desc)])
+}
+
+/// Limiar do motor de alertas (P15), um valor por chave e organização,
+/// editável em /settings. Só o limiar é persistido — os alertas continuam
+/// derivados em query (D9). Chave sem linha = padrão do código
+/// (src/lib/alert-thresholds.ts). Cadência de 1:1 por senioridade usa a
+/// chave "oneOnOneDays.<Seniority.key>".
+model AlertThreshold {
+  organizationId String
+  key            String
+  value          Int
+  updatedAt      DateTime @updatedAt @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@id([organizationId, key])
 }
 
 // ═══════════════════════════ PESSOAS ═══════════════════════════

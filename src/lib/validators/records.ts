@@ -90,3 +90,11 @@ export const recordVisibilitySchema = z.object({
   eventId: z.string().min(1),
   visibility: visibilityField,
 })
+
+/** 1:1, feedback ou anotação a editar ou excluir. */
+export const recordRefSchema = z.object({
+  kind: z.enum(["oneOnOne", "feedback", "note"]),
+  id: z.string().min(1),
+})
+
+export type RecordRef = z.infer<typeof recordRefSchema>

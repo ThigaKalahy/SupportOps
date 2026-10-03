@@ -26,8 +26,16 @@ export interface PlanStaleness {
   severity: GradedSeverity<AgeStage>
 }
 
-/** lastReviewedAt é instante (timestamptz); startedAt é data de negócio. */
-export function planStaleness(plan: { lastReviewedAt: Date | null; startedAt: Date }, today = todayBusinessDate()): PlanStaleness {
+/**
+ * lastReviewedAt é instante (timestamptz); startedAt é data de negócio.
+ * `staleDays`: limiar de "PDI parado" (configurável em /settings; padrão 45).
+ * A escala de cor (30/45/90) é fixa.
+ */
+export function planStaleness(
+  plan: { lastReviewedAt: Date | null; startedAt: Date },
+  today = todayBusinessDate(),
+  staleDays: number = STALE_PLAN_DAYS,
+): PlanStaleness {
   const reference = plan.lastReviewedAt
     ? (() => {
         const sp = toSaoPaulo(plan.lastReviewedAt)
@@ -38,7 +46,7 @@ export function planStaleness(plan: { lastReviewedAt: Date | null; startedAt: Da
   return {
     days,
     neverReviewed: plan.lastReviewedAt === null,
-    stale: days > STALE_PLAN_DAYS,
+    stale: days > staleDays,
     severity: ageSeverity(days, PLAN_REVIEW_THRESHOLDS),
   }
 }

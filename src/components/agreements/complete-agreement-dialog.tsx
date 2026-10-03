@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/toast"
 import { labels } from "@/lib/labels"
 
 const L = labels.agreements.completeDialog
@@ -27,6 +28,7 @@ export function CompleteAgreementDialog({
   const [outcome, setOutcome] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
+  const toast = useToast()
   const inputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
@@ -42,7 +44,10 @@ export function CompleteAgreementDialog({
     setError(null)
     startTransition(async () => {
       const result = await completeAgreement({ id: agreement.id, outcome })
-      if (result.ok) onOpenChange(false)
+      if (result.ok) {
+        toast.show(labels.toast.agreementCompleted)
+        onOpenChange(false)
+      }
       else setError(result.error)
     })
   }

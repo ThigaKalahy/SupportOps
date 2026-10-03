@@ -3,12 +3,13 @@
 import * as React from "react"
 
 import { setRecordVisibility } from "@/actions/records"
+import { RecordActions } from "@/components/forms/record-actions"
 import { loadTimelinePage } from "@/actions/timeline"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { MetaLabel } from "@/components/ui/meta-label"
-import { formatMonthYear } from "@/lib/dates"
-import { labels } from "@/lib/labels"
+import { formatDate, formatMonthYear } from "@/lib/dates"
+import { enumLabel, labels } from "@/lib/labels"
 import type { TimelineItem, TimelinePage } from "@/server/queries/timeline"
 
 import { TimelineEvent } from "./timeline-event"
@@ -35,12 +36,14 @@ function byMonth(items: TimelineItem[]) {
  */
 export function TimelineFeed({
   memberId,
+  memberName,
   initial,
   search,
   showVisibility,
   canWrite,
 }: {
   memberId: string
+  memberName: string
   initial: TimelinePage
   /** Query string dos filtros, repassada à página seguinte. */
   search: string
@@ -54,6 +57,12 @@ export function TimelineFeed({
   const [toggling, setToggling] = React.useState<string | null>(null)
   const [sharing, setSharing] = React.useState<TimelineItem | null>(null)
   const [toggleError, setToggleError] = React.useState<string | null>(null)
+
+  // Depois de editar um registro, o servidor manda a primeira página de novo: recomeça dela.
+  React.useEffect(() => {
+    setItems(initial.items)
+    setCursor(initial.nextCursor)
+  }, [initial])
 
   function loadMore() {
     if (!cursor) return
@@ -101,6 +110,19 @@ export function TimelineFeed({
               showVisibility={showVisibility}
               onToggleVisibility={canWrite ? toggle : undefined}
               pending={toggling === item.id}
+              actions={
+                canWrite && item.source ? (
+                  <RecordActions
+                    source={item.source}
+                    member={{ id: memberId, preferredName: memberName }}
+                    typeLabel={enumLabel("timelineEventType", item.type)}
+                    dateText={formatDate(item.occurredAt)}
+                    onChanged={(change) => {
+                      if (change === "deleted") setItems((current) => current.filter((i) => i.id !== item.id))
+                    }}
+                  />
+                ) : undefined
+              }
             />
           ))}
         </TimelineMonth>

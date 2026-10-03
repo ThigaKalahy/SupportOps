@@ -55,6 +55,35 @@ export const createPlanSchema = z
     { message: v.beforeRecordDate, path: ["dueDate"] },
   )
 
+/** Edição do PDI: os campos de texto, a competência e o prazo. Início, status e ações têm caminho próprio. */
+export const updatePlanSchema = z.object({
+  planId: z.string().min(1),
+  competencyId: z.string(),
+  currentSituation: z.string().trim().min(3, v.tooShort).max(2000, v.tooLong),
+  objective: z.string().trim().min(3, v.tooShort).max(300, v.tooLong),
+  expectedEvidence: optionalText(2000),
+  dueDate: optionalDisplayDate,
+})
+
+/** Ação acrescentada a um PDI que já existe. */
+export const addPlanActionSchema = z.object({ planId: z.string().min(1), action: planActionSchema })
+
+/** Mentoria: vínculo temporário entre duas pessoas do time, por competência (opcional). */
+export const mentorshipSchema = z
+  .object({
+    mentorMemberId: z.string().min(1, v.required),
+    menteeMemberId: z.string().min(1, v.required),
+    competencyId: z.string(),
+    startedAt: pastDisplayDate,
+    note: optionalText(300),
+  })
+  .refine((data) => data.mentorMemberId !== data.menteeMemberId, {
+    message: labels.development.validation.sameMentor,
+    path: ["menteeMemberId"],
+  })
+
+export const endMentorshipSchema = z.object({ linkId: z.string().min(1) })
+
 export const reviewPlanSchema = z.object({
   planId: z.string().min(1),
   /** O que mudou desde o último acompanhamento; vira a nota de progresso. */
@@ -81,6 +110,8 @@ export const expectationSchema = z.object({
 })
 
 export type CreatePlanInput = z.infer<typeof createPlanSchema>
+export type UpdatePlanInput = z.infer<typeof updatePlanSchema>
+export type MentorshipInput = z.infer<typeof mentorshipSchema>
 export type PlanActionInput = z.infer<typeof planActionSchema>
 export type ReviewPlanInput = z.infer<typeof reviewPlanSchema>
 export type TraitInput = z.infer<typeof traitSchema>

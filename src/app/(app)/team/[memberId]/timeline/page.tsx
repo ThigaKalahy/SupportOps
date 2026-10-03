@@ -51,6 +51,7 @@ export default async function MemberTimelinePage({
         <TimelineFeed
           key={filtersKey(filters)}
           memberId={profile.id}
+          memberName={profile.preferredName}
           initial={page}
           search={search.toString()}
           showVisibility={user.role !== "VIEWER"}

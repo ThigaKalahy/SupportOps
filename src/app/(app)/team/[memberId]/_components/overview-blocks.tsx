@@ -11,7 +11,8 @@ import { StatusPill } from "@/components/ui/status-pill"
 import { businessDaysBetween, daysSince, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { deadlineSeverity } from "@/lib/severity"
-import { ATTENTION_THRESHOLDS, oneOnOneCadence } from "@/server/alerts"
+import type { AlertThresholds } from "@/lib/alert-thresholds"
+import { oneOnOneCadence } from "@/server/alerts"
 import type { MemberOverview } from "@/server/queries/profile"
 
 const P = labels.profile
@@ -110,7 +111,15 @@ export function Traits({ overview }: { overview: MemberOverview }) {
 
 /* ──────────────────────────── Coluna estreita ─────────────────────────── */
 
-export function OpenAgreements({ agreements, href }: { agreements: MemberOverview["agreements"]; href: string }) {
+export function OpenAgreements({
+  agreements,
+  href,
+  thresholds,
+}: {
+  agreements: MemberOverview["agreements"]
+  href: string
+  thresholds: AlertThresholds
+}) {
   const today = todayBusinessDate()
   return (
     <Section
@@ -124,7 +133,7 @@ export function OpenAgreements({ agreements, href }: { agreements: MemberOvervie
         <ul className="flex flex-col">
           {agreements.map((a) => {
             const deadline = deadlineSeverity(a.dueDate, { today })
-            const chronic = a.reschedules >= ATTENTION_THRESHOLDS.chronicReschedules
+            const chronic = a.reschedules >= thresholds.chronicReschedules
             return (
               <li key={a.id} className="flex flex-col gap-1 border-b border-line py-2 last:border-b-0">
                 <Link href={`/agreements/${a.id}`} className="line-clamp-2 text-sm text-ink hover:underline">
@@ -148,7 +157,7 @@ export function OpenAgreements({ agreements, href }: { agreements: MemberOvervie
   )
 }
 
-export function ActivePlans({ plans, href }: { plans: MemberOverview["plans"]; href: string }) {
+export function ActivePlans({ plans, href, thresholds }: { plans: MemberOverview["plans"]; href: string; thresholds: AlertThresholds }) {
   const today = todayBusinessDate()
   return (
     <Section
@@ -164,7 +173,7 @@ export function ActivePlans({ plans, href }: { plans: MemberOverview["plans"]; h
             const reviewDays = plan.lastReviewedAt
               ? daysSince(plan.lastReviewedAt)
               : businessDaysBetween(plan.startedAt, today)
-            const stale = reviewDays > ATTENTION_THRESHOLDS.stalePlanDays
+            const stale = reviewDays > thresholds.stalePlanDays
             const reviewText = plan.lastReviewedAt
               ? reviewDays === 0
                 ? P.plans.reviewedToday
@@ -270,14 +279,16 @@ export function Rhythm({
   overview,
   lastOneOnOne,
   seniorityKey,
+  thresholds,
 }: {
   overview: MemberOverview
   lastOneOnOne: Date | null
   seniorityKey: string
+  thresholds: AlertThresholds
 }) {
   const today = todayBusinessDate()
   const oneOnOneDays = lastOneOnOne ? businessDaysBetween(lastOneOnOne, today) : null
-  const cadence = oneOnOneCadence(seniorityKey, oneOnOneDays ?? 0)
+  const cadence = oneOnOneCadence(seniorityKey, oneOnOneDays ?? 0, thresholds)
   return (
     <Section title={P.rhythm.title}>
       <dl className="flex flex-col">

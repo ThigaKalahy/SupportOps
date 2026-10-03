@@ -35,6 +35,7 @@ import { LabDevelopment } from "./_components/lab-development"
 import { LabRecords } from "./_components/lab-records"
 import { LabPriorityValidation } from "./_components/lab-priority-validation"
 import { LabTimeline } from "./_components/lab-timeline"
+import { LabToday } from "./_components/lab-today"
 import { LabCalendar, LabOverlays } from "./_components/lab-overlays"
 import { LabShell } from "./_components/lab-shell"
 import { LabSection, Specimen } from "./_components/specimen"
@@ -529,6 +530,11 @@ export default function UiLabPage() {
             </Tabs>
           </Specimen>
         </div>
+      </LabSection>
+
+      {/* Hoje */}
+      <LabSection id="today" title={sectionCopy.today.title} description={sectionCopy.today.description}>
+        <LabToday />
       </LabSection>
 
       {/* Timeline */}

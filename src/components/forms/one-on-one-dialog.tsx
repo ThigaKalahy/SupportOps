@@ -3,12 +3,13 @@
 import * as React from "react"
 import { useForm } from "react-hook-form"
 
-import { createOneOnOne } from "@/actions/records"
+import { createOneOnOne, updateOneOnOne } from "@/actions/records"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
@@ -50,13 +51,20 @@ export function OneOnOneDialog({
   open,
   onOpenChange,
   member,
+  editing,
+  onSaved,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   member: RecordTarget
+  /** Edição de um 1:1 salvo: sem combinados gerados (já existem) e com o contexto recolhido. */
+  editing?: { id: string; values: OneOnOneInput }
+  /** Chamado depois de salvar, antes de fechar. */
+  onSaved?: () => void
 }) {
+  const toast = useToast()
   const defaults = React.useCallback(
-    (): OneOnOneInput => ({
+    (): OneOnOneInput => editing?.values ?? ({
       memberId: member.id,
       date: formatDate(todayBusinessDate(), "business"),
       topics: "",
@@ -70,7 +78,7 @@ export function OneOnOneDialog({
       visibility: "PRIVATE",
       agreements: [],
     }),
-    [member.id],
+    [member.id, editing],
   )
   const form = useForm<OneOnOneInput>({ resolver: zodResolver(oneOnOneSchema), defaultValues: defaults() })
   const [openGroups, setOpenGroups] = React.useState<Set<Group>>(new Set())
@@ -82,8 +90,9 @@ export function OneOnOneDialog({
     if (!open) return
     form.reset(defaults())
     setOpenGroups(new Set())
+    setShowContext(!editing)
     setFormError(null)
-  }, [open, defaults, form])
+  }, [open, defaults, form, editing])
 
   const err = form.formState.errors
   const groupOf: Partial<Record<keyof OneOnOneInput, Group>> = {
@@ -108,8 +117,12 @@ export function OneOnOneDialog({
     (values) => {
       setFormError(null)
       startTransition(async () => {
-        const result = await createOneOnOne(values)
-        if (result.ok) return onOpenChange(false)
+        const result = editing ? await updateOneOnOne(editing.id, values) : await createOneOnOne(values)
+        if (result.ok) {
+          toast.show(editing ? labels.toast.recordUpdated : labels.toast.oneOnOneCreated)
+          onSaved?.()
+          return onOpenChange(false)
+        }
         setFormError(result.error)
         applyFieldErrors(result.fieldErrors, FIELDS, form.setError)
       })
@@ -146,8 +159,10 @@ export function OneOnOneDialog({
       >
         <DialogHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="flex flex-col gap-1.5">
-            <DialogTitle>{L.title}</DialogTitle>
-            <DialogDescription>{fill(L.description, { name: member.preferredName })}</DialogDescription>
+            <DialogTitle>{editing ? L.editTitle : L.title}</DialogTitle>
+            <DialogDescription>
+              {fill(editing ? labels.forms.editDescription : L.description, { name: member.preferredName })}
+            </DialogDescription>
           </div>
           <Button
             type="button"
@@ -215,6 +230,7 @@ export function OneOnOneDialog({
             </FieldGroup>
           </OptionalGroup>
 
+          {editing ? null : (
           <div className="border-t border-line pt-3">
             <GeneratedAgreements
               memberName={member.preferredName}
@@ -223,6 +239,7 @@ export function OneOnOneDialog({
               errors={form.formState.errors.agreements as GeneratedRowErrors[] | undefined}
             />
           </div>
+          )}
 
           <VisibilityField value={form.watch("visibility")} onChange={(v) => form.setValue("visibility", v)} />
           <FormError message={formError} />
@@ -231,7 +248,7 @@ export function OneOnOneDialog({
               {labels.common.cancel}
             </Button>
             <Button type="submit" loading={pending}>
-              {L.submit}
+              {editing ? labels.forms.saveChanges : L.submit}
             </Button>
           </DialogFooter>
         </form>

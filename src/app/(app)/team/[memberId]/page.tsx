@@ -9,6 +9,7 @@ import { canWrite } from "@/server/access"
 import { getMemberAdherenceProfile } from "@/server/queries/adherence"
 import { memberValidationSummary } from "@/server/queries/priority-validations"
 import { getMemberOverview } from "@/server/queries/profile"
+import { getThresholds } from "@/server/queries/thresholds"
 
 import {
   ActivePlans,
@@ -32,10 +33,11 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
   if (!profile) notFound()
 
   const today = todayBusinessDate()
-  const [overview, validations, adherence] = await Promise.all([
+  const [overview, validations, adherence, thresholds] = await Promise.all([
     getMemberOverview(user, profile.id),
     memberValidationSummary(user, profile.id, today),
     getMemberAdherenceProfile(user, profile.id, today),
+    getThresholds(user),
   ])
   const base = `/team/${profile.id}`
   const windowStart = new Date(today)
@@ -60,7 +62,7 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
       </div>
 
       <div className="flex min-w-0 flex-col gap-8 lg:border-l lg:border-line lg:pl-8">
-        <OpenAgreements agreements={overview.agreements} href={`${base}/agreements`} />
+        <OpenAgreements agreements={overview.agreements} href={`${base}/agreements`} thresholds={thresholds} />
         <AdherenceSummary
           adherence={adherence.adherence}
           trend={adherence.trend}
@@ -80,9 +82,9 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
           canWrite={canWrite(user) && profile.status !== "INACTIVE"}
           href={validationsHref}
         />
-        <ActivePlans plans={overview.plans} href={`${base}/development`} />
+        <ActivePlans plans={overview.plans} href={`${base}/development`} thresholds={thresholds} />
         <Mentorships overview={overview} />
-        <Rhythm overview={overview} lastOneOnOne={profile.lastOneOnOne} seniorityKey={profile.seniorityKey} />
+        <Rhythm overview={overview} lastOneOnOne={profile.lastOneOnOne} seniorityKey={profile.seniorityKey} thresholds={thresholds} />
       </div>
     </div>
   )

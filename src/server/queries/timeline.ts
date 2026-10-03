@@ -4,9 +4,10 @@ import { businessDaysBetween, daysSince, formatDate, todayBusinessDate } from ".
 import { enumLabel, fill, labels } from "../../lib/labels.ts"
 import { deadlineSeverity, type Severity } from "../../lib/severity.ts"
 import { periodStart, type TimelineFilters } from "../../lib/timeline-filters.ts"
-import { ATTENTION_THRESHOLDS } from "../alerts.ts"
 import { db } from "../db.ts"
 import { memberScope, visibilityFilter, type Viewer } from "../visibility.ts"
+
+import { getThresholds } from "./thresholds.ts"
 
 /**
  * Timeline de uma pessoa (/team/[memberId]/timeline): páginas de 40 por
@@ -50,6 +51,8 @@ export interface TimelineItem {
   author: string
   /** 1:1, feedback e anotação têm visibilidade própria; o resto é sempre compartilhado. */
   toggleable: boolean
+  /** Registro de origem editável (1:1, feedback, anotação); null nos demais tipos. */
+  source: { kind: "oneOnOne" | "feedback" | "note"; id: string } | null
   marker: TimelineMarker
   /** "self": o evento é do próprio combinado; "sourced": combinados que o registro gerou. */
   agreements: { kind: "self" | "sourced"; items: LinkedAgreement[] } | null
@@ -98,6 +101,7 @@ export async function getTimelinePage(
   cursor?: string | null,
 ): Promise<TimelinePage> {
   const since = periodStart(filters.period)
+  const thresholds = await getThresholds(viewer)
   const rows = await db.timelineEvent.findMany({
     where: {
       memberId,
@@ -193,7 +197,7 @@ export async function getTimelinePage(
     const plan = event.developmentPlan
     if (plan?.status === "ACTIVE") {
       const days = plan.lastReviewedAt ? daysSince(plan.lastReviewedAt) : businessDaysBetween(plan.startedAt, today)
-      if (days > ATTENTION_THRESHOLDS.stalePlanDays) {
+      if (days > thresholds.stalePlanDays) {
         marker = { severity: "attention", strong: true, bleed: true, note: fill(labels.timeline.stalePlan, { days }) }
       }
     }
@@ -208,6 +212,13 @@ export async function getTimelinePage(
       visibility: event.visibility,
       author: event.author.name,
       toggleable: Boolean(event.oneOnOneId || event.feedbackId || event.noteId),
+      source: event.oneOnOneId
+        ? { kind: "oneOnOne", id: event.oneOnOneId }
+        : event.feedbackId
+          ? { kind: "feedback", id: event.feedbackId }
+          : event.noteId
+            ? { kind: "note", id: event.noteId }
+            : null,
       marker,
       agreements,
     }

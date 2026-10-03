@@ -98,6 +98,29 @@ export async function findToggleableSource(viewer: Viewer, eventId: string) {
   return source ? { source, memberId: event.memberId, visibility: event.visibility } : null
 }
 
+export type EditableKind = "oneOnOne" | "feedback" | "note"
+
+/**
+ * Registro completo de 1:1, feedback ou anotação para editar ou excluir
+ * (pessoa no escopo, não excluído). Com visibilityFilter: o VIEWER não chega
+ * a um privado nem por aqui — e de todo modo não escreve.
+ */
+export async function findEditableRecord(viewer: Viewer, kind: EditableKind, id: string) {
+  const include = { member: { select: { id: true, preferredName: true } } } as const
+  if (kind === "oneOnOne") {
+    const record = await db.oneOnOne.findFirst({ where: { id, member: memberScope(viewer), ...visibilityFilter(viewer) }, include })
+    return record ? ({ kind, record } as const) : null
+  }
+  if (kind === "feedback") {
+    const record = await db.feedback.findFirst({ where: { id, member: memberScope(viewer), ...visibilityFilter(viewer) }, include })
+    return record ? ({ kind, record } as const) : null
+  }
+  const record = await db.note.findFirst({ where: { id, member: memberScope(viewer), ...visibilityFilter(viewer) }, include })
+  return record ? ({ kind, record } as const) : null
+}
+
+export type EditableRecord = NonNullable<Awaited<ReturnType<typeof findEditableRecord>>>
+
 /* ─────────────────────── Índice de 1:1 e feedbacks (P13) ─────────────────────── */
 
 export interface RecordAgreement {

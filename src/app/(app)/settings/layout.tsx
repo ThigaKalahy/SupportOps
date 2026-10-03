@@ -16,7 +16,9 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
           { href: "/settings/reclassification-reasons", label: S.tabs.reclassificationReasons },
           { href: "/settings/blocker-reasons", label: S.tabs.blockerReasons },
           { href: "/settings/ticket-patterns", label: S.tabs.ticketPatterns },
+          { href: "/settings/competencies", label: S.tabs.competencies },
           { href: "/settings/competency-matrix", label: S.tabs.competencyMatrix },
+          { href: "/settings/thresholds", label: S.tabs.thresholds },
         ]}
       />
       {children}

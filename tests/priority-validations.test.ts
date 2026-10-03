@@ -339,6 +339,9 @@ describe("lista, exclusão e resumos", () => {
     for (const [name, build] of Object.entries(summarySql)) {
       const plan = await db.$transaction(async (tx) => {
         await tx.$executeRaw`SET LOCAL enable_seqscan = off`
+        // Com ~200 linhas, o planejador às vezes prefere o índice do motivo para um merge join
+        // (custo, não falta de índice): o que se verifica aqui é que o período usa o índice.
+        await tx.$executeRaw`SET LOCAL enable_mergejoin = off`
         return tx.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN ${build(ownerViewer, from, today)}`)
       })
       const text = plan.map((p) => p["QUERY PLAN"]).join("\n")

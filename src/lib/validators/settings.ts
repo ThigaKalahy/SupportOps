@@ -12,8 +12,11 @@ import { compilePattern } from "../priority-validation.ts"
 const v = labels.validation
 const S = labels.settings
 
-export const CATALOG_KINDS = ["priorityLevel", "reclassificationReason", "blockerReason", "ticketPattern"] as const
+export const CATALOG_KINDS = ["priorityLevel", "reclassificationReason", "blockerReason", "ticketPattern", "competency"] as const
 export type CatalogKind = (typeof CATALOG_KINDS)[number]
+
+/** Catálogos sem posição própria (a competência segue categoria e nome). */
+export const UNORDERED_KINDS: readonly CatalogKind[] = ["competency"]
 
 export const BLOCKER_CATEGORIES = ["EXTERNAL", "INTERNAL", "CAPACITY"] as const
 
@@ -47,6 +50,12 @@ export const catalogSchemas = {
         ctx.addIssue({ code: "custom", path: ["captureGroup"], message: S.ticketPatterns.groupOutOfRange })
       }
     }),
+  competency: z.object({
+    id,
+    label,
+    category: z.string().trim().max(60, v.tooLong),
+    description: z.string().trim().max(300, v.tooLong),
+  }),
 } satisfies Record<CatalogKind, z.ZodType>
 
 export type CatalogInput<K extends CatalogKind> = z.infer<(typeof catalogSchemas)[K]>
@@ -54,3 +63,9 @@ export type CatalogInput<K extends CatalogKind> = z.infer<(typeof catalogSchemas
 export const catalogRefSchema = z.object({ kind: z.enum(CATALOG_KINDS), id: z.string().min(1) })
 export const moveCatalogSchema = catalogRefSchema.extend({ direction: z.enum(["up", "down"]) })
 export const activeCatalogSchema = catalogRefSchema.extend({ active: z.boolean() })
+
+/** Um limiar do motor de alertas: valor inteiro, ou null para voltar ao padrão. Faixa conferida na action. */
+export const thresholdSchema = z.object({
+  key: z.string().min(1).max(80),
+  value: z.number().int().nullable(),
+})
