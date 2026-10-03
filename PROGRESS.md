@@ -17,7 +17,7 @@
 | P12 Cumprimento de combinados  | concluída | bd143e2 | 02/10/2026 |
 | P13 1:1 e feedbacks            | concluída | f946089 | 02/10/2026 |
 | P14 Desenvolvimento e PDI      | concluída | ea82549 | 02/10/2026 |
-| P15 Hoje e motor de alertas    | pendente | | |
+| P15 Hoje e motor de alertas    | concluída | 82bd937 | 03/10/2026 |
 | P16 Busca global               | pendente | | |
 | P17 Arquitetura de score       | pendente | | |
 | P18 Mobile, a11y e deploy      | pendente | | |
@@ -236,4 +236,32 @@
     - acompanhamento abrindo com o foco na nota;
     - 1440 e 360px;
     - VIEWER sem ações.
+
+### P15 — Hoje e motor de alertas (branch `fase/15-today`, inclui complementos das fases anteriores)
+
+- **Ficou de fora:**
+  - o critério de aceite humano ("às 9h, em 10 segundos eu sei o que fazer") — conferi por captura em 1440, 1024 e 360px, não com seus olhos;
+  - "Registrar acompanhamento" do PDI direto da home (a ação leva à aba Desenvolvimento da pessoa);
+  - ação de "resolver" que não seja abrir o registro ou o formulário (concluir combinado continua no detalhe/central);
+  - limiares por pessoa; a escala de cor do PDI (30/45/90) e a escala de prazo (vencendo em 3 dias) continuam fixas — só os disparos são configuráveis;
+  - complementos que continuam fora: excluir daily, editar revisões de daily, mudar prazo/responsável fora da daily (decisões dos complementos do P9/P10), histórico de níveis de competência, telas de relatório de validação;
+  - checagem visual do /ui-lab (seções novas: Hoje, Toast, ações de registro, mentorias, contadores na sidebar — só em desenvolvimento).
+- **Decisões tomadas sem perguntar (revise):**
+  - **Granularidade:** vencido é uma linha por combinado (ação "Abrir combinado"); vencendo é agrupado por pessoa (seria ruído); combinado vencido e crônico vira uma linha só.
+  - **Silêncio gerencial** cobre o "sem 1:1" da mesma pessoa (não repete). "Qualquer registro" = qualquer linha da timeline visível a quem consulta (inclui combinado e daily).
+  - **Afastado** não entra em "sem 1:1" nem em silêncio (na home; a coluna de /team continua como era).
+  - **Daily:** dias úteis entre a última daily e hoje, sem contar hoje (às 9h a daily do dia ainda não aconteceu); feriados nacionais contam como não úteis.
+  - **Prontidão** dispara só quando a pessoa já atende a TODAS as competências esperadas da próxima senioridade (texto do P15), é informativa, vai para o fim e não conta nos contadores. Com a matriz vazia, nunca aparece.
+  - **Contadores:** contam o que pede ação (sem "vencendo" e sem informativo); Equipe conta pessoas, não alertas; Validação de prioridade não tem contador (não há alerta dela).
+  - **Limiares:** tabela chave/valor (`AlertThreshold`), com faixas mínimas e máximas; gravar o próprio padrão não cria linha.
+  - **Home do VIEWER:** mesma lista, só com as ações que são link (sem formulários).
+  - **Complementos:** editar 1:1/feedback não refaz os combinados gerados; excluir é lógico e mantém os combinados; editar anotação no mesmo dia mantém o instante original; reativar exige motivo e vira evento de carreira; mentoria não entra na timeline (decisão do P4); competência em uso (nível, PDI, matriz ou mentoria) não se exclui, só se desativa.
+- **Corrigido / ajustado:**
+  - teste de plano de execução do P11: com ~200 linhas o Postgres às vezes prefere o índice do motivo num merge join (escolha de custo); o teste agora desliga merge join na própria transação para verificar o índice do período.
+  - teste de /team "uma consulta só": a listagem recebe os limiares já carregados (no app vêm do layout, em cache por requisição).
+  - seed reaplicado em 03/10/2026 (as janelas de 30 dias do Henrique andam com a data).
+- **A próxima fase assume:** `getAlerts` e `TodayPanel` prontos; a busca global (P16) pode usar `searchRecords` (visibilidade já aplicada) e a barra de busca inerte da context-bar; `useThresholds` disponível no cliente.
+- **Verificado:**
+  - **Testes:** 165 no total. Novos: `tests/alerts.test.ts` (17: regra pura em todos os tipos, ordem, agrupamentos, dias úteis, amostra, prontidão, limiares no banco com faixa/padrão/auditoria e efeito em /team, seed lido pelo motor, VIEWER sem vazamento, no máximo duas superfícies delimitadas, nada persistido) e `tests/complements.test.ts` (9).
+  - **Servidor de produção, contas temporárias (apagadas):** home em 1440/1024/360 com a sidebar aberta e recolhida, 1:1 aberto pela linha do alerta, "Com quem?" do feedback, limiares, VIEWER sem formulários, editar 1:1 e confirmar exclusão pela timeline (sem excluir).
 
