@@ -63,7 +63,7 @@ export function ProfileValidationBlock({
     >
       <p className="-mt-2 text-xs text-ink-secondary">{fill(L.window, { days: data.days })}</p>
       {data.total === 0 ? (
-        <p className="text-sm text-ink-tertiary">{fill(L.none, { days: data.days })}</p>
+        <p className="text-sm text-ink-secondary">{fill(L.none, { days: data.days })}</p>
       ) : (
         <>
           <dl className="flex flex-col">
@@ -76,7 +76,7 @@ export function ProfileValidationBlock({
               </span>
             </Row>
             <Row label={L.topReason}>
-              {data.topReason ? fill(L.topReasonValue, data.topReason) : <span className="text-ink-tertiary">{L.noReason}</span>}
+              {data.topReason ? fill(L.topReasonValue, data.topReason) : <span className="text-ink-secondary">{L.noReason}</span>}
             </Row>
           </dl>
           {canWrite ? (

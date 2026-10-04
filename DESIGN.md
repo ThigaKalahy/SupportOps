@@ -16,7 +16,7 @@ Deliberadamente **não** usamos o creme quente `#F4F1EA` + serifa editorial + ac
 --surface-sunken:  #F4F5F7   hover de linha, cabeçalho de tabela, estado vazio
 --ink:             #16181D   texto primário (nunca #000)
 --ink-secondary:   #5C6270   rótulos, metadados
---ink-tertiary:    #8A909E   placeholder, texto desabilitado, marcador de ausência (—). Nunca texto que precise ser lido (contraste 3,2:1)
+--ink-tertiary:    #8A909E   placeholder, texto desabilitado e ícone (3:1 basta para gráfico). Nunca texto que precise ser lido, nem o marcador de ausência (—), que usa --ink-secondary (contraste 3,2:1; AA exige 4,5:1 para texto — P18)
 --line:            #E4E6EB   toda borda e divisor — 1px
 --line-strong:     #CDD1D9   separador de seção, foco
 --accent:          #2C4A7C   azul-tinta. Ação primária e seleção. Único acento não semântico

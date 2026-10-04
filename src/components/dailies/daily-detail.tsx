@@ -23,7 +23,7 @@ export function DailyDetail({ daily }: { daily: Detail }) {
     <div className="grid gap-6 lg:grid-cols-2">
       <Section title={D.reviewed} count={daily.reviewed.length} headingLevel={3}>
         {daily.reviewed.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{D.none}</p>
+          <p className="text-sm text-ink-secondary">{D.none}</p>
         ) : (
           <ul className="flex flex-col">
             {daily.reviewed.map((r) => (
@@ -61,7 +61,7 @@ export function DailyDetail({ daily }: { daily: Detail }) {
 
       <Section title={D.created} count={daily.created.length} headingLevel={3}>
         {daily.created.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{D.none}</p>
+          <p className="text-sm text-ink-secondary">{D.none}</p>
         ) : (
           <ul className="flex flex-col">
             {daily.created.map((c) => (
@@ -79,7 +79,7 @@ export function DailyDetail({ daily }: { daily: Detail }) {
 
       <Section title={D.notes} count={notes.length} headingLevel={3}>
         {notes.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{D.none}</p>
+          <p className="text-sm text-ink-secondary">{D.none}</p>
         ) : (
           <ul className="flex flex-col">
             {notes.map((p) => (

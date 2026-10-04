@@ -37,6 +37,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { DesktopHint } from "@/components/ui/desktop-hint"
 import { HighlightedText } from "@/components/ui/highlighted-text"
 import { Label } from "@/components/ui/label"
 import { Toast, ToastProvider, useToast } from "@/components/ui/toast"
@@ -218,6 +219,12 @@ export function LabOverlays() {
         <Command className="max-w-dialog rounded-lg border border-line">
           <PaletteContent />
         </Command>
+      </Specimen>
+
+      <Specimen state="DesktopHint · aviso de formulário longo (no app só aparece abaixo de 768px; aqui forçado)" className="w-full">
+        <div className="w-full max-w-[360px]">
+          <DesktopHint className="md:flex" />
+        </div>
       </Specimen>
 
       <Specimen state="HighlightedText · trecho da busca, termo sem acento casando com acentuado, com corte" className="w-full">

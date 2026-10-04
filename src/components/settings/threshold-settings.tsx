@@ -28,10 +28,11 @@ export function ThresholdSettings({ settings, canWrite }: { settings: ThresholdS
     <div className="flex flex-col gap-4">
       <p className="max-w-3xl text-sm text-ink-secondary">{T.direction}</p>
       {canWrite ? null : <p className="text-xs text-ink-secondary">{labels.settings.readOnly}</p>}
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        <table className="w-full min-w-[560px] text-sm">
+      <div className="rounded-lg border border-line bg-surface">
+        {/* Abaixo de 640px, cada linha empilha o alerta e o valor (sem rolagem horizontal). */}
+        <table className="w-full text-sm max-sm:block">
           <caption className="sr-only">{T.tableLabel}</caption>
-          <thead>
+          <thead className="max-sm:hidden">
             <tr className="border-b border-line bg-surface-sunken">
               <th scope="col" className="px-3 py-2 text-left font-mono text-2xs font-medium tracking-wide text-ink-secondary uppercase">
                 {T.columns.alert}
@@ -41,7 +42,7 @@ export function ThresholdSettings({ settings, canWrite }: { settings: ThresholdS
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="max-sm:block">
             {settings.map((s) => (
               <ThresholdRow key={s.key} setting={s} canWrite={canWrite} />
             ))}
@@ -86,8 +87,8 @@ function ThresholdRow({ setting, canWrite }: { setting: ThresholdSetting; canWri
   }
 
   return (
-    <tr className="border-b border-line align-top last:border-b-0">
-      <th scope="row" className="px-3 py-2 text-left font-normal">
+    <tr className="border-b border-line align-top last:border-b-0 max-sm:block">
+      <th scope="row" className="px-3 py-2 text-left font-normal max-sm:block max-sm:pb-0">
         <label htmlFor={inputId} className="text-sm text-ink">
           {name}
         </label>
@@ -95,7 +96,7 @@ function ThresholdRow({ setting, canWrite }: { setting: ThresholdSetting; canWri
           {help}
         </p>
       </th>
-      <td className="px-3 py-2">
+      <td className="px-3 py-2 max-sm:block">
         {canWrite ? (
           <div className="flex flex-col gap-1">
             <span className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -25,6 +25,14 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: labels.app.name,
   description: labels.app.description,
+  // Atalho na tela inicial do iPhone: abre sem a barra do Safari, com o nome do produto.
+  appleWebApp: { capable: true, title: labels.app.name, statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

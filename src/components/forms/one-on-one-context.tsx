@@ -103,13 +103,13 @@ export function OneOnOneContextView({ context }: { context: OneOnOneContext }) {
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-ink-tertiary">{L.previousNone}</p>
+          <p className="text-sm text-ink-secondary">{L.previousNone}</p>
         )}
       </Block>
 
       <Block title={`${L.openAgreements} · ${openAgreements.length}`}>
         {openAgreements.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{L.openAgreementsNone}</p>
+          <p className="text-sm text-ink-secondary">{L.openAgreementsNone}</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {openAgreements.map((a) => (
@@ -147,13 +147,13 @@ export function OneOnOneContextView({ context }: { context: OneOnOneContext }) {
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-ink-tertiary">{L.lastFeedbackNone}</p>
+          <p className="text-sm text-ink-secondary">{L.lastFeedbackNone}</p>
         )}
       </Block>
 
       <Block title={L.plans}>
         {plans.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{L.plansNone}</p>
+          <p className="text-sm text-ink-secondary">{L.plansNone}</p>
         ) : (
           plans.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">

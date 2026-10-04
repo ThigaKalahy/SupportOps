@@ -50,7 +50,7 @@ export function TrendIndicator({ trend, compact = false }: { trend: Trend; compa
       : undefined
   if (!trend.reliable || trend.deltaPoints === null) {
     return (
-      <span className="text-xs text-ink-tertiary" title={detail}>
+      <span className="text-xs text-ink-secondary" title={detail}>
         {compact ? "—" : L.trendInsufficient}
       </span>
     )

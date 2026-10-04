@@ -74,7 +74,7 @@ export function RecordActions({
         <button type="button" className={button} onClick={edit} disabled={loading}>
           {L.edit}
         </button>
-        <span aria-hidden className="text-ink-tertiary">
+        <span aria-hidden className="text-ink-secondary">
           ·
         </span>
         <button type="button" className={button} onClick={() => setConfirming(true)}>

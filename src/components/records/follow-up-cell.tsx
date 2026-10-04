@@ -6,7 +6,7 @@ import { fill, labels } from "@/lib/labels"
 
 /** Data de follow-up com a severidade quando pendente (vencida em vermelho/laranja). */
 export function FollowUpCell({ state }: { state: FollowUpState }) {
-  if (state.status === "none") return <span className="text-ink-tertiary">{labels.records.followUp.none}</span>
+  if (state.status === "none") return <span className="text-ink-secondary">{labels.records.followUp.none}</span>
   if (state.status === "done") {
     return (
       <span className="text-xs text-ink-secondary" title={fill(labels.records.followUp.doneTitle, { date: formatDate(state.resolvedAt, "business") })}>

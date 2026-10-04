@@ -96,7 +96,7 @@ export default async function TodayPage() {
 
           <Section title={T.upcoming} count={panel.upcoming.length}>
             {panel.upcoming.length === 0 ? (
-              <p className="text-sm text-ink-tertiary">{T.upcomingEmpty}</p>
+              <p className="text-sm text-ink-secondary">{T.upcomingEmpty}</p>
             ) : (
               <ul className="flex flex-col">
                 {panel.upcoming.slice(0, UPCOMING_SHOWN).map((u) => (
@@ -121,7 +121,7 @@ export default async function TodayPage() {
 
           <Section title={T.recent}>
             {panel.recent.length === 0 ? (
-              <p className="text-sm text-ink-tertiary">{T.recentEmpty}</p>
+              <p className="text-sm text-ink-secondary">{T.recentEmpty}</p>
             ) : (
               <ul className="flex flex-col">
                 {panel.recent.map((e) => (

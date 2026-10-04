@@ -22,7 +22,7 @@ export function Breadcrumb({ crumbs }: { crumbs: Crumb[] }) {
           return (
             <li key={crumb.href} className={cn("flex min-w-0 items-center gap-1.5", !last && "max-md:hidden")}>
               {index > 0 ? (
-                <span aria-hidden className={cn("text-ink-tertiary", last && "max-md:hidden")}>
+                <span aria-hidden className={cn("text-ink-secondary", last && "max-md:hidden")}>
                   /
                 </span>
               ) : null}
@@ -54,7 +54,7 @@ export function ContextSearch({ onOpen }: { onOpen?: () => void }) {
       disabled={!onOpen}
       onClick={onOpen}
       aria-keyshortcuts="Control+K Meta+K"
-      className="flex h-8 w-full max-w-[360px] items-center gap-2 rounded-sm border border-line bg-canvas px-2.5 text-sm text-ink-tertiary hover:border-line-strong hover:text-ink-secondary"
+      className="flex h-8 w-full max-w-[360px] items-center gap-2 rounded-sm border border-line bg-canvas px-2.5 text-sm text-ink-secondary hover:border-line-strong hover:text-ink-secondary"
     >
       <SearchIcon className="size-4 shrink-0" aria-hidden />
       <span className="flex-1 truncate text-left">{labels.shell.searchPlaceholder}</span>

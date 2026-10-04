@@ -32,7 +32,7 @@ export const AGREEMENTS_PAGE_SIZE = 50
 /** Arrasto: 1–2 reagendamentos em texto; 3 ou mais é sinal gerencial, em vermelho, sem depender de hover. */
 export function DragIndicator({ reschedules }: { reschedules: number }) {
   const { chronicReschedules } = useThresholds()
-  if (reschedules === 0) return <span className="text-ink-tertiary">—</span>
+  if (reschedules === 0) return <span className="text-ink-secondary">—</span>
   if (reschedules >= chronicReschedules) {
     return <StatusPill severity="overdue" label={fill(A.dragged, { count: reschedules })} />
   }
@@ -83,7 +83,7 @@ export function AgreementsTable({
       id: "title",
       header: C.title,
       cell: (r) => (
-        <Link href={`/agreements/${r.id}`} className="truncate font-medium text-ink hover:underline">
+        <Link href={`/agreements/${r.id}`} className="block truncate font-medium text-ink hover:underline">
           {r.title}
         </Link>
       ),
@@ -94,6 +94,7 @@ export function AgreementsTable({
   if (showMember) {
     columns.push({
       id: "member",
+      stackedOrder: 2,
       header: C.member,
       cell: (r) => (
         <span className="flex min-w-0 items-center gap-2">
@@ -117,7 +118,8 @@ export function AgreementsTable({
       width: "104px",
       hideBelow: "2xl",
     },
-    { id: "dueDate", header: C.dueDate, cell: (r) => <DueCell row={r} />, title: (r) => r.deadline.label, width: "232px" },
+    { id: "dueDate",
+      stackedOrder: 1, header: C.dueDate, cell: (r) => <DueCell row={r} />, title: (r) => r.deadline.label, width: "232px" },
     {
       id: "priority",
       header: C.priority,

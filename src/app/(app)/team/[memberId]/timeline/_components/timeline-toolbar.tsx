@@ -111,7 +111,8 @@ export function TimelineToolbar({ filters }: { filters: TimelineFilters }) {
       <Tabs value={filters.period} onValueChange={(value) => update({ [TIMELINE_PARAMS.period]: value === "all" ? null : value })}>
         <TabsList variant="segmented" aria-label={F.period}>
           {TIMELINE_PERIODS.map((period: TimelinePeriod) => (
-            <TabsTrigger key={period} value={period}>
+            // Filtro, não painel: sem TabsContent, o aria-controls do Radix apontaria para nada.
+            <TabsTrigger key={period} value={period} aria-controls={undefined}>
               {labels.timeline.periods[period]}
             </TabsTrigger>
           ))}

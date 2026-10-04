@@ -36,7 +36,7 @@ function followUpLabel(deadline: ReturnType<typeof deadlineSeverity>): string {
 }
 
 function Absent({ children }: { children: React.ReactNode }) {
-  return <span className="text-ink-tertiary">{children}</span>
+  return <span className="text-ink-secondary">{children}</span>
 }
 
 /**

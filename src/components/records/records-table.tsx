@@ -63,12 +63,15 @@ export function RecordsTable({
   )
 
   const columns: DataTableColumn<RecordRow>[] = [
-    { id: "date", header: C.date, cell: (r) => <DateStamp date={r.date} kind="business" className="text-ink" />, title: () => undefined, width: "104px" },
-    { id: "type", header: C.type, cell: (r) => <TypeLabel row={r} />, title: () => undefined, width: "144px" },
+    { id: "date",
+      stackedOrder: 1, header: C.date, cell: (r) => <DateStamp date={r.date} kind="business" className="text-ink" />, title: () => undefined, width: "104px" },
+    { id: "type",
+      stackedOrder: 3, header: C.type, cell: (r) => <TypeLabel row={r} />, title: () => undefined, width: "144px" },
   ]
   if (showMember) {
     columns.push({
       id: "member",
+      stackedOrder: 2,
       header: C.member,
       cell: (r) => (
         <span className="flex min-w-0 items-center gap-2">
@@ -104,12 +107,13 @@ export function RecordsTable({
         r.kind === "feedback" ? (
           <span className="text-ink-secondary">{enumLabel("feedbackCategory", r.category)}</span>
         ) : (
-          <span className="text-ink-tertiary">—</span>
+          <span className="text-ink-secondary">—</span>
         ),
       width: "128px",
       hideBelow: "xl",
     },
-    { id: "followUp", header: C.followUp, cell: (r) => <FollowUpCell state={r.followUp} />, title: () => undefined, width: "208px" },
+    { id: "followUp",
+      stackedOrder: 4, header: C.followUp, cell: (r) => <FollowUpCell state={r.followUp} />, title: () => undefined, width: "208px" },
     {
       id: "agreements",
       header: C.agreements,
@@ -117,7 +121,7 @@ export function RecordsTable({
         r.agreements.length ? (
           <span className="font-mono text-xs text-ink-secondary">{r.agreements.length}</span>
         ) : (
-          <span className="text-ink-tertiary">—</span>
+          <span className="text-ink-secondary">—</span>
         ),
       title: (r) => (r.agreements.length ? plural(labels.forms.generated.count, r.agreements.length) : undefined),
       width: "104px",
@@ -221,7 +225,7 @@ function RecordDetail({ row, canWrite, onChanged }: { row: RecordRow; canWrite: 
                   dateText={formatDate(row.date, "business")}
                   onChanged={onChanged}
                 />
-                <span aria-hidden className="text-ink-tertiary">
+                <span aria-hidden className="text-ink-secondary">
                   ·
                 </span>
               </>

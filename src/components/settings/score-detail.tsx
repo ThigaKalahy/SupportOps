@@ -149,7 +149,7 @@ export function ScoreDetail({
           {D.sum}: <WeightSumText components={definition.components} /> · {D.sumHelp}
         </p>
         {definition.components.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{D.componentsEmpty}</p>
+          <p className="text-sm text-ink-secondary">{D.componentsEmpty}</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-line bg-surface">
             <table className="w-full min-w-[640px] text-sm">
@@ -287,7 +287,7 @@ function NotesSection({ definition, editable }: { definition: ScoreDefinitionVie
   if (!editable) {
     return (
       <Section title={D.notes}>
-        <p className={definition.notes ? "max-w-3xl text-sm whitespace-pre-line text-ink" : "text-sm text-ink-tertiary"}>
+        <p className={definition.notes ? "max-w-3xl text-sm whitespace-pre-line text-ink" : "text-sm text-ink-secondary"}>
           {definition.notes ?? D.notesEmpty}
         </p>
       </Section>

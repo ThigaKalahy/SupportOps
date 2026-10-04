@@ -34,7 +34,7 @@ function SelectTrigger({
       data-size={size}
       className={cn(
         controlClasses,
-        "flex w-fit min-w-40 items-center justify-between gap-2 pr-2 pl-2.5 text-left whitespace-nowrap data-placeholder:text-ink-tertiary data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:truncate [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "flex w-fit min-w-40 items-center justify-between gap-2 pr-2 pl-2.5 text-left whitespace-nowrap data-placeholder:text-ink-secondary data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:truncate [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className
       )}
       {...props}

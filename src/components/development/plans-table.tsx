@@ -19,9 +19,10 @@ export function PlansTable({ plans }: { plans: PlanView[] }) {
   const columns: DataTableColumn<PlanView>[] = [
     {
       id: "member",
+      stackedOrder: 1,
       header: C.member,
       cell: (p) => (
-        <Link href={`/team/${p.member.id}/development`} className="truncate font-medium text-ink hover:underline">
+        <Link href={`/team/${p.member.id}/development`} className="block truncate font-medium text-ink hover:underline">
           {p.member.preferredName}
         </Link>
       ),
@@ -49,13 +50,14 @@ export function PlansTable({ plans }: { plans: PlanView[] }) {
         p.progress.total ? (
           <span className="font-mono text-xs text-ink-secondary">{fill(labels.development.plans.progress, p.progress)}</span>
         ) : (
-          <span className="text-ink-tertiary">—</span>
+          <span className="text-ink-secondary">—</span>
         ),
       title: () => undefined,
       width: "200px",
       hideBelow: "lg",
     },
-    { id: "review", header: C.review, cell: (p) => <PlanReviewAge plan={p} />, title: () => undefined, width: "264px" },
+    { id: "review",
+      stackedOrder: 2, header: C.review, cell: (p) => <PlanReviewAge plan={p} />, title: () => undefined, width: "264px" },
   ]
   return (
     <DataTable

@@ -44,13 +44,16 @@ function CommandDialog({
 
 function CommandInput({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Input>) {
   return (
-    <div data-slot="command-input-wrapper" className="flex h-10 items-center gap-2 border-b border-line px-3">
+    <div
+      data-slot="command-input-wrapper"
+      // O foco do campo aparece na base do campo: barra de 2px em --accent (o contorno cobria a primeira letra).
+      className="relative flex h-10 items-center gap-2 border-b border-line px-3 after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-transparent has-[input:focus-visible]:after:bg-accent"
+    >
       <SearchIcon className="size-4 shrink-0 text-ink-tertiary" aria-hidden />
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          // Único campo da paleta, sempre focado enquanto ela está aberta: o cursor e o item
-          // selecionado sinalizam o foco. Um outline aqui cobria a primeira letra digitada.
+          // O foco é sinalizado pela barra na base do wrapper (acima); um outline aqui cobria a primeira letra.
           "h-full w-full bg-transparent text-sm text-ink placeholder:text-ink-tertiary focus-visible:outline-none disabled:cursor-not-allowed disabled:text-ink-tertiary",
           className
         )}

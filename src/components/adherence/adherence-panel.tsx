@@ -63,7 +63,7 @@ export function MonthlySparkline({ series }: { series: MonthlyAdherence[] }) {
 
 /** Impeditivos por frequência, até 4 linhas, com a categoria (D18). */
 export function BlockerList({ breakdown, limit = 4 }: { breakdown: BlockerBreakdown; limit?: number }) {
-  if (breakdown.total === 0) return <p className="text-sm text-ink-tertiary">{L.blockersNone}</p>
+  if (breakdown.total === 0) return <p className="text-sm text-ink-secondary">{L.blockersNone}</p>
   return (
     <ul className="flex flex-col">
       {breakdown.byReason.slice(0, limit).map((r) => (
@@ -102,7 +102,7 @@ export function AdherencePanel({
   return (
     <Section title={fill(L.profileTitle, { days })}>
       {adherence.totalDue === 0 ? (
-        <p className="text-sm text-ink-tertiary">{L.noData}</p>
+        <p className="text-sm text-ink-secondary">{L.noData}</p>
       ) : (
         <StatStrip items={adherenceStats(adherence)} aria-label={fill(L.profileTitle, { days })} />
       )}

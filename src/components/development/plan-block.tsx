@@ -179,7 +179,7 @@ export function PlanBlock({ plan, canWrite, edit }: { plan: PlanView; canWrite: 
           ) : null}
         </div>
         {plan.actions.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{P.noActions}</p>
+          <p className="text-sm text-ink-secondary">{P.noActions}</p>
         ) : (
           <ul className="flex flex-col">
             {plan.actions.map((a) => {
@@ -256,7 +256,7 @@ function Text({ label, text }: { label: string; text: string | null }) {
       <MetaLabel asChild>
         <dt>{label}</dt>
       </MetaLabel>
-      <dd className={cn("text-sm whitespace-pre-line", text ? "text-ink" : "text-ink-tertiary")}>{text ?? "—"}</dd>
+      <dd className={cn("text-sm whitespace-pre-line", text ? "text-ink" : "text-ink-secondary")}>{text ?? "—"}</dd>
     </div>
   )
 }

@@ -69,7 +69,7 @@ export function MentorshipSection({
       }
     >
       {mentorships.length === 0 ? (
-        <p className="text-sm text-ink-tertiary">{M.empty}</p>
+        <p className="text-sm text-ink-secondary">{M.empty}</p>
       ) : (
         <ul className="flex flex-col">
           {mentorships.map((m) => (

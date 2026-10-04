@@ -380,28 +380,38 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - `/settings/score/[id]/preview`: pré-visualização da COMPOSIÇÃO (barra dos pesos, métrica, direção, peso, faixa e como seria lido) — documentação viva, não execução: não lê `MetricResult`/`ScoreResult` de ninguém.
 - `src/server/score.ts`: só tipos, com o aviso no topo. Contrato de importação documentado na seção "Contrato de importação de métricas". Nenhuma tela de pessoa mudou (teste estático garante que nenhuma lê métrica ou score).
 
+**P18 — Mobile, acessibilidade e deploy**
+- Mobile (360–768px): toda DataTable vira lista empilhada com o título e os 2 campos mais importantes à vista (`stackedOrder` define a ordem só no celular) e o resto atrás de "Mais detalhes (N)", alvo de 44px; vazia, a lista não é `role="list"`. Em ponteiro grosso (`@media (pointer: coarse)` no globals.css) botões, selects, campos, abas, itens de menu e de paleta e links de navegação têm no mínimo 44px; checkbox ganha área de toque de 44px sem mudar o desenho. Timeline: abaixo de 768px a calha encolhe para 24px (só a régua) e a data sobe para o topo de cada entrada. `RouteTabs` rola até a aba ativa. Formulários longos (daily, 1:1) mostram `DesktopHint` (primitivo novo) e continuam funcionais; os curtos (combinado, anotação, validação) não mudam. Na equipe, o cargo sai da linha no celular; a coluna de atenção mostra a gravidade em texto ao lado do ponto.
+- Instalação como atalho: `src/app/manifest.ts` (standalone, pt-BR), `src/app/icon.svg`, `src/app/apple-icon.png` e `public/icons/icon-{192,512}.png`; `appleWebApp` e `viewport` no layout raiz. Manifest e ícones fora do middleware de login. SEM service worker, cache offline ou sincronização.
+- Acessibilidade: contraste AA de todos os tokens de texto verificado em teste (`tests/a11y.test.ts`), inclusive severidade sobre o próprio wash; `--ink-tertiary` (3,2:1) ficou só para placeholder nativo, desabilitado e ícone — texto informativo, "—" de ausência e placeholder de select passaram a `--ink-secondary` (DESIGN.md e skill atualizados). Foco nunca removido: o campo da paleta, que não tem outline, mostra uma barra de 2px em `--accent` na base. `prefers-reduced-motion` desliga animação e transição. Timeline: cabeçalho de mês é h2, botão de visibilidade sem `aria-label` divergente do texto, abas de período sem `aria-controls` para painel inexistente. Lighthouse (acessibilidade, perfil mobile) 100 nas telas principais, como gestor e como VIEWER.
+- Deploy preparado: `vercel.json` (build `pnpm exec prisma migrate deploy && pnpm exec next build`, região `gru1`), `.env.example` com todas as variáveis comentadas, README com o passo a passo da Vercel (variáveis, Deployment Protection com Vercel Authentication / Standard Protection, previews no branch `dev` do Neon) e o backup. `/ui-lab` responde 404 em produção (verificado autenticado). O deploy em si depende da sua conta na Vercel (BLOCKERS.md).
+- Backup: `pnpm db:backup [pasta]` (`scripts/db-backup.ts`) roda `pg_dump --format=custom` com a `DIRECT_URL` para `backups/prontuario-DD-MM-AAAA.dump` (pasta no `.gitignore`); exige cliente PostgreSQL 18+. Agendamento semanal (Agendador de Tarefas / cron) e restauração com `pg_restore` no README.
+
 ## Backlog de curto prazo
 
-Provisionar o banco antes do P3 (já feito).
+As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:
 
-- **P1** — Design system
-- **P2** — App shell
-- **P3** — Schema Prisma
-- **P4** — Seed
-- **P5** — Auth e visibilidade
-- **P6** — Equipe e cadastro
-- **P7** — Perfil do analista
-- **P8** — Timeline
-- **P9** — Combinados
-- **P10** — Dailies com rollover
-- **P11** — Validação de prioridade
-- **P12** — Cumprimento de combinados
-- **P13** — 1:1 e feedbacks
-- **P14** — Desenvolvimento e PDI
-- **P15** — Hoje e motor de alertas
-- **P16** — Busca global
-- **P17** — Arquitetura de score
-- **P18** — Mobile, a11y e deploy
+**Para colocar em uso**
+- Deploy na Vercel com as variáveis de produção, Deployment Protection (Vercel Authentication, Standard Protection) e previews apontando para o branch `dev` do Neon — depende da conta do usuário (BLOCKERS.md). Depois: `/ui-lab` 404 no domínio, login, tempo da busca na região `gru1`.
+- Conta do VIEWER (`ALLOWED_EMAILS` + `pnpm user:create`), quando houver o e-mail.
+- Matriz de competências (`/settings/competency-matrix`): o seed não a preenche; sem ela não há marca do esperado nem prontidão.
+- Backup: instalar o cliente PostgreSQL 18 e agendar `pnpm db:backup` semanal; testar uma restauração.
+- Alinhar com RH/jurídico antes de inserir dados reais (responsabilidade do usuário).
+
+**Checagens humanas (MANUAL-COMPLETO.md, Parte E)**
+- `/ui-lab` olhado de verdade (as seções novas de P8 a P18 só foram vistas por captura).
+- Cronômetros: daily com 5 revisões, 4 notas e 3 combinados em menos de 3 minutos; 10 validações em menos de 2 minutos; combinado em 15 segundos; home "em 10 segundos eu sei o que fazer".
+- Teste de vazamento com uma nota PRIVATE real (OWNER cria, VIEWER não vê em timeline, busca, paleta e contadores).
+- Uso de ponta a ponta num iPhone (atalho na tela inicial, login, captura de combinado, leitura do perfil).
+
+**Funcionalidade fora do MVP (decisões registradas em PROGRESS.md)**
+- Daily: excluir uma daily e editar revisões/combinados de daily já salva; mudar prazo ou responsável fora da daily (esconderia o arrasto — exige decisão).
+- Competências: histórico de níveis (o schema guarda um nível por pessoa × competência).
+- Validação de prioridade: telas de relatório (as queries `summaryBy*` já existem).
+- Busca: resumo e decisões da daily, validações, pontos fortes/de desenvolvimento; anotação ainda abre pela timeline filtrada.
+- Hoje: registrar acompanhamento de PDI direto da lista; limiares por pessoa (hoje são por organização).
+- Métricas: importador do helpdesk segundo o "Contrato de importação de métricas" (nada implementado). Score: fórmula só depois de aprovada pelo usuário (D5), sempre com breakdown.
+- Fora do MVP por decisão: modo escuro, testes E2E, Sentry, upload de arquivo, notificações.
 
 ## Protocolo de execução autônoma
 

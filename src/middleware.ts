@@ -10,5 +10,6 @@ export const { auth: middleware } = NextAuth(authConfig)
 
 export const config = {
   // /api/auth precisa ficar acessível para o próprio Auth.js (CSRF, callback, sessão).
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
+  // Manifest e ícones são públicos: o navegador os busca sem cookie ao instalar o atalho.
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|manifest.webmanifest|icon.svg|apple-icon.png|icons/).*)"],
 }

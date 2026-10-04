@@ -81,7 +81,7 @@ export function AdherenceTable({
           <Avatar size="sm">
             <AvatarFallback style={avatarColors(r.member.id)}>{initials(r.member.fullName)}</AvatarFallback>
           </Avatar>
-          <Link href={`/team/${r.member.id}/agreements`} className="truncate font-medium text-ink hover:underline">
+          <Link href={`/team/${r.member.id}/agreements`} className="block truncate font-medium text-ink hover:underline">
             {r.member.preferredName}
           </Link>
         </span>
@@ -92,6 +92,7 @@ export function AdherenceTable({
     { id: "seniority", header: C.seniority, cell: (r) => <span className="text-ink-secondary">{r.member.seniorityLabel}</span>, width: "104px", hideBelow: "lg" },
     {
       id: "total",
+      stackedOrder: 1,
       header: C.total,
       cell: (r) => (
         <span className="flex items-center gap-2">
@@ -105,9 +106,10 @@ export function AdherenceTable({
     { id: "onTime", header: C.onTime, cell: (r) => <span className="font-mono">{r.adherence.doneOnTime}</span>, width: "88px", hideBelow: "xl" },
     {
       id: "rate",
+      stackedOrder: 2,
       header: C.rate,
       cell: (r) => (
-        <span className={cn("font-mono", r.adherence.adherenceRate.lowConfidence ? "text-ink-tertiary" : "text-ink")}>
+        <span className={cn("font-mono", r.adherence.adherenceRate.lowConfidence ? "text-ink-secondary" : "text-ink")}>
           {formatRate(r.adherence.adherenceRate)}
         </span>
       ),
@@ -119,7 +121,7 @@ export function AdherenceTable({
       header: C.adjusted,
       cell: (r) => (
         <span className="flex items-baseline gap-1.5">
-          <span className={cn("font-mono", r.adherence.adjustedRate.lowConfidence ? "text-ink-tertiary" : "text-ink")}>
+          <span className={cn("font-mono", r.adherence.adjustedRate.lowConfidence ? "text-ink-secondary" : "text-ink")}>
             {formatRate(r.adherence.adjustedRate)}
           </span>
           <span className="text-xs text-ink-secondary">{plural(L.agreementsParen, r.adherence.adjustedRate.denominator)}</span>
@@ -134,7 +136,7 @@ export function AdherenceTable({
       header: C.drag,
       cell: (r) =>
         r.adherence.avgReschedules === null ? (
-          <span className="text-ink-tertiary">—</span>
+          <span className="text-ink-secondary">—</span>
         ) : (
           <span className="font-mono text-ink-secondary">{fill(L.dragValue, { value: decimal.format(r.adherence.avgReschedules) })}</span>
         ),

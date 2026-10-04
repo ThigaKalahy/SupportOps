@@ -55,7 +55,7 @@ function StatStrip({
           <dd
             className={cn(
               "font-mono text-xl font-medium",
-              item.value === null ? "text-ink-tertiary" : item.severity ? valueColor[item.severity] : "text-ink"
+              item.value === null ? "text-ink-secondary" : item.severity ? valueColor[item.severity] : "text-ink"
             )}
           >
             {item.value === null ? "—" : typeof item.value === "number" ? numberFormat.format(item.value) : item.value}

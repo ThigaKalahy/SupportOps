@@ -77,7 +77,8 @@ export function ValidationsTable({
       width: "112px",
       stacked: "primary",
     },
-    { id: "member", header: T.member, cell: (r) => r.member.preferredName, width: "128px" },
+    { id: "member",
+      stackedOrder: 1, header: T.member, cell: (r) => r.member.preferredName, width: "128px" },
     {
       id: "analyst",
       header: T.analyst,
@@ -92,7 +93,7 @@ export function ValidationsTable({
         r.supervisorPriority ? (
           <span className="text-ink">{r.supervisorPriority.label}</span>
         ) : (
-          <span className="text-ink-tertiary">{T.none}</span>
+          <span className="text-ink-secondary">{T.none}</span>
         ),
       title: (r) => r.supervisorPriority?.label,
       width: "104px",
@@ -100,6 +101,7 @@ export function ValidationsTable({
     },
     {
       id: "outcome",
+      stackedOrder: 2,
       header: T.outcome,
       cell: (r) => <StatusPill severity={OUTCOME_SEVERITY[r.outcome]} label={enumLabel("validationOutcome", r.outcome)} />,
       title: (r) => `${r.analystPriority.label} → ${r.supervisorPriority?.label ?? enumLabel("validationOutcome", r.outcome)}`,
@@ -115,7 +117,7 @@ export function ValidationsTable({
             {r.reasonOther ? `: ${r.reasonOther}` : ""}
           </span>
         ) : (
-          <span className="text-ink-tertiary">{T.none}</span>
+          <span className="text-ink-secondary">{T.none}</span>
         ),
       title: (r) => [r.reason?.label, r.reasonOther, r.note].filter(Boolean).join(" · ") || undefined,
       hideBelow: "xl",

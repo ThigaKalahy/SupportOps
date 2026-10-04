@@ -44,7 +44,7 @@ export default async function ScorePreviewPage({ params }: { params: Promise<{ d
       </div>
 
       {d.components.length === 0 ? (
-        <p className="text-sm text-ink-tertiary">{P.empty}</p>
+        <p className="text-sm text-ink-secondary">{P.empty}</p>
       ) : (
         <>
           <Section title={P.composition}>

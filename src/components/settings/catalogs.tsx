@@ -106,7 +106,7 @@ export function ReclassificationReasonsSettings({
           id: "requiresDetail",
           header: S.columns.requiresDetail,
           cell: (item) => (
-            <span className={item.requiresDetail ? "text-ink" : "text-ink-tertiary"}>{item.requiresDetail ? S.yes : S.no}</span>
+            <span className={item.requiresDetail ? "text-ink" : "text-ink-secondary"}>{item.requiresDetail ? S.yes : S.no}</span>
           ),
           width: "104px",
         },
@@ -346,7 +346,7 @@ export function CompetenciesSettings({ items, canWrite }: { items: CompetencyIte
           id: "category",
           header: S.columns.category,
           cell: (item) => (
-            <span className={item.category ? "text-ink-secondary" : "text-ink-tertiary"}>{item.category ?? T.noCategory}</span>
+            <span className={item.category ? "text-ink-secondary" : "text-ink-secondary"}>{item.category ?? T.noCategory}</span>
           ),
           width: "160px",
         },
@@ -415,7 +415,7 @@ export function MetricsSettings({ items, canWrite }: { items: MetricItem[]; canW
           id: "results",
           header: T.results,
           cell: (item) => (
-            <span className={item.results ? "font-mono text-xs text-ink" : "text-ink-tertiary"}>{item.results || T.noResults}</span>
+            <span className={item.results ? "font-mono text-xs text-ink" : "text-ink-secondary"}>{item.results || T.noResults}</span>
           ),
           width: "104px",
           hideBelow: "lg",

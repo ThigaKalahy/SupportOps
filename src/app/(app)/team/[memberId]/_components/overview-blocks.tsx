@@ -264,7 +264,7 @@ function RhythmRow({
         {late ? (
           <SeverityDot severity={reference.severity} strong={reference.strong} label={enumLabel("severity", reference.severity)} />
         ) : null}
-        <span className={days === null ? "text-sm text-ink-tertiary" : "font-mono text-sm text-ink"}>
+        <span className={days === null ? "text-sm text-ink-secondary" : "font-mono text-sm text-ink"}>
           {days === null ? P.rhythm.never : days === 0 ? P.rhythm.today : plural(P.rhythm.daysAgo, days)}
         </span>
         {reference ? (

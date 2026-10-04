@@ -136,7 +136,6 @@ function Visibility({
     <button
       type="button"
       disabled={pending}
-      aria-label={`${text}. ${action}`}
       title={action}
       onClick={() => onToggle(item)}
       className={cn(base, colors, "px-1 -mx-1 hover:bg-surface-sunken disabled:opacity-50")}
@@ -201,7 +200,7 @@ export function TimelineEvent({
           <span>{fill(T.by, { name: item.author })}</span>
           {actions ? (
             <>
-              <span aria-hidden className="text-ink-tertiary">
+              <span aria-hidden className="text-ink-secondary">
                 ·
               </span>
               {actions}

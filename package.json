@@ -16,6 +16,7 @@
     "db:migrate:deploy": "node --env-file=.env.local node_modules/prisma/build/index.js migrate deploy",
     "db:seed": "node --env-file=.env.local node_modules/prisma/build/index.js db seed",
     "db:studio": "node --env-file=.env.local node_modules/prisma/build/index.js studio",
+    "db:backup": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db-backup.ts",
     "user:create": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/user-create.ts",
     "user:password": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/user-password.ts",
     "test": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 \"tests/**/*.test.ts\""

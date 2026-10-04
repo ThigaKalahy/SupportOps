@@ -31,6 +31,7 @@ export const labels = {
     required: "obrigatório",
     previousMonth: "Mês anterior",
     nextMonth: "Próximo mês",
+    desktopHint: "Formulário longo: a experiência é melhor no computador, mas funciona aqui também.",
   },
   toast: {
     region: "Avisos",
@@ -1598,6 +1599,8 @@ export const labels = {
     private: "Privado",
   },
   table: {
+    moreDetails: "Mais detalhes",
+    lessDetails: "Menos detalhes",
     loading: "Carregando registros",
     errorTitle: "Não foi possível carregar os registros",
     emptyTitle: "Nenhum registro",

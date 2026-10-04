@@ -35,7 +35,7 @@ Nunca fazer, sem exceção, sem "só desta vez":
 --surface-sunken:  #F4F5F7
 --ink:             #16181D   (nunca #000)
 --ink-secondary:   #5C6270
---ink-tertiary:    #8A909E   só placeholder, desabilitado e marcador de ausência — nunca texto a ser lido
+--ink-tertiary:    #8A909E   só placeholder, desabilitado e ícone — nunca texto a ser lido, nem o "—" de ausência (usa --ink-secondary; AA, P18)
 --line:            #E4E6EB
 --line-strong:     #CDD1D9
 --accent:          #2C4A7C   único acento não semântico — ação primária e seleção

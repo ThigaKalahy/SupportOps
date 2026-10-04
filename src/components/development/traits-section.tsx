@@ -57,7 +57,7 @@ export function TraitsSection({
           {title} · {list.length}
         </MetaLabel>
         {list.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{T.empty}</p>
+          <p className="text-sm text-ink-secondary">{T.empty}</p>
         ) : (
           <ul className="flex flex-col">
             {list.map((t) => (
@@ -112,7 +112,7 @@ export function TraitsSection({
               <li key={t.id} className="flex flex-wrap items-baseline gap-x-2 border-b border-line py-1.5 text-sm last:border-b-0">
                 <span className="text-xs text-ink-secondary">{T.kindOptions[t.kind]}</span>
                 <span className="text-ink-secondary">{t.text}</span>
-                <span className="text-xs text-ink-tertiary">{fill(T.observedAt, { date: formatDate(t.observedAt, "business") })}</span>
+                <span className="text-xs text-ink-secondary">{fill(T.observedAt, { date: formatDate(t.observedAt, "business") })}</span>
               </li>
             ))}
           </ul>

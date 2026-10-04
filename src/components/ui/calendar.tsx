@@ -68,8 +68,8 @@ function Calendar({
         range_middle: cn("rounded-none bg-accent-wash", defaults.range_middle),
         range_end: cn("rounded-r-sm bg-accent-wash", defaults.range_end),
         today: cn("font-semibold text-accent", defaults.today),
-        outside: cn("text-ink-tertiary", defaults.outside),
-        disabled: cn("text-ink-tertiary opacity-50", defaults.disabled),
+        outside: cn("text-ink-secondary", defaults.outside),
+        disabled: cn("text-ink-secondary opacity-50", defaults.disabled),
         hidden: cn("invisible", defaults.hidden),
         ...classNames,
       }}

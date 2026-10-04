@@ -377,7 +377,7 @@ export function ValidationForm({
             {outcome ? (
               <StatusPill severity={OUTCOME_SEVERITY[outcome]} label={enumLabel("validationOutcome", outcome)} />
             ) : (
-              <span className="text-sm text-ink-tertiary">
+              <span className="text-sm text-ink-secondary">
                 <span aria-hidden>{labels.priorityValidations.table.none}</span>
                 <span className="sr-only">{L.outcomePending}</span>
               </span>

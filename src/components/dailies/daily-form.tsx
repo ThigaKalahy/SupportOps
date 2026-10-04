@@ -15,6 +15,7 @@ import { MetaLabel } from "@/components/ui/meta-label"
 import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { DesktopHint } from "@/components/ui/desktop-hint"
 import { formatDate, formatTime, maskDateInput, parseDisplayDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
@@ -317,6 +318,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       className="flex flex-col gap-8"
       noValidate
     >
+      <DesktopHint />
       {restoredAt ? (
         <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface-sunken px-3 py-2">
           <p className="text-sm text-ink-secondary">{fill(L.draft.restored, { time: restoredAt })}</p>

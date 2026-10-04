@@ -37,13 +37,22 @@ function RouteTabs({
 }) {
   const pathname = usePathname()
   const current = activeHref ?? pathname
+  const navRef = React.useRef<HTMLElement>(null)
+
+  // Faixa que rola (tela estreita): a aba ativa entra na área visível, sem mexer na rolagem da página.
+  React.useEffect(() => {
+    const nav = navRef.current
+    const active = nav?.querySelector<HTMLElement>("[aria-current=page]")
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return
+    nav.scrollLeft = Math.max(0, active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2)
+  }, [current])
 
   function isActive(tab: RouteTab) {
     return tab.exact ? current === tab.href : current === tab.href || current.startsWith(`${tab.href}/`)
   }
 
   return (
-    <nav data-slot="route-tabs" aria-label={label} className={cn("min-w-0 overflow-x-auto", className)}>
+    <nav ref={navRef} data-slot="route-tabs" aria-label={label} className={cn("min-w-0 overflow-x-auto", className)}>
       <ul className="flex h-9 w-max min-w-full items-stretch gap-4 border-b border-line">
         {tabs.map((tab) => {
           const active = isActive(tab)

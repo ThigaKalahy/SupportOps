@@ -397,7 +397,7 @@ export default function UiLabPage() {
           {deadlineSamples.map((s, i) => (
             <div key={i} className="grid h-10 grid-cols-[16px_112px_1fr] items-center gap-3 px-3 sm:grid-cols-[16px_112px_200px_1fr]">
               <SeverityDot severity={s.severity} strong={s.strong} label={s.label} />
-              {s.dueDate ? <DateStamp date={s.dueDate} kind="business" /> : <span className="text-ink-tertiary">—</span>}
+              {s.dueDate ? <DateStamp date={s.dueDate} kind="business" /> : <span className="text-ink-secondary">—</span>}
               <StatusPill severity={s.severity} strong={s.strong} label={s.label} />
               <span className="hidden font-mono text-2xs text-ink-secondary sm:block">
                 {s.stage}

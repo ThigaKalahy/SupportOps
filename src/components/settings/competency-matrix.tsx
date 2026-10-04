@@ -101,7 +101,7 @@ export function CompetencyMatrix({ matrix, canWrite }: { matrix: Matrix; canWrit
                           </SelectContent>
                         </Select>
                       ) : (
-                        <span className={value ? "font-mono text-ink" : "text-ink-tertiary"}>{value ?? M.empty}</span>
+                        <span className={value ? "font-mono text-ink" : "text-ink-secondary"}>{value ?? M.empty}</span>
                       )}
                     </td>
                   )

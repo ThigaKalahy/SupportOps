@@ -50,7 +50,7 @@ export default async function DevelopmentPage() {
       <Section title={O.stale} count={overview.stale.length}>
         <p className="-mt-2 text-xs text-ink-secondary">{fill(O.staleDirection, { days: overview.staleDays })}</p>
         {overview.stale.length === 0 ? (
-          <p className="text-sm text-ink-tertiary">{O.staleNone}</p>
+          <p className="text-sm text-ink-secondary">{O.staleNone}</p>
         ) : (
           <ul className="flex flex-col rounded-lg border border-line bg-surface">
             {overview.stale.map((p) => (
@@ -74,7 +74,7 @@ export default async function DevelopmentPage() {
         <Section title={D.mentorships.title} count={overview.mentorGroups.length}>
           <p className="-mt-2 text-xs text-ink-secondary">{D.mentorships.direction}</p>
           {overview.mentorGroups.length === 0 ? (
-            <p className="text-sm text-ink-tertiary">{D.mentorships.empty}</p>
+            <p className="text-sm text-ink-secondary">{D.mentorships.empty}</p>
           ) : (
             <ul className="flex flex-col">
               {overview.mentorGroups.map((g) => (
@@ -109,13 +109,13 @@ export default async function DevelopmentPage() {
             <p className="text-sm text-ink-secondary">
               {D.readiness.matrixEmpty}{" "}
               {canWrite(user) ? (
-                <Link href="/settings/competency-matrix" className="text-accent hover:underline">
+                <Link href="/settings/competency-matrix" className="text-accent underline underline-offset-2">
                   {D.competencies.matrixLink}
                 </Link>
               ) : null}
             </p>
           ) : overview.readiness.length === 0 ? (
-            <p className="text-sm text-ink-tertiary">{D.readiness.empty}</p>
+            <p className="text-sm text-ink-secondary">{D.readiness.empty}</p>
           ) : (
             <ul className="flex flex-col">
               {overview.readiness.map((r) => (

@@ -27,6 +27,11 @@ export interface DataTableColumn<T> {
    */
   stacked?: "primary" | "aside" | "secondary" | "hidden"
   /**
+   * Ordem na lista empilhada (menor primeiro); sem ela, a ordem das colunas.
+   * Os dois primeiros campos secundários ficam à vista; o resto, atrás de "Mais detalhes".
+   */
+  stackedOrder?: number
+  /**
    * Oculta a coluna na tabela abaixo do breakpoint (lg = 1024px, xl = 1280px, 2xl = 1536px).
    * Use nas colunas de menor prioridade: a soma das larguras fixas não pode
    * passar da largura disponível, senão a coluna flexível (sem `width`) some.
@@ -307,7 +312,13 @@ function DataTable<T>({
       {statusBlock ? <div className="hidden border-t border-line md:block">{statusBlock}</div> : null}
 
       {/* < 768px: lista de linhas empilhadas */}
-      <div className="md:hidden" aria-label={label} role="list" aria-busy={state === "loading" || undefined}>
+      {/* Só é lista quando há itens: vazio, erro e carregamento não são listitem. */}
+      <div
+        className="md:hidden"
+        aria-label={state === "ready" && !statusBlock ? label : undefined}
+        role={state === "ready" && !statusBlock ? "list" : undefined}
+        aria-busy={state === "loading" || undefined}
+      >
         {state === "loading" ? (
           <p className="px-3 py-4 text-sm text-ink-secondary">{labels.table.loading}</p>
         ) : statusBlock ? (
@@ -318,7 +329,11 @@ function DataTable<T>({
             const { selected, forced } = rowState(id)
             const primary = columns.filter((c) => c.stacked === "primary")
             const aside = columns.filter((c) => c.stacked === "aside")
-            const secondary = columns.filter((c) => (c.stacked ?? "secondary") === "secondary")
+            const secondary = columns
+              .map((c, i) => ({ c, order: c.stackedOrder ?? 100 + i }))
+              .filter(({ c }) => (c.stacked ?? "secondary") === "secondary")
+              .sort((a, b) => a.order - b.order)
+              .map(({ c }) => c)
             const group = groupStart(rowIndex)
             return (
               <React.Fragment key={id}>
@@ -357,16 +372,7 @@ function DataTable<T>({
                     </div>
                   ) : null}
                 </div>
-                <dl className="flex flex-wrap gap-x-4 gap-y-1">
-                  {secondary.map((column) => (
-                    <div key={column.id} className="flex min-w-0 items-center gap-1.5">
-                      <MetaLabel asChild>
-                        <dt>{column.header}</dt>
-                      </MetaLabel>
-                      <dd className="min-w-0 truncate text-sm">{column.cell(row)}</dd>
-                    </div>
-                  ))}
-                </dl>
+                <StackedDetails row={row} columns={secondary} />
               </div>
               </React.Fragment>
             )
@@ -374,6 +380,51 @@ function DataTable<T>({
         )}
       </div>
     </div>
+  )
+}
+
+/** Quantos campos secundários ficam à vista no item empilhado (com o título, os 3 mais importantes). */
+const STACKED_VISIBLE = 2
+
+/**
+ * Campos do item empilhado: os primeiros à vista, o resto atrás de um toque
+ * ("Mais detalhes", alvo de 44px). A ordem das colunas é a ordem de importância.
+ */
+function StackedDetails<T>({ row, columns }: { row: T; columns: DataTableColumn<T>[] }) {
+  const [open, setOpen] = React.useState(false)
+  const id = React.useId()
+  const visible = columns.slice(0, STACKED_VISIBLE)
+  const rest = columns.slice(STACKED_VISIBLE)
+  const field = (column: DataTableColumn<T>) => (
+    <div key={column.id} className="flex min-w-0 items-center gap-1.5">
+      <MetaLabel asChild>
+        <dt>{column.header}</dt>
+      </MetaLabel>
+      <dd className="min-w-0 truncate text-sm">{column.cell(row)}</dd>
+    </div>
+  )
+  return (
+    <>
+      {visible.length ? <dl className="flex flex-wrap gap-x-4 gap-y-1">{visible.map(field)}</dl> : null}
+      {rest.length ? (
+        <>
+          {open ? (
+            <dl id={id} className="flex flex-col gap-1 border-t border-line pt-1.5">
+              {rest.map(field)}
+            </dl>
+          ) : null}
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={open ? id : undefined}
+            onClick={() => setOpen((v) => !v)}
+            className="-mx-1 -mb-1.5 flex min-h-11 items-center self-start px-1 text-xs font-medium text-accent"
+          >
+            {open ? labels.table.lessDetails : `${labels.table.moreDetails} (${rest.length})`}
+          </button>
+        </>
+      ) : null}
+    </>
   )
 }
 

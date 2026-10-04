@@ -37,6 +37,17 @@ Onde consigo:
 4. Quando tiver o e-mail do VIEWER: acrescente-o ao `ALLOWED_EMAILS` e rode `pnpm user:create` com papel VIEWER.
 Enquanto isso: o código do P5 está pronto e testado, mas ninguém consegue entrar no app local. As fases seguintes dependem de login.
 
+## [ ] Deploy na Vercel (conta, variáveis e Deployment Protection)
+Fase: P18
+Preciso de: que você faça o deploy na sua conta da Vercel — eu não tenho acesso nem devo criar conta ou autorizar integração em seu nome. Tudo no repositório já está pronto (`vercel.json` com build e região `gru1`, `.env.example`, README "Deploy na Vercel").
+Onde consigo:
+1. vercel.com → Add New → Project → importe o repositório (Next.js detectado; não altere os comandos, o `vercel.json` manda).
+2. Settings → Environment Variables (Production e Preview): `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET` (gere um novo para produção), `ALLOWED_EMAILS`, `DEFAULT_ORG_SLUG=suporte`. Não defina `AUTH_URL` nem `TZ`. Recomendo apontar Preview para o branch `dev` do Neon.
+3. Settings → Deployment Protection → Vercel Authentication, escopo Standard Protection.
+4. Faça o deploy e me avise: eu confiro `/ui-lab` (404), o login, a busca e a home no domínio de produção.
+5. No plano Hobby, a região `gru1` pode exigir ajuste em Settings → Functions se o `vercel.json` não for aceito — me diga o que a Vercel mostrar.
+Enquanto isso: o produto roda localmente e todo o código do P18 está comitado; só o deploy e a proteção dos previews dependem de você. Nenhuma fase fica bloqueada (o P18 é a última).
+
 <!--
 FORMATO — o Claude Code adiciona blocos assim e PARA (sem o recuo, que só existe
 aqui para o exemplo não ser lido como bloqueio real pelo phase-gate):

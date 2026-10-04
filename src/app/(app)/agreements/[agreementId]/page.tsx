@@ -184,7 +184,7 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
                   <StatusPill severity={OUTCOME_SEVERITY[c.outcome]} label={enumLabel("checkinOutcome", c.outcome)} />
                 </span>
                 <span className="col-span-2 flex min-w-0 flex-col gap-0.5 md:col-span-1">
-                  {c.blockerText ? <span className="text-sm text-ink">{c.blockerText}</span> : <span className="text-ink-tertiary">{D.noBlocker}</span>}
+                  {c.blockerText ? <span className="text-sm text-ink">{c.blockerText}</span> : <span className="text-ink-secondary">{D.noBlocker}</span>}
                   {c.blockerReason ? (
                     <span className="text-xs text-ink-secondary">
                       {c.blockerReason.label} · {enumLabel("blockerCategory", c.blockerReason.category)}
@@ -195,7 +195,7 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
                   {c.newDueDate ? (
                     <DateStamp date={c.newDueDate} kind="business" className="text-ink" />
                   ) : (
-                    <span className="text-ink-tertiary">{D.noBlocker}</span>
+                    <span className="text-ink-secondary">{D.noBlocker}</span>
                   )}
                 </span>
               </li>

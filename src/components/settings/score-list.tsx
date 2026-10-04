@@ -48,9 +48,11 @@ export function ScoreList({ definitions, canWrite }: { definitions: ScoreDefinit
   const columns: DataTableColumn<ScoreDefinitionView>[] = [
     { id: "name", header: C.name, cell: (d) => <span className="truncate text-ink">{d.name}</span>, title: (d) => d.name, stacked: "primary" },
     { id: "version", header: C.version, cell: (d) => <span className="font-mono text-xs">{fill(S.versionLabel, { version: d.version })}</span>, width: "88px" },
-    { id: "status", header: C.status, cell: (d) => <ScoreStatus definition={d} />, title: () => undefined, width: "112px" },
+    { id: "status",
+      stackedOrder: 1, header: C.status, cell: (d) => <ScoreStatus definition={d} />, title: () => undefined, width: "112px" },
     { id: "components", header: C.components, cell: (d) => <span className="font-mono text-xs">{d.components.length}</span>, width: "96px" },
-    { id: "weights", header: C.weights, cell: (d) => <WeightSumText components={d.components} />, title: () => undefined, width: "176px" },
+    { id: "weights",
+      stackedOrder: 2, header: C.weights, cell: (d) => <WeightSumText components={d.components} />, title: () => undefined, width: "176px" },
     { id: "created", header: C.created, cell: (d) => <DateStamp date={d.createdAt} />, title: () => undefined, width: "112px", hideBelow: "lg" },
   ]
   return (

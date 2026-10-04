@@ -36,8 +36,12 @@ function AttentionCell({ row }: { row: TeamTableRow }) {
     <Tooltip>
       <TooltipTrigger asChild>
         {/* Alvo focável: o motivo precisa ser alcançável por teclado, não só por mouse. */}
-        <span tabIndex={0} aria-label={summary} className="inline-flex size-6 items-center justify-center rounded-sm">
+        <span tabIndex={0} aria-label={summary} className="inline-flex h-6 items-center gap-1.5 rounded-sm px-1">
           <SeverityDot severity={attention.severity} strong={attention.strong} label={summary} />
+          {/* A cor nunca comunica sozinha: a gravidade também em texto. */}
+          <span aria-hidden className="text-xs whitespace-nowrap text-ink-secondary">
+            {attention.severity === "attention" && attention.strong ? labels.severity.attentionStrong : enumLabel("severity", attention.severity)}
+          </span>
         </span>
       </TooltipTrigger>
       <TooltipContent side="left">
@@ -60,7 +64,8 @@ function PersonCell({ row }: { row: TeamTableRow }) {
       <Link href={`/team/${row.id}`} className="truncate font-medium text-ink hover:underline">
         {row.preferredName}
       </Link>
-      <span className="truncate text-xs text-ink-secondary">{row.position}</span>
+      {/* No celular o nome ganha a linha; o cargo está no perfil. */}
+      <span className="truncate text-xs text-ink-secondary max-md:hidden">{row.position}</span>
     </span>
   )
 }
@@ -102,18 +107,20 @@ export function TeamTable({
     },
     {
       id: "lastOneOnOne",
+      stackedOrder: 1,
       header: C.lastOneOnOne,
       cell: (r) =>
         r.lastOneOnOne ? (
           <DateStamp date={r.lastOneOnOne} kind="business" />
         ) : (
-          <span className="text-ink-tertiary">{labels.team.noOneOnOne}</span>
+          <span className="text-ink-secondary">{labels.team.noOneOnOne}</span>
         ),
       title: () => undefined,
       width: "112px",
     },
     {
       id: "openAgreements",
+      stackedOrder: 2,
       header: C.openAgreements,
       cell: (r) => <span className="font-mono text-xs">{r.openAgreements}</span>,
       title: (r) => String(r.openAgreements),
@@ -125,7 +132,7 @@ export function TeamTable({
       header: C.attention,
       cell: (r) => <AttentionCell row={r} />,
       title: () => undefined,
-      width: "88px",
+      width: "120px",
       stacked: "aside",
     },
   ]

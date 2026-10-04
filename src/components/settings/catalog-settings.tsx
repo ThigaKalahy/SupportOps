@@ -144,7 +144,7 @@ export function CatalogSettings<T extends CatalogItemBase, V extends { id?: stri
         item.usage > 0 ? (
           <span className="font-mono text-xs text-ink-secondary">{plural(S.usage, item.usage)}</span>
         ) : (
-          <span className="text-xs text-ink-tertiary">{S.unused}</span>
+          <span className="text-xs text-ink-secondary">{S.unused}</span>
         ),
       title: () => undefined,
       width: "120px",

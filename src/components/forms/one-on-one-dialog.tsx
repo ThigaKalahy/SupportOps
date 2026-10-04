@@ -10,6 +10,7 @@ import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/toast"
+import { DesktopHint } from "@/components/ui/desktop-hint"
 import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
@@ -179,6 +180,7 @@ export function OneOnOneDialog({
         </DialogHeader>
         <div className={showContext ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]" : "grid"}>
         <form onSubmit={submit} className="flex min-w-0 flex-col gap-4" noValidate>
+          <DesktopHint />
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-[140px_180px]">
             <FieldGroup label={labels.forms.date} error={err.date?.message} required>
               <Input

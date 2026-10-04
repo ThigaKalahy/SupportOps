@@ -36,13 +36,13 @@ export function CompetencyList({
         <p className="text-xs text-ink-secondary">
           {C.matrixEmpty}{" "}
           {canWrite ? (
-            <Link href="/settings/competency-matrix" className="text-accent hover:underline">
+            <Link href="/settings/competency-matrix" className="text-accent underline underline-offset-2">
               {C.matrixLink}
             </Link>
           ) : null}
         </p>
       ) : null}
-      {assessed === 0 ? <p className="text-sm text-ink-tertiary">{C.empty}. {C.emptyDirection}</p> : null}
+      {assessed === 0 ? <p className="text-sm text-ink-secondary">{C.empty}. {C.emptyDirection}</p> : null}
       <div className="flex flex-col gap-4">
         {categories.map((category) => (
           <div key={category} className="flex flex-col gap-1">
@@ -69,12 +69,12 @@ export function CompetencyList({
                         label={[levelText, ...expectations].join(" · ")}
                       />
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-secondary">
-                        <span className={c.level === null ? "text-ink-tertiary" : "font-mono text-ink"}>
+                        <span className={c.level === null ? "text-ink-secondary" : "font-mono text-ink"}>
                           {c.level === null ? C.notAssessed : c.level}
                         </span>
-                        {expectations.length ? <span>· {expectations.join(" · ")}</span> : <span className="text-ink-tertiary">· {C.noExpectation}</span>}
+                        {expectations.length ? <span>· {expectations.join(" · ")}</span> : <span className="text-ink-secondary">· {C.noExpectation}</span>}
                         {c.assessedAt ? (
-                          <span className="basis-full text-ink-tertiary">{fill(C.assessedAt, { date: formatDate(c.assessedAt, "business") })}</span>
+                          <span className="basis-full text-ink-secondary">{fill(C.assessedAt, { date: formatDate(c.assessedAt, "business") })}</span>
                         ) : null}
                       </span>
                     </li>

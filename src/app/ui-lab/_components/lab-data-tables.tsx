@@ -33,7 +33,7 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
       id: "due",
       header: demo.colDue,
       cell: (a) =>
-        a.dueDate ? <DateStamp date={a.dueDate} kind="business" /> : <span className="text-ink-tertiary">—</span>,
+        a.dueDate ? <DateStamp date={a.dueDate} kind="business" /> : <span className="text-ink-secondary">—</span>,
       title: () => undefined,
       width: "112px",
     },
@@ -56,7 +56,7 @@ export function LabDataTables({ agreements, today }: { agreements: LabAgreement[
         ) : a.reschedules === 1 ? (
           <span className="font-mono text-xs text-ink-secondary">{fill(demo.dragged, { n: 1 })}</span>
         ) : (
-          <span className="text-ink-tertiary">—</span>
+          <span className="text-ink-secondary">—</span>
         ),
       title: () => undefined,
       width: "112px",
