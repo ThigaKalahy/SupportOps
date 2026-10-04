@@ -20,7 +20,7 @@
 | P15 Hoje e motor de alertas    | concluída | 82bd937 | 03/10/2026 |
 | P16 Busca global               | concluída | 42f8738 | 03/10/2026 |
 | P17 Arquitetura de score       | concluída | 00866f3 | 03/10/2026 |
-| P18 Mobile, a11y e deploy      | pendente | | |
+| P18 Mobile, a11y e deploy      | concluída — deploy aguarda a conta Vercel (BLOCKERS.md) | 754591e | 03/10/2026 |
 
 ## Notas de handoff
 
@@ -299,4 +299,30 @@
 - **Verificado:**
   - **Testes:** 181 no total, 7 novos em `tests/score.test.ts` (seed com as nove e nada calculado; soma de pesos sem erro de ponto flutuante; chave válida, única e fixa; métrica em uso não se exclui; ciclo completo de versões com 100%, trava, cópia, uma ativa por nome, exclusão só de rascunho e auditoria; `score.ts` só com tipos; nenhum código grava resultado; nenhuma tela de pessoa lê métrica/score).
   - **Servidor de produção, contas temporárias e definição de exemplo (apagadas):** /settings/metrics com a chave travada na edição, lista de definições, versão ativa travada e rascunho com 80% (ativar desabilitado), dialog de incluir métrica, pré-visualização em 1440 e 360px, VIEWER sem nenhuma ação.
+
+### P18 — Mobile, acessibilidade e deploy (branch `fase/18-deploy`)
+
+- **Ficou de fora / depende de você:**
+  - **o deploy em si**: criar o projeto na Vercel, cadastrar as variáveis e ligar a Deployment Protection (Vercel Authentication, Standard Protection) — registrado em BLOCKERS.md com o passo a passo; o repositório está pronto (`vercel.json`, `.env.example`, README);
+  - **"utilizável de ponta a ponta num iPhone"**: verifiquei em 360/390/768px por captura e o Lighthouse emula celular, mas não usei um iPhone real (atalho, teclado, Safari);
+  - **backup executado**: o `pg_dump` não está instalado nesta máquina; o script foi testado só no caminho de erro (mensagem clara). Precisa do cliente PostgreSQL 18+;
+  - **navegação por teclado completa**: as fases anteriores verificaram os fluxos principais por teclado; nesta fase não refiz o percurso tela a tela — o Lighthouse/axe não acusou nada, mas não substitui o teste humano;
+  - tabelas de matriz (competências) e composição de score continuam com rolagem horizontal própria no celular (são grades, não DataTable).
+- **Decisões tomadas sem perguntar (revise):**
+  - **`--ink-tertiary`** não mudou de cor (escurecer a ponto de passar AA o deixaria quase igual ao secundário); passou a ser só placeholder nativo, desabilitado e ícone. Texto informativo, "—" e placeholder de select usam `--ink-secondary`. DESIGN.md e a skill foram atualizados.
+  - **Lista empilhada:** título + 2 campos à vista (ex.: combinados → prazo e responsável; equipe → último 1:1 e combinados abertos; cumprimento → total e taxa, nunca a taxa sem o total); o resto em "Mais detalhes".
+  - **44px só em ponteiro grosso** (celular/tablet): o desktop mantém a densidade.
+  - **Timeline no celular:** data DD/MM no topo da entrada (o mês já está no cabeçalho), calha de 24px só com a régua e o traço de pendência.
+  - **Gravidade em texto** na coluna de atenção da equipe ("Vencido", "Atenção forte", "Atenção") ao lado do ponto; na home, a gravidade já vem na frase e na posição.
+  - **Ícone:** "P" branco sobre `--accent`, sem fonte (desenhado em SVG).
+  - **Previews**: recomendado usar o branch `dev` do Neon, para um preview nunca rodar migration no banco de produção.
+  - **Lighthouse** rodado via `npx lighthouse@12` (ferramenta temporária, não entrou nas dependências).
+- **Corrigido:**
+  - título de combinado/PDI/cumprimento como link inline passava da largura no celular e cobria o menu da linha (agora bloco truncado);
+  - lista empilhada vazia era `role="list"` sem itens; cabeçalho de mês h3 sem h2; `aria-label` do botão de visibilidade divergia do texto; abas de período com `aria-controls` para painel inexistente; link no meio de texto só pela cor;
+  - aba ativa fora da área visível nas abas que rolam (Configurações no celular); tabela de limiares com rolagem horizontal no celular.
+- **Verificado:**
+  - **Testes:** 209 no total, 28 novos em `tests/a11y.test.ts` (20 pares de contraste AA, terciário só onde é isento, reduced-motion, 44px em ponteiro grosso, foco nunca removido sem substituto, manifest sem service worker, manifest/ícones fora do login, /ui-lab 404 em produção, `lang="pt-BR"`).
+  - **Lighthouse, acessibilidade (mobile):** 100 em Hoje, Equipe, perfil, timeline, combinados, nova daily, validação, registros, desenvolvimento (time e pessoa), busca, limiares, métricas, score e login; VIEWER: Hoje e timeline 100.
+  - **Servidor de produção, contas temporárias (apagadas):** 14 telas em 360px, equipe e combinados em 768px, equipe e limiares em 390px, manifest/ícones respondendo sem login, `/ui-lab` 404 autenticado.
 
