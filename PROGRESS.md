@@ -18,7 +18,7 @@
 | P13 1:1 e feedbacks            | concluída | f946089 | 02/10/2026 |
 | P14 Desenvolvimento e PDI      | concluída | ea82549 | 02/10/2026 |
 | P15 Hoje e motor de alertas    | concluída | 82bd937 | 03/10/2026 |
-| P16 Busca global               | pendente | | |
+| P16 Busca global               | concluída | 42f8738 | 03/10/2026 |
 | P17 Arquitetura de score       | pendente | | |
 | P18 Mobile, a11y e deploy      | pendente | | |
 
@@ -264,4 +264,22 @@
 - **Verificado:**
   - **Testes:** 165 no total. Novos: `tests/alerts.test.ts` (17: regra pura em todos os tipos, ordem, agrupamentos, dias úteis, amostra, prontidão, limiares no banco com faixa/padrão/auditoria e efeito em /team, seed lido pelo motor, VIEWER sem vazamento, no máximo duas superfícies delimitadas, nada persistido) e `tests/complements.test.ts` (9).
   - **Servidor de produção, contas temporárias (apagadas):** home em 1440/1024/360 com a sidebar aberta e recolhida, 1:1 aberto pela linha do alerta, "Com quem?" do feedback, limiares, VIEWER sem formulários, editar 1:1 e confirmar exclusão pela timeline (sem excluir).
+
+### P16 — Busca global (branch `fase/16-search`)
+
+- **Ficou de fora:**
+  - busca dentro de dailies além das notas por pessoa (o texto de resumo e decisões da daily não está na timeline; só as linhas por pessoa entram em "outros registros");
+  - busca em validações de prioridade, PDIs pela tabela própria (entram pelas linhas da timeline), pontos fortes/de desenvolvimento e mudanças de cadastro;
+  - anotação não tem tela própria: o resultado leva à timeline da pessoa filtrada pelo título;
+  - o cronômetro humano do critério de aceite: medido por teste (`searchAll` no servidor, conexão já aberta) e visto no subtítulo de /search (141 ms na verificação), não com uma pessoa.
+- **Decisões tomadas sem perguntar (revise):**
+  - **Sem acento:** extensão `unaccent` com wrapper imutável (exigência de coluna gerada). Se o banco de produção não permitir a extensão, a migration falha — no Neon funcionou.
+  - **Prefixo:** cada palavra digitada vale como início de palavra ("otav" acha "Otávio"), e todas são exigidas.
+  - **Timeline na busca:** 1:1, feedback, anotação e combinado vêm das tabelas (texto inteiro); a timeline só entra para os tipos sem tabela na busca, para não repetir resultado.
+  - **Pessoa na digitação:** as ações de registro aparecem para a primeira pessoa encontrada; as demais só "abrir perfil".
+  - **⌘K** funciona também com o foco num campo (convenção de paleta); o atalho C continua bloqueado em campos.
+- **A próxima fase assume:** `searchAll` e a paleta prontos; o P18 deve conferir o `unaccent` no banco de produção e o tempo da busca na Vercel (região gru1).
+- **Verificado:**
+  - **Testes:** 174 no total, 10 novos em `tests/search.test.ts` (consulta sem operador, destaque sem acento e por radical, filtros da URL, os cinco índices GIN e o plano usando o índice, critério de aceite com um termo só do corpo de um feedback de ~4 meses em menos de 300 ms, VIEWER sem PRIVATE nem na contagem, registro novo encontrável na hora e sem acento, pessoas sem acento, nenhum serviço externo). A varredura estática de visibilidade cobre o SQL novo.
+  - **Servidor de produção, contas temporárias (apagadas):** paleta vazia, com pessoa no contexto, digitando nome ("otav") e termo ("relatorio atlas"), "beatriz" ↓ Enter abrindo o 1:1 com ela, "Dar feedback" → "com quem?", celular (360px) pelo ícone, VIEWER sem ações de registro; /search com grupos, 360px, VIEWER sem o feedback privado, e o clique no resultado abrindo o feedback no painel de /records.
 
