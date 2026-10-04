@@ -44,15 +44,17 @@ export function Breadcrumb({ crumbs }: { crumbs: Crumb[] }) {
 }
 
 /**
- * Campo de busca da barra de contexto. Inerte até a paleta de comandos (P16):
- * aparece, mas não recebe foco nem clique.
+ * Campo de busca da barra de contexto: abre a paleta de comandos (P16), o
+ * mesmo que ⌘K / Ctrl+K.
  */
-export function ContextSearch() {
+export function ContextSearch({ onOpen }: { onOpen?: () => void }) {
   return (
     <button
       type="button"
-      disabled
-      className="flex h-8 w-full max-w-[360px] items-center gap-2 rounded-sm border border-line bg-canvas px-2.5 text-sm text-ink-tertiary"
+      disabled={!onOpen}
+      onClick={onOpen}
+      aria-keyshortcuts="Control+K Meta+K"
+      className="flex h-8 w-full max-w-[360px] items-center gap-2 rounded-sm border border-line bg-canvas px-2.5 text-sm text-ink-tertiary hover:border-line-strong hover:text-ink-secondary"
     >
       <SearchIcon className="size-4 shrink-0" aria-hidden />
       <span className="flex-1 truncate text-left">{labels.shell.searchPlaceholder}</span>
@@ -91,9 +93,12 @@ export function ContextBar({
   actions,
   actionsSlotId,
   readOnly = false,
+  onOpenSearch,
   className,
 }: {
   crumbs: Crumb[]
+  /** Abre a paleta de comandos (campo de busca e, no celular, o ícone). */
+  onOpenSearch?: () => void
   onOpenNavigation?: () => void
   actions?: React.ReactNode
   actionsSlotId?: string
@@ -120,9 +125,14 @@ export function ContextBar({
         <Breadcrumb crumbs={crumbs} />
       </div>
       <div className="hidden w-full max-w-[360px] justify-center md:flex">
-        <ContextSearch />
+        <ContextSearch onOpen={onOpenSearch} />
       </div>
       <div className="flex min-w-0 flex-1 basis-0 items-center justify-end gap-2">
+        {onOpenSearch ? (
+          <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onOpenSearch} aria-label={labels.command.open}>
+            <SearchIcon />
+          </Button>
+        ) : null}
         {readOnly ? <ReadOnlyIndicator /> : null}
         <div id={actionsSlotId} className="flex items-center gap-2">
           {actions}

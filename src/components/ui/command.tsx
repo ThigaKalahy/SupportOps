@@ -31,11 +31,11 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent className={cn("top-1/4 translate-y-0 gap-0 overflow-hidden p-0", className)} showCloseButton={false}>
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
         {children}
       </DialogContent>
     </Dialog>
@@ -49,9 +49,9 @@ function CommandInput({ className, ...props }: React.ComponentProps<typeof Comma
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          // O foco fica sinalizado pelo próprio campo da paleta, que ocupa a largura toda;
-          // o outline é deslocado para dentro para não ser cortado pelo dialog.
-          "h-full w-full bg-transparent text-sm text-ink placeholder:text-ink-tertiary focus-visible:-outline-offset-2 disabled:cursor-not-allowed disabled:text-ink-tertiary",
+          // Único campo da paleta, sempre focado enquanto ela está aberta: o cursor e o item
+          // selecionado sinalizam o foco. Um outline aqui cobria a primeira letra digitada.
+          "h-full w-full bg-transparent text-sm text-ink placeholder:text-ink-tertiary focus-visible:outline-none disabled:cursor-not-allowed disabled:text-ink-tertiary",
           className
         )}
         {...props}

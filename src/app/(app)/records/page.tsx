@@ -23,7 +23,9 @@ export default async function RecordsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireUser()
-  const filters = parseRecordFilters(await searchParams)
+  const params = await searchParams
+  const open = typeof params.open === "string" ? params.open : null
+  const filters = parseRecordFilters(params)
   const [rows, members] = await Promise.all([listRecords(user, filters), listAgreementMembers(user)])
 
   return (
@@ -34,6 +36,7 @@ export default async function RecordsPage({
       <PageHeader title={R.title} subtitle={`${plural(R.count, rows.length)} · ${R.subtitle}`} />
       <RecordsTable
         rows={rows}
+        initialOpen={open}
         canWrite={canWrite(user)}
         empty={{ title: R.emptyTitle, direction: hasRecordFilters(filters) ? R.filteredDirection : R.emptyDirection }}
       />

@@ -47,6 +47,7 @@ export function RecordsTable({
   showMember = true,
   empty,
   canWrite = false,
+  initialOpen,
 }: {
   rows: RecordRow[]
   /** Falso na aba do perfil (a pessoa já está no cabeçalho). */
@@ -54,8 +55,12 @@ export function RecordsTable({
   empty: { title: string; direction: string }
   /** Mostra editar/excluir no painel do registro. */
   canWrite?: boolean
+  /** "feedback:<id>" ou "oneOnOne:<id>": abre o registro ao carregar (link da busca). */
+  initialOpen?: string | null
 }) {
-  const [selected, setSelected] = React.useState<RecordRow | null>(null)
+  const [selected, setSelected] = React.useState<RecordRow | null>(
+    () => rows.find((r) => `${r.kind}:${r.id}` === initialOpen) ?? null,
+  )
 
   const columns: DataTableColumn<RecordRow>[] = [
     { id: "date", header: C.date, cell: (r) => <DateStamp date={r.date} kind="business" className="text-ink" />, title: () => undefined, width: "104px" },

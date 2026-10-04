@@ -37,12 +37,14 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { HighlightedText } from "@/components/ui/highlighted-text"
 import { Label } from "@/components/ui/label"
 import { Toast, ToastProvider, useToast } from "@/components/ui/toast"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { labels } from "@/lib/labels"
+import { highlight } from "@/lib/search"
 
 import { demo, eventTypes, people } from "../_fixtures"
 import { Specimen } from "./specimen"
@@ -205,7 +207,9 @@ export function LabOverlays() {
             <kbd className="rounded-xs border border-line px-1 font-mono text-2xs text-ink-secondary">⌘K</kbd>
           </Button>
           <CommandDialog open={paletteOpen} onOpenChange={setPaletteOpen}>
-            <PaletteContent />
+            <Command>
+              <PaletteContent />
+            </Command>
           </CommandDialog>
         </Specimen>
       </div>
@@ -214,6 +218,18 @@ export function LabOverlays() {
         <Command className="max-w-dialog rounded-lg border border-line">
           <PaletteContent />
         </Command>
+      </Specimen>
+
+      <Specimen state="HighlightedText · trecho da busca, termo sem acento casando com acentuado, com corte" className="w-full">
+        <p className="max-w-2xl text-sm">
+          <HighlightedText
+            parts={highlight(
+              "Na semana passada mandou o relatório de julho ao cliente Atlas com dados errados de agosto; os relatórios seguintes saíram certos depois da revisão em par.",
+              "relatorio atlas",
+              120,
+            )}
+          />
+        </p>
       </Specimen>
 
       <Specimen state="Toast · confirmação (calm) · neutro · disparo real (some em 4 s, pausa com o ponteiro)" className="w-full">

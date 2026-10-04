@@ -466,7 +466,7 @@ model DailyParticipant {
 ///
 /// completedAt é data de negócio: a data da daily em que foi dado como feito.
 model Agreement {
-  id                  String            @id @default(cuid())
+  id                  String                   @id @default(cuid())
   memberId            String
   title               String
   description         String?
@@ -474,18 +474,20 @@ model Agreement {
   sourceDailyId       String?
   sourceOneOnOneId    String?
   sourceFeedbackId    String?
-  createdAt           DateTime          @default(now()) @db.Timestamptz
-  originalDueDate     DateTime          @db.Date
-  dueDate             DateTime          @db.Date
-  priority            AgreementPriority @default(NORMAL)
-  status              AgreementStatus   @default(OPEN)
-  completedAt         DateTime?         @db.Date
+  createdAt           DateTime                 @default(now()) @db.Timestamptz
+  originalDueDate     DateTime                 @db.Date
+  dueDate             DateTime                 @db.Date
+  priority            AgreementPriority        @default(NORMAL)
+  status              AgreementStatus          @default(OPEN)
+  completedAt         DateTime?                @db.Date
   outcome             String?
   managerNote         String?
-  replacesAgreementId String?           @unique
+  replacesAgreementId String?                  @unique
   authorUserId        String
-  updatedAt           DateTime          @updatedAt @db.Timestamptz
-  deletedAt           DateTime?         @db.Timestamptz
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz
+  deletedAt           DateTime?                @db.Timestamptz
+  /// Busca em português (P16): coluna GERADA pelo banco (migration full_text_search), nunca escrita pelo app.
+  searchVector        Unsupported("tsvector")? @default(dbgenerated())
 
   member         TeamMember @relation(fields: [memberId], references: [id])
   author         User       @relation(fields: [authorUserId], references: [id])
@@ -505,6 +507,7 @@ model Agreement {
   @@index([memberId, originalDueDate])
   @@index([status, dueDate])
   @@index([sourceDailyId])
+  @@index([searchVector], type: Gin, map: "Agreement_searchVector_idx")
 }
 
 model AgreementParticipant {
@@ -561,9 +564,9 @@ model AgreementCheckin {
 /// 1:1. Nasce PRIVATE. Mudar a visibilidade atualiza a TimelineEvent espelho
 /// na mesma transação (src/server/timeline.ts).
 model OneOnOne {
-  id                String     @id @default(cuid())
+  id                String                   @id @default(cuid())
   memberId          String
-  date              DateTime   @db.Date
+  date              DateTime                 @db.Date
   durationMinutes   Int?
   topics            String?
   memberPerception  String?
@@ -571,12 +574,14 @@ model OneOnOne {
   wins              String?
   difficulties      String?
   development       String?
-  nextReviewAt      DateTime?  @db.Date
-  visibility        Visibility @default(PRIVATE)
+  nextReviewAt      DateTime?                @db.Date
+  visibility        Visibility               @default(PRIVATE)
   authorUserId      String
-  createdAt         DateTime   @default(now()) @db.Timestamptz
-  updatedAt         DateTime   @updatedAt @db.Timestamptz
-  deletedAt         DateTime?  @db.Timestamptz
+  createdAt         DateTime                 @default(now()) @db.Timestamptz
+  updatedAt         DateTime                 @updatedAt @db.Timestamptz
+  deletedAt         DateTime?                @db.Timestamptz
+  /// Busca em português (P16): coluna GERADA pelo banco (migration full_text_search), nunca escrita pelo app.
+  searchVector      Unsupported("tsvector")? @default(dbgenerated())
 
   member TeamMember @relation(fields: [memberId], references: [id])
   author User       @relation(fields: [authorUserId], references: [id])
@@ -585,25 +590,28 @@ model OneOnOne {
   timelineEvents    TimelineEvent[]
 
   @@index([memberId, date(sort: Desc)])
+  @@index([searchVector], type: Gin, map: "OneOnOne_searchVector_idx")
 }
 
 /// Feedback no modelo SCI (contexto, comportamento, impacto) + orientação.
 /// Nasce PRIVATE no banco; o formulário de RECOGNITION sugere SHARED, sem impor.
 model Feedback {
-  id           String           @id @default(cuid())
+  id           String                   @id @default(cuid())
   memberId     String
-  date         DateTime         @db.Date
+  date         DateTime                 @db.Date
   category     FeedbackCategory
   context      String?
   behavior     String
   impact       String?
   guidance     String?
-  followUpAt   DateTime?        @db.Date
-  visibility   Visibility       @default(PRIVATE)
+  followUpAt   DateTime?                @db.Date
+  visibility   Visibility               @default(PRIVATE)
   authorUserId String
-  createdAt    DateTime         @default(now()) @db.Timestamptz
-  updatedAt    DateTime         @updatedAt @db.Timestamptz
-  deletedAt    DateTime?        @db.Timestamptz
+  createdAt    DateTime                 @default(now()) @db.Timestamptz
+  updatedAt    DateTime                 @updatedAt @db.Timestamptz
+  deletedAt    DateTime?                @db.Timestamptz
+  /// Busca em português (P16): coluna GERADA pelo banco (migration full_text_search), nunca escrita pelo app.
+  searchVector Unsupported("tsvector")? @default(dbgenerated())
 
   member TeamMember @relation(fields: [memberId], references: [id])
   author User       @relation(fields: [authorUserId], references: [id])
@@ -613,20 +621,23 @@ model Feedback {
 
   @@index([memberId, date(sort: Desc)])
   @@index([followUpAt])
+  @@index([searchVector], type: Gin, map: "Feedback_searchVector_idx")
 }
 
 /// Anotação gerencial ou ocorrência. Nasce PRIVATE.
 model Note {
-  id           String     @id @default(cuid())
+  id           String                   @id @default(cuid())
   memberId     String
-  occurredAt   DateTime   @db.Timestamptz
+  occurredAt   DateTime                 @db.Timestamptz
   title        String
   body         String
-  visibility   Visibility @default(PRIVATE)
+  visibility   Visibility               @default(PRIVATE)
   authorUserId String
-  createdAt    DateTime   @default(now()) @db.Timestamptz
-  updatedAt    DateTime   @updatedAt @db.Timestamptz
-  deletedAt    DateTime?  @db.Timestamptz
+  createdAt    DateTime                 @default(now()) @db.Timestamptz
+  updatedAt    DateTime                 @updatedAt @db.Timestamptz
+  deletedAt    DateTime?                @db.Timestamptz
+  /// Busca em português (P16): coluna GERADA pelo banco (migration full_text_search), nunca escrita pelo app.
+  searchVector Unsupported("tsvector")? @default(dbgenerated())
 
   member TeamMember @relation(fields: [memberId], references: [id])
   author User       @relation(fields: [authorUserId], references: [id])
@@ -634,6 +645,7 @@ model Note {
   timelineEvents TimelineEvent[]
 
   @@index([memberId, occurredAt(sort: Desc)])
+  @@index([searchVector], type: Gin, map: "Note_searchVector_idx")
 }
 
 // ═══════════════════ VALIDAÇÃO DE PRIORIDADE ═══════════════════
@@ -963,15 +975,15 @@ model ScoreResultComponent {
 ///   migration futura.
 /// - Apagar o registro de origem apaga a linha-espelho (onDelete: Cascade).
 model TimelineEvent {
-  id                String            @id @default(cuid())
+  id                String                   @id @default(cuid())
   memberId          String
-  occurredAt        DateTime          @db.Timestamptz
+  occurredAt        DateTime                 @db.Timestamptz
   type              TimelineEventType
   title             String
   summary           String?
   authorUserId      String
-  visibility        Visibility        @default(PRIVATE)
-  tags              String[]          @default([])
+  visibility        Visibility               @default(PRIVATE)
+  tags              String[]                 @default([])
   agreementId       String?
   oneOnOneId        String?
   feedbackId        String?
@@ -979,7 +991,9 @@ model TimelineEvent {
   noteId            String?
   developmentPlanId String?
   memberChangeId    String?
-  createdAt         DateTime          @default(now()) @db.Timestamptz
+  createdAt         DateTime                 @default(now()) @db.Timestamptz
+  /// Busca em português (P16): coluna GERADA pelo banco (migration full_text_search), nunca escrita pelo app.
+  searchVector      Unsupported("tsvector")? @default(dbgenerated())
 
   member          TeamMember       @relation(fields: [memberId], references: [id])
   author          User             @relation(fields: [authorUserId], references: [id])
@@ -998,4 +1012,5 @@ model TimelineEvent {
   @@index([feedbackId])
   @@index([noteId])
   @@index([tags], type: Gin, map: "TimelineEvent_tags_idx")
+  @@index([searchVector], type: Gin, map: "TimelineEvent_searchVector_idx")
 }

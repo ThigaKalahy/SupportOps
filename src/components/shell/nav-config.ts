@@ -4,6 +4,7 @@ import {
   HouseIcon,
   ListChecksIcon,
   MessagesSquareIcon,
+  SearchIcon,
   SettingsIcon,
   SproutIcon,
   UsersIcon,
@@ -64,8 +65,11 @@ export interface Crumb {
 }
 
 /** Breadcrumb derivado da rota: seção da navegação + sub-rotas conhecidas. */
+/** Páginas fora da navegação lateral que ainda precisam de breadcrumb. */
+const extraSections: NavItem[] = [{ href: "/search", label: labels.search.title, icon: SearchIcon }]
+
 export function crumbsFor(pathname: string, segmentLabels: Record<string, string> = {}): Crumb[] {
-  const section = [...mainNav, ...footerNav].find((item) => isActive(item, pathname))
+  const section = [...mainNav, ...footerNav, ...extraSections].find((item) => isActive(item, pathname))
   if (!section) return []
 
   const crumbs: Crumb[] = [{ label: section.label, href: section.href }]

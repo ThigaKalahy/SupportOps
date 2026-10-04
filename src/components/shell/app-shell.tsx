@@ -15,6 +15,7 @@ import {
   SIDEBAR_COOKIE,
   SIDEBAR_COOKIE_MAX_AGE,
 } from "./constants"
+import { CommandPalette, openCommandPalette } from "./command-palette"
 import { ContextBar } from "./context-bar"
 import { CrumbLabelsContext } from "./crumb-label"
 import { crumbsFor } from "./nav-config"
@@ -34,6 +35,7 @@ export function AppShell({
   defaultCollapsed,
   user,
   agreementMembers,
+  people,
   counts,
   thresholds,
   children,
@@ -42,6 +44,8 @@ export function AppShell({
   user: ShellUser
   /** Pessoas para a criação rápida de combinado (atalho C); null para quem só lê. */
   agreementMembers: { id: string; preferredName: string }[] | null
+  /** Pessoas do time para a paleta de comandos (navegar; registrar só para quem escreve). */
+  people: { id: string; preferredName: string }[]
   /** Contadores discretos da sidebar (mesma fonte da lista da home). */
   counts: NavCounts
   thresholds: AlertThresholds
@@ -103,11 +107,15 @@ export function AppShell({
           onOpenNavigation={() => setDrawerOpen(true)}
           actionsSlotId={CONTEXT_ACTIONS_ID}
           readOnly={user.role === "VIEWER"}
+          onOpenSearch={openCommandPalette}
         />
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">
           <CrumbLabelsContext value={crumbLabels}>
             <ThresholdsProvider value={thresholds}>
-              <QuickAgreementProvider members={agreementMembers}>{children}</QuickAgreementProvider>
+              <QuickAgreementProvider members={agreementMembers}>
+                {children}
+                <CommandPalette people={people} canWrite={user.role !== "VIEWER"} />
+              </QuickAgreementProvider>
             </ThresholdsProvider>
           </CrumbLabelsContext>
         </main>

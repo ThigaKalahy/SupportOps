@@ -17,17 +17,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const cookieStore = await cookies()
   const collapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === SIDEBAR_COLLAPSED_VALUE
   const [members, alerts, thresholds] = await Promise.all([
-    canWrite(user) ? listAgreementMembers(user) : null,
+    listAgreementMembers(user),
     loadAlerts(),
     loadThresholds(),
   ])
-  const agreementMembers = members ? members.map((m) => ({ id: m.id, preferredName: m.preferredName })) : null
+  const people = members.map((m) => ({ id: m.id, preferredName: m.preferredName }))
+  const agreementMembers = canWrite(user) ? people : null
 
   return (
     <AppShell
       defaultCollapsed={collapsed}
       user={{ name: user.name, email: user.email, role: user.role }}
       agreementMembers={agreementMembers}
+      people={people}
       counts={alerts.counts}
       thresholds={thresholds}
     >

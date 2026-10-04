@@ -24,7 +24,9 @@ export default async function MemberRecordsPage({
   const { user, profile } = await loadProfile(memberId)
   if (!profile) notFound()
 
-  const filters = { ...parseRecordFilters(await searchParams), memberId: profile.id }
+  const query = await searchParams
+  const open = typeof query.open === "string" ? query.open : null
+  const filters = { ...parseRecordFilters(query), memberId: profile.id }
   const rows = await listRecords(user, filters)
 
   return (
@@ -34,6 +36,7 @@ export default async function MemberRecordsPage({
       </ContextActions>
       <RecordsTable
         rows={rows}
+        initialOpen={open}
         showMember={false}
         canWrite={canWrite(user) && profile.status !== "INACTIVE"}
         empty={{ title: R.emptyTitle, direction: hasRecordFilters({ ...filters, memberId: null }) ? R.filteredDirection : R.emptyDirection }}
