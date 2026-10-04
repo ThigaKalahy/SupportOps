@@ -19,7 +19,7 @@
 | P14 Desenvolvimento e PDI      | concluída | ea82549 | 02/10/2026 |
 | P15 Hoje e motor de alertas    | concluída | 82bd937 | 03/10/2026 |
 | P16 Busca global               | concluída | 42f8738 | 03/10/2026 |
-| P17 Arquitetura de score       | pendente | | |
+| P17 Arquitetura de score       | concluída | 00866f3 | 03/10/2026 |
 | P18 Mobile, a11y e deploy      | pendente | | |
 
 ## Notas de handoff
@@ -282,4 +282,21 @@
 - **Verificado:**
   - **Testes:** 174 no total, 10 novos em `tests/search.test.ts` (consulta sem operador, destaque sem acento e por radical, filtros da URL, os cinco índices GIN e o plano usando o índice, critério de aceite com um termo só do corpo de um feedback de ~4 meses em menos de 300 ms, VIEWER sem PRIVATE nem na contagem, registro novo encontrável na hora e sem acento, pessoas sem acento, nenhum serviço externo). A varredura estática de visibilidade cobre o SQL novo.
   - **Servidor de produção, contas temporárias (apagadas):** paleta vazia, com pessoa no contexto, digitando nome ("otav") e termo ("relatorio atlas"), "beatriz" ↓ Enter abrindo o 1:1 com ela, "Dar feedback" → "com quem?", celular (360px) pelo ícone, VIEWER sem ações de registro; /search com grupos, 360px, VIEWER sem o feedback privado, e o clique no resultado abrindo o feedback no painel de /records.
+
+### P17 — Arquitetura de score (branch `fase/17-score`)
+
+- **Ficou de fora (de propósito, D5):** qualquer fórmula, cálculo, normalização implementada, número de desempenho, importação ou integração com helpdesk. O contrato da importação futura está no CLAUDE.md ("Contrato de importação de métricas") e os tipos em `src/server/score.ts`. Também ficou de fora a checagem visual do /ui-lab (nenhum primitivo novo nesta fase).
+- **Decisões tomadas sem perguntar (revise):**
+  - **Métricas do seed:** as nove do prompt, com chaves em inglês (`ticket_volume`, `sla_first_response`, `sla_resolution`, `csat`, `return_72h`, `recurrence_rate`, `reopen_rate`, `backlog`, `handle_time`), unidades (%, nota, min, chamados) e direções que eu escolhi — **volume ficou "maior é melhor"**, e retorno em 72h, recorrência, reabertura e backlog "menor é melhor". As duas métricas antigas do seed sem par (tempo de primeira resposta e chamados resolvidos) saíram.
+  - **Chave da métrica** não muda depois de criada (é o que casa a importação).
+  - **Pesos em %**, com uma casa decimal; ativar exige soma exata de 100 e ao menos uma métrica.
+  - **Versionamento:** uma versão ativa por nome (ativar outra desativa a anterior); versão ativa ou com resultado não se edita nem se exclui; rascunho inativo sem resultado edita e exclui; "Nova versão" copia composição e notas.
+  - **Métrica desativada** não entra em composição nova, mas continua nas versões que já a tinham (marcada).
+  - **Contrato (documentado, não implementado):** correspondência pelo e-mail do `TeamMember`, período = mês civil fechado, reimportação do mesmo mês substitui, `sampleSize` obrigatório (0 = sem amostra, valor não exibido).
+  - **Subtítulo de Configurações** passou a ser geral ("Catálogos, limiares e cadastros...").
+- **Critério de aceite:** nenhuma tela de pessoa mudou — `git diff master` vazio em `/team`, componentes de pessoa, timeline, desenvolvimento, registros e as queries do perfil; um teste estático reprova qualquer tela de pessoa que leia métrica ou score.
+- **A próxima fase assume:** seed com as nove métricas (reaplicado em 03/10/2026); nenhum `ScoreDefinition` no seed.
+- **Verificado:**
+  - **Testes:** 181 no total, 7 novos em `tests/score.test.ts` (seed com as nove e nada calculado; soma de pesos sem erro de ponto flutuante; chave válida, única e fixa; métrica em uso não se exclui; ciclo completo de versões com 100%, trava, cópia, uma ativa por nome, exclusão só de rascunho e auditoria; `score.ts` só com tipos; nenhum código grava resultado; nenhuma tela de pessoa lê métrica/score).
+  - **Servidor de produção, contas temporárias e definição de exemplo (apagadas):** /settings/metrics com a chave travada na edição, lista de definições, versão ativa travada e rascunho com 80% (ativar desabilitado), dialog de incluir métrica, pré-visualização em 1440 e 360px, VIEWER sem nenhuma ação.
 
