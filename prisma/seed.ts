@@ -176,11 +176,16 @@ const RESPONSIBILITIES = [
 ] as const
 
 const METRIC_DEFINITIONS = [
+  // As nove métricas do P17, cadastradas e SEM nenhum resultado (importação é futura).
+  { id: "seed_md_volume", key: "ticket_volume", label: "Volume de chamados", unit: "chamados", direction: "HIGHER_IS_BETTER" },
+  { id: "seed_md_sla_first", key: "sla_first_response", label: "SLA de primeira resposta", unit: "%", direction: "HIGHER_IS_BETTER" },
+  { id: "seed_md_sla_resolution", key: "sla_resolution", label: "SLA de atendimento", unit: "%", direction: "HIGHER_IS_BETTER" },
   { id: "seed_md_csat", key: "csat", label: "CSAT", unit: "nota", direction: "HIGHER_IS_BETTER" },
-  { id: "seed_md_frt", key: "first_response_time", label: "Tempo de primeira resposta", unit: "min", direction: "LOWER_IS_BETTER" },
+  { id: "seed_md_return72", key: "return_72h", label: "Retorno em 72h", unit: "%", direction: "LOWER_IS_BETTER" },
+  { id: "seed_md_recurrence", key: "recurrence_rate", label: "Recorrência", unit: "%", direction: "LOWER_IS_BETTER" },
+  { id: "seed_md_reopen", key: "reopen_rate", label: "Reabertura", unit: "%", direction: "LOWER_IS_BETTER" },
+  { id: "seed_md_backlog", key: "backlog", label: "Backlog", unit: "chamados", direction: "LOWER_IS_BETTER" },
   { id: "seed_md_tma", key: "handle_time", label: "Tempo médio de atendimento", unit: "min", direction: "LOWER_IS_BETTER" },
-  { id: "seed_md_reopen", key: "reopen_rate", label: "Taxa de reabertura", unit: "%", direction: "LOWER_IS_BETTER" },
-  { id: "seed_md_solved", key: "solved_tickets", label: "Chamados resolvidos", unit: "chamados", direction: "HIGHER_IS_BETTER" },
 ] as const
 
 /* ═══════════════════════════════ Pessoas ═══════════════════════════════ */
@@ -1645,9 +1650,18 @@ async function main() {
       for (const [id, name, description] of RESPONSIBILITIES) {
         await tx.responsibility.upsert({ where: { id }, create: { id, organizationId: ORG_ID, name, description }, update: { name, description } })
       }
+      // Métricas de versões antigas do seed que saíram da lista (nunca tiveram resultado).
+      await tx.metricDefinition.deleteMany({
+        where: { id: { in: ["seed_md_frt", "seed_md_solved"] }, results: { none: {} }, scoreComponents: { none: {} } },
+      })
       for (const m of METRIC_DEFINITIONS) {
         // Métricas cadastradas, sem nenhum MetricResult; nenhum ScoreDefinition ativo.
-        await tx.metricDefinition.upsert({ where: { id: m.id }, create: { ...m, organizationId: ORG_ID, sourceSystem: "helpdesk" }, update: { label: m.label } })
+        const { id, ...fields } = m
+        await tx.metricDefinition.upsert({
+          where: { id },
+          create: { ...m, organizationId: ORG_ID, sourceSystem: "helpdesk" },
+          update: { label: fields.label, unit: fields.unit, direction: fields.direction },
+        })
       }
 
       /* ── 3. Pessoas ── */

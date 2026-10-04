@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { extractTicketRef, matchPattern } from "@/lib/priority-validation"
-import { BLOCKER_CATEGORIES, catalogSchemas, type CatalogInput } from "@/lib/validators/settings"
+import { BLOCKER_CATEGORIES, catalogSchemas, METRIC_DIRECTIONS, type CatalogInput } from "@/lib/validators/settings"
 import type {
   BlockerReasonItem,
   CompetencyItem,
+  MetricItem,
   PriorityLevelItem,
   ReclassificationReasonItem,
   TicketPatternItem,
@@ -371,6 +372,101 @@ export function CompetenciesSettings({ items, canWrite }: { items: CompetencyIte
           <FieldGroup label={T.description} optional error={errors.description}>
             <Input value={values.description} maxLength={300} autoComplete="off" onChange={(e) => set({ description: e.target.value })} />
           </FieldGroup>
+        </>
+      )}
+    />
+  )
+}
+
+/**
+ * Métricas (P17): só o cadastro — chave (fixa depois de criada), rótulo,
+ * unidade, direção, sistema de origem, ativa. A coluna de resultados mostra
+ * que nada foi importado; nenhum valor de pessoa aparece aqui.
+ */
+export function MetricsSettings({ items, canWrite }: { items: MetricItem[]; canWrite: boolean }) {
+  const T = S.metrics
+  return (
+    <CatalogSettings<MetricItem, CatalogInput<"metric">>
+      kind="metric"
+      items={items}
+      canWrite={canWrite}
+      texts={T}
+      ordered={false}
+      schema={catalogSchemas.metric}
+      emptyValues={{ label: "", key: "", unit: "", direction: "HIGHER_IS_BETTER", sourceSystem: "helpdesk" }}
+      toValues={(item) => ({
+        id: item.id,
+        label: item.label,
+        key: item.key,
+        unit: item.unit ?? "",
+        direction: item.direction,
+        sourceSystem: item.sourceSystem ?? "",
+      })}
+      columns={[
+        { id: "key", header: T.key, cell: (item) => <span className="font-mono text-xs text-ink-secondary">{item.key}</span>, width: "176px", hideBelow: "lg" },
+        { id: "unit", header: T.unit, cell: (item) => <span className="text-ink-secondary">{item.unit ?? "—"}</span>, width: "96px", hideBelow: "xl" },
+        {
+          id: "direction",
+          header: T.directionField,
+          cell: (item) => <span className="text-ink-secondary">{enumLabel("metricDirection", item.direction)}</span>,
+          width: "136px",
+        },
+        {
+          id: "results",
+          header: T.results,
+          cell: (item) => (
+            <span className={item.results ? "font-mono text-xs text-ink" : "text-ink-tertiary"}>{item.results || T.noResults}</span>
+          ),
+          width: "104px",
+          hideBelow: "lg",
+        },
+      ]}
+      renderFields={({ values, set, errors }) => (
+        <>
+          <LabelField label={T.label} placeholder={T.labelPlaceholder} value={values.label} error={errors.label} onChange={(label) => set({ label })} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FieldGroup label={T.key} required help={values.id ? T.keyLocked : T.keyHelp} error={errors.key}>
+              <Input
+                value={values.key}
+                maxLength={40}
+                autoComplete="off"
+                disabled={Boolean(values.id)}
+                placeholder={T.keyPlaceholder}
+                className="font-mono"
+                onChange={(e) => set({ key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") })}
+              />
+            </FieldGroup>
+            <FieldGroup label={T.unit} optional error={errors.unit}>
+              <Input value={values.unit} maxLength={20} autoComplete="off" placeholder={T.unitPlaceholder} onChange={(e) => set({ unit: e.target.value })} />
+            </FieldGroup>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FieldGroup label={T.directionField} required>
+              {(control) => (
+                <Select value={values.direction} onValueChange={(v) => set({ direction: v as CatalogInput<"metric">["direction"] })}>
+                  <SelectTrigger {...control} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {METRIC_DIRECTIONS.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {enumLabel("metricDirection", d)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </FieldGroup>
+            <FieldGroup label={T.sourceSystem} optional error={errors.sourceSystem}>
+              <Input
+                value={values.sourceSystem}
+                maxLength={40}
+                autoComplete="off"
+                placeholder={T.sourceSystemPlaceholder}
+                onChange={(e) => set({ sourceSystem: e.target.value })}
+              />
+            </FieldGroup>
+          </div>
         </>
       )}
     />

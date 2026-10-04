@@ -201,6 +201,18 @@ Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `s
 - Padrão de visibilidade por entidade: `Note`, `OneOnOne` e `Feedback` nascem PRIVATE. A única exceção é `Feedback` de categoria RECOGNITION, cujo formulário sugere SHARED como padrão — sugere, não impõe.
 - A rota `/ui-lab` é bloqueada em produção via NODE_ENV. Ela expõe estados de componente e não deve existir fora de desenvolvimento.
 
+## Contrato de importação de métricas
+
+Nada disto está implementado no MVP (D5, P17): não há importador, rota ou integração com helpdesk. É o contrato que a importação futura deve seguir — os tipos estão em `src/server/score.ts` (`MetricResultImport`, `ExplainedScore`), sem implementação.
+
+- **Formato de cada linha (`MetricResult`)**: `metricKey` (a `MetricDefinition.key` da organização, ex.: `csat`, `sla_first_response`), `memberEmail`, `periodStart` e `periodEnd` (datas de negócio, `AAAA-MM-DD` na carga, gravadas como `@db.Date`), `value` (número, na unidade da métrica — % de 0 a 100, minutos, nota, chamados), `sampleSize` (inteiro ≥ 0) e `sourceRef` (opcional: id do lote ou relatório de origem). `importedAt` é preenchido pelo banco.
+- **Correspondência analista do helpdesk ↔ `TeamMember`**: pelo e-mail, comparado sem caixa e sem espaços com `TeamMember.email`. Linha cujo e-mail não casa com exatamente uma pessoa da organização é recusada e listada no relatório da importação — nunca casada por nome, nunca criando pessoa. `TeamMember` continua não sendo `User` (D1).
+- **Chave da métrica**: `MetricDefinition.key` é fixa depois de criada (a tela não deixa mudar). Chave desconhecida ou métrica desativada: a linha é recusada.
+- **Granularidade de período**: mês civil fechado (do dia 1 ao último dia). Mês corrente nunca é importado. A unicidade `(memberId, metricDefinitionId, periodStart, periodEnd)` torna a reimportação do mesmo mês uma substituição (upsert), não uma duplicata. Período de outro tamanho exige decisão explícita antes de existir.
+- **`sampleSize` é obrigatório**: linha sem cobertura é recusada; `0` é aceito e significa "sem amostra" — o valor não é exibido como número. Nenhuma métrica aparece sem a cobertura ao lado ("CSAT 4,8 · 6 avaliações"); abaixo de uma amostra mínima por métrica, a tela marca "amostra pequena", como no cumprimento (D19).
+- **Separação**: importar métrica nunca escreve `TimelineEvent`, nunca altera `MemberTrait`, e métrica nunca aparece na mesma superfície de um feedback (Princípios, D5).
+- **Score**: só existirá depois de fórmula aprovada pelo usuário. Quando existir, usa a versão ATIVA da `ScoreDefinition` (pesos somando 100, faixa de normalização por métrica, direção da métrica) e grava `ScoreResult` com TODAS as `ScoreResultComponent` (bruto, normalizado, peso, contribuição) na mesma transação. Score sem breakdown não é gravado nem exibido. Mudar pesos é versão nova — resultados antigos ficam com a versão que os gerou.
+
 ## Decisões que não devem ser alteradas silenciosamente
 
 | # | Decisão | Motivo |
@@ -361,6 +373,12 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Trecho e destaque no servidor-cliente sem HTML: `highlight(text, query)` (puro) devolve partes; `HighlightedText` (primitivo novo) marca com `--accent-wash`. Sem acento e por radical aproximado ("relatorios" marca "relatório").
 - `/search` (fallback): termo, tipo e período na URL (`?q=&type=&period=`, `src/lib/search.ts`), até 10 por grupo com "ver só …" e até 50 com tipo; tempo da busca no subtítulo. Links: 1:1 e feedback abrem o registro no painel de `/team/<id>/records?period=all&open=<tipo>:<id>` (`RecordsTable.initialOpen`); anotação vai à timeline filtrada; combinado ao detalhe; daily ao detalhe da daily.
 - `CommandDialog` passou a pôr o título acessível dentro do conteúdo; o campo da paleta não desenha outline (cobria a primeira letra).
+
+**P17 — Arquitetura de score (sem cálculo)**
+- `/settings/metrics`: cadastro de `MetricDefinition` no catálogo genérico (kind `metric`, sem posição): rótulo, chave (minúsculas/números/_, única, fixa depois de criada), unidade, direção ("maior é melhor" / "menor é melhor"), sistema de origem, ativa. Coluna "Resultados" mostra que nada foi importado; em uso (resultado ou componente de score) não se exclui. Seed com as nove métricas do P17 (volume, SLA de primeira resposta, SLA de atendimento, CSAT, retorno em 72h, recorrência, reabertura, backlog, tempo médio), sem nenhum resultado.
+- `/settings/score`: definições versionadas (`src/components/settings/score-list.tsx`, `score-detail.tsx`; escrita em `src/server/score-definitions.ts` + `src/actions/score.ts`; leitura em `src/server/queries/score.ts`). Definição nova nasce v1 em rascunho; componentes com peso (%) e faixa de normalização (mínimo < máximo); soma dos pesos exibida e validada — ativar exige 100% (`src/lib/score-composition.ts`); uma versão ativa por nome; versão ativa (ou com resultado) fica travada — "Nova versão" copia a composição; só rascunho se exclui. Tudo auditado (`settings.score.*`, `settings.metric.*`).
+- `/settings/score/[id]/preview`: pré-visualização da COMPOSIÇÃO (barra dos pesos, métrica, direção, peso, faixa e como seria lido) — documentação viva, não execução: não lê `MetricResult`/`ScoreResult` de ninguém.
+- `src/server/score.ts`: só tipos, com o aviso no topo. Contrato de importação documentado na seção "Contrato de importação de métricas". Nenhuma tela de pessoa mudou (teste estático garante que nenhuma lê métrica ou score).
 
 ## Backlog de curto prazo
 

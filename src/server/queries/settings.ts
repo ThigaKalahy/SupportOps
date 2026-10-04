@@ -59,6 +59,13 @@ export async function catalogUsage(kind: CatalogKind, ids: string[]): Promise<Ma
       db.mentorshipLink.groupBy({ by: ["competencyId"], where: { competencyId: { in: ids } }, _count: { _all: true } }),
     ])
     for (const row of [...levels, ...plans, ...expectations, ...mentorships]) add(row.competencyId, row._count._all)
+  } else if (kind === "metric") {
+    // Resultados importados e componentes de score apontam para a métrica.
+    const [results, components] = await Promise.all([
+      db.metricResult.groupBy({ by: ["metricDefinitionId"], where: { metricDefinitionId: { in: ids } }, _count: { _all: true } }),
+      db.scoreComponent.groupBy({ by: ["metricDefinitionId"], where: { metricDefinitionId: { in: ids } }, _count: { _all: true } }),
+    ])
+    for (const row of [...results, ...components]) add(row.metricDefinitionId, row._count._all)
   }
   return usage
 }
@@ -155,4 +162,29 @@ export async function listCompetencies(viewer: Viewer): Promise<CompetencyItem[]
   })
   const usage = await catalogUsage("competency", rows.map((r) => r.id))
   return rows.map(({ name, ...r }) => ({ ...r, label: name, usage: usage.get(r.id) ?? 0 }))
+}
+
+export interface MetricItem {
+  id: string
+  label: string
+  key: string
+  unit: string | null
+  direction: "HIGHER_IS_BETTER" | "LOWER_IS_BETTER"
+  sourceSystem: string | null
+  isActive: boolean
+  /** Resultados importados + componentes de score. */
+  usage: number
+  /** Resultados importados (no MVP, sempre 0). */
+  results: number
+}
+
+/** Métricas por rótulo, com quantos resultados existem (cobertura do cadastro, não desempenho). */
+export async function listMetrics(viewer: Viewer): Promise<MetricItem[]> {
+  const rows = await db.metricDefinition.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: { label: "asc" },
+    select: { id: true, label: true, key: true, unit: true, direction: true, sourceSystem: true, isActive: true, _count: { select: { results: true } } },
+  })
+  const usage = await catalogUsage("metric", rows.map((r) => r.id))
+  return rows.map(({ _count, ...r }) => ({ ...r, usage: usage.get(r.id) ?? 0, results: _count.results }))
 }

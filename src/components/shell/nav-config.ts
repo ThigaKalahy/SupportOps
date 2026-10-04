@@ -57,6 +57,9 @@ const subrouteLabels: Record<string, string> = {
   "competency-matrix": labels.settings.tabs.competencyMatrix,
   competencies: labels.settings.tabs.competencies,
   thresholds: labels.settings.tabs.thresholds,
+  metrics: labels.settings.tabs.metrics,
+  score: labels.settings.tabs.score,
+  preview: labels.settings.score.preview.title,
 }
 
 export interface Crumb {

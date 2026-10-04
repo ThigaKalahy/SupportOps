@@ -19,6 +19,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
           { href: "/settings/competencies", label: S.tabs.competencies },
           { href: "/settings/competency-matrix", label: S.tabs.competencyMatrix },
           { href: "/settings/thresholds", label: S.tabs.thresholds },
+          { href: "/settings/metrics", label: S.tabs.metrics },
+          { href: "/settings/score", label: S.tabs.score },
         ]}
       />
       {children}

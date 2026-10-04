@@ -12,13 +12,14 @@ import { compilePattern } from "../priority-validation.ts"
 const v = labels.validation
 const S = labels.settings
 
-export const CATALOG_KINDS = ["priorityLevel", "reclassificationReason", "blockerReason", "ticketPattern", "competency"] as const
+export const CATALOG_KINDS = ["priorityLevel", "reclassificationReason", "blockerReason", "ticketPattern", "competency", "metric"] as const
 export type CatalogKind = (typeof CATALOG_KINDS)[number]
 
 /** Catálogos sem posição própria (a competência segue categoria e nome). */
-export const UNORDERED_KINDS: readonly CatalogKind[] = ["competency"]
+export const UNORDERED_KINDS: readonly CatalogKind[] = ["competency", "metric"]
 
 export const BLOCKER_CATEGORIES = ["EXTERNAL", "INTERNAL", "CAPACITY"] as const
+export const METRIC_DIRECTIONS = ["HIGHER_IS_BETTER", "LOWER_IS_BETTER"] as const
 
 const label = z.string().trim().min(2, S.validation.labelRequired).max(80, v.tooLong)
 const id = z.string().optional()
@@ -55,6 +56,18 @@ export const catalogSchemas = {
     label,
     category: z.string().trim().max(60, v.tooLong),
     description: z.string().trim().max(300, v.tooLong),
+  }),
+  /**
+   * Métrica (P17): só o cadastro. A chave é o que a importação futura usa para
+   * casar a linha do helpdesk; não muda depois de criada.
+   */
+  metric: z.object({
+    id,
+    label,
+    key: z.string().trim().regex(/^[a-z][a-z0-9_]{1,39}$/, S.metrics.invalidKey),
+    unit: z.string().trim().max(20, v.tooLong),
+    direction: z.enum(METRIC_DIRECTIONS),
+    sourceSystem: z.string().trim().max(40, v.tooLong),
   }),
 } satisfies Record<CatalogKind, z.ZodType>
 

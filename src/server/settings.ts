@@ -59,6 +59,7 @@ const ENTITY: Record<CatalogKind, string> = {
   blockerReason: "BlockerReason",
   ticketPattern: "TicketUrlPattern",
   competency: "Competency",
+  metric: "MetricDefinition",
 }
 
 /** Ids na ordem de exibição. */
@@ -73,7 +74,9 @@ async function orderedIds(tx: Tx, kind: CatalogKind, organizationId: string): Pr
           ? await tx.blockerReason.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
           : kind === "ticketPattern"
             ? await tx.ticketUrlPattern.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
-            : await tx.competency.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }], select: { id: true } })
+            : kind === "metric"
+              ? await tx.metricDefinition.findMany({ where, orderBy: { label: "asc" }, select: { id: true } })
+              : await tx.competency.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }], select: { id: true } })
   return rows.map((r) => r.id)
 }
 
@@ -101,6 +104,8 @@ async function findItem(kind: CatalogKind, id: string, organizationId: string) {
       return db.ticketUrlPattern.findFirst({ where })
     case "competency":
       return db.competency.findFirst({ where })
+    case "metric":
+      return db.metricDefinition.findFirst({ where })
   }
 }
 
@@ -118,6 +123,8 @@ async function labelTaken(kind: CatalogKind, organizationId: string, label: stri
           ? await db.blockerReason.findMany({ where, select })
           : kind === "ticketPattern"
             ? await db.ticketUrlPattern.findMany({ where, select })
+            : kind === "metric"
+              ? await db.metricDefinition.findMany({ where, select })
             : (await db.competency.findMany({ where, select: { name: true } })).map((r) => ({ label: r.name }))
   return rows.some((r) => norm(r.label) === norm(label))
 }
@@ -153,6 +160,12 @@ export async function saveCatalogItemRecord(user: Viewer, kind: unknown, input: 
     return { ok: false, error: S.validation.duplicate, fieldErrors: { label: S.validation.duplicate } }
   }
   const key = k === "priorityLevel" && !before ? await levelKey(org, data.label) : null
+  if (k === "metric" && !before) {
+    const metricKey = (data as unknown as { key: string }).key
+    if (await db.metricDefinition.findFirst({ where: { organizationId: org, key: metricKey } })) {
+      return { ok: false, error: S.metrics.duplicateKey, fieldErrors: { key: S.metrics.duplicateKey } }
+    }
+  }
 
   await db.$transaction(async (tx) => {
     let id = before?.id
@@ -173,6 +186,13 @@ export async function saveCatalogItemRecord(user: Viewer, kind: unknown, input: 
       after = before
         ? await tx.blockerReason.update({ where: { id: before.id }, data: { label: d.label, category: d.category } })
         : await tx.blockerReason.create({ data: { organizationId: org, label: d.label, category: d.category, order: 0 } })
+    } else if (k === "metric") {
+      const d = data as unknown as { label: string; key: string; unit: string; direction: "HIGHER_IS_BETTER" | "LOWER_IS_BETTER"; sourceSystem: string }
+      const fields = { label: d.label, unit: d.unit || null, direction: d.direction, sourceSystem: d.sourceSystem || null }
+      // A chave não muda depois de criada: é o que casa a importação futura.
+      after = before
+        ? await tx.metricDefinition.update({ where: { id: before.id }, data: fields })
+        : await tx.metricDefinition.create({ data: { organizationId: org, key: d.key, ...fields } })
     } else if (k === "competency") {
       const d = data as { label: string; category: string; description: string }
       const fields = { name: d.label, category: d.category || null, description: d.description || null }
@@ -237,6 +257,7 @@ export async function setCatalogItemActiveRecord(user: Viewer, input: unknown): 
     else if (kind === "reclassificationReason") await tx.reclassificationReason.update({ where: { id }, data })
     else if (kind === "blockerReason") await tx.blockerReason.update({ where: { id }, data })
     else if (kind === "competency") await tx.competency.update({ where: { id }, data })
+    else if (kind === "metric") await tx.metricDefinition.update({ where: { id }, data })
     else await tx.ticketUrlPattern.update({ where: { id }, data })
     const a = audit(user, kind, active ? "activate" : "deactivate", id, { isActive: before.isActive }, { isActive: active })
     await writeAudit(a.entry, { ...a.context, tx })
@@ -260,6 +281,7 @@ export async function deleteCatalogItemRecord(user: Viewer, input: unknown): Pro
     else if (kind === "reclassificationReason") await tx.reclassificationReason.delete({ where: { id } })
     else if (kind === "blockerReason") await tx.blockerReason.delete({ where: { id } })
     else if (kind === "competency") await tx.competency.delete({ where: { id } })
+    else if (kind === "metric") await tx.metricDefinition.delete({ where: { id } })
     else await tx.ticketUrlPattern.delete({ where: { id } })
     await renumber(tx, kind, await orderedIds(tx, kind, org))
     const a = audit(user, kind, "delete", id, before)
