@@ -1,6 +1,6 @@
 import type { CheckinOutcome } from "@prisma/client"
 
-import { nextBusinessDay, todayBusinessDate } from "../../lib/dates.ts"
+import { todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
 import { memberScope, type Viewer } from "../visibility.ts"
@@ -39,7 +39,7 @@ export interface ReviewGroup {
  * Tudo o que /dailies/new precisa ao abrir: os combinados a revisar —
  * (a) criados na daily anterior, qualquer prazo, ainda abertos, mais
  * (b) abertos com prazo até a data da daily — sem repetição e agrupados por
- * pessoa; os membros ativos; os motivos de impeditivo; e a próxima daily.
+ * pessoa; os membros ativos; e os motivos de impeditivo.
  */
 export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDate()) {
   const team = await teamFor(viewer)
@@ -104,7 +104,6 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
   return {
     teamId: team.id,
     date,
-    nextDaily: nextBusinessDay(date),
     previousDaily: previous?.date ?? null,
     review: [...groups.values()].sort((a, b) => a.member.preferredName.localeCompare(b.member.preferredName)),
     members,

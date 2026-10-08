@@ -4,7 +4,7 @@ import * as React from "react"
 
 import { CopyWhatsAppButton } from "@/components/dailies/copy-whatsapp-button"
 import { ReviewRow, type ReviewState } from "@/components/dailies/review-row"
-import { formatDate, nextBusinessDay, todayBusinessDate } from "@/lib/dates"
+import { formatDate, todayBusinessDate } from "@/lib/dates"
 import { deadlineSeverity } from "@/lib/severity"
 import type { ReviewItem } from "@/server/queries/dailies"
 
@@ -18,7 +18,7 @@ function day(offset: number): Date {
   return d
 }
 
-const next = formatDate(nextBusinessDay(todayBusinessDate()), "business")
+const next = formatDate(todayBusinessDate(), "business")
 const reasons = [
   { id: "r1", label: "Dependência de terceiro" },
   { id: "r2", label: "Aguardando cliente" },

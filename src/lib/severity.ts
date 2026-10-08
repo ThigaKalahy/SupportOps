@@ -28,10 +28,12 @@ export interface GradedSeverity<Stage extends string> {
 /* ───────────────────────────── Prazo ───────────────────────────── */
 
 /**
- * Limiares de prazo (MANUAL-COMPLETO.md, P9):
- * em dia = neutro; vence em ≤ 3 dias = attention; vencido ≤ 7 dias = attention
- * forte; vencido > 7 dias = overdue; vencido > 30 dias = overdue com rótulo
- * "provavelmente esquecido".
+ * Limiares de prazo (MANUAL-COMPLETO.md, P9, com a correção C1 / D28):
+ * em dia = neutro; vence em 1 a 3 dias = attention; vence HOJE = neutro (é o
+ * trabalho do dia — o combinado da daily nasce com prazo nela); vencido há 1
+ * dia = attention; vencido há 2 a 7 dias = attention forte; vencido há 8 a 30
+ * dias = overdue; vencido há mais de 30 = overdue com rótulo "provavelmente
+ * esquecido".
  */
 export const DEADLINE_THRESHOLDS = {
   dueSoonDays: 3,
@@ -43,6 +45,7 @@ export type DeadlineStage =
   | "resolved"
   | "no-due-date"
   | "on-track"
+  | "due-today"
   | "due-soon"
   | "overdue-recent"
   | "overdue"
@@ -77,19 +80,20 @@ export function deadlineSeverity(
   if (days > t.dueSoonDays) {
     return { stage: "on-track", severity: "neutral", strong: false, daysUntilDue: days, label: labels.deadline.onTrack };
   }
-  if (days >= 0) {
-    const label =
-      days === 0
-        ? labels.deadline.dueToday
-        : days === 1
-          ? labels.deadline.dueTomorrow
-          : fill(labels.deadline.dueInDays, { days });
+  if (days === 0) {
+    return { stage: "due-today", severity: "neutral", strong: false, daysUntilDue: 0, label: labels.deadline.dueToday };
+  }
+  if (days > 0) {
+    const label = days === 1 ? labels.deadline.dueTomorrow : fill(labels.deadline.dueInDays, { days });
     return { stage: "due-soon", severity: "attention", strong: false, daysUntilDue: days, label };
   }
 
   const late = -days;
   const lateLabel = late === 1 ? labels.deadline.overdueOneDay : fill(labels.deadline.overdueDays, { days: late });
 
+  if (late === 1) {
+    return { stage: "overdue-recent", severity: "attention", strong: false, daysUntilDue: days, label: lateLabel };
+  }
   if (late <= t.recentOverdueDays) {
     return { stage: "overdue-recent", severity: "attention", strong: true, daysUntilDue: days, label: lateLabel };
   }

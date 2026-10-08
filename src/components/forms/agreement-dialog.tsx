@@ -10,7 +10,7 @@ import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { maskDateInput } from "@/lib/dates"
+import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import {
   AGREEMENT_ORIGINS,
@@ -31,7 +31,8 @@ const FIELDS = ["memberId", "title", "dueDate", "description", "priority", "orig
  * (atalho C, /agreements), escolhe-se no select — que aceita digitar a
  * inicial do nome. Enter salva; Ctrl/⌘+Enter salva e reabre em branco, para
  * lançar vários seguidos. Origem pré-preenchida pelo contexto.
- * Ordem do teclado: título → responsável → prazo → Enter.
+ * Ordem do teclado: título → responsável → prazo → Enter. O prazo nasce com
+ * hoje (D28) e continua editável e obrigatório.
  */
 export function AgreementDialog({
   open,
@@ -51,7 +52,8 @@ export function AgreementDialog({
     (): CreateAgreementInput => ({
       memberId: member?.id ?? "",
       title: "",
-      dueDate: "",
+      // Prazo nasce HOJE (D28); calculado a cada abertura, não na montagem.
+      dueDate: formatDate(todayBusinessDate(), "business"),
       description: "",
       priority: "NORMAL",
       origin,

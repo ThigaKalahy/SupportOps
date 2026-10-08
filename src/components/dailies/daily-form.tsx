@@ -62,7 +62,8 @@ let rowSeq = 0
 const newRow = (dueDate: string): NewRow => ({ key: `row-${++rowSeq}`, memberId: "", title: "", dueDate })
 const rowIsEmpty = (row: NewRow) => !row.memberId && !row.title.trim()
 
-function initialState(form: DailyFormData, nextDaily: string): FormState {
+/** Prazos nascem com a data da própria daily, também na retroativa (D28): o combinado é o compromisso do dia. */
+function initialState(form: DailyFormData, dailyDate: string): FormState {
   const reviews: Record<string, ReviewState> = {}
   for (const group of form.review) {
     for (const item of group.items) {
@@ -71,15 +72,15 @@ function initialState(form: DailyFormData, nextDaily: string): FormState {
         blockerText: "",
         blockerReasonId: "",
         action: "reschedule",
-        newDueDate: nextDaily,
+        newDueDate: dailyDate,
         replacementTitle: "",
-        replacementDueDate: nextDaily,
+        replacementDueDate: dailyDate,
       }
     }
   }
   const participants: Record<string, ParticipantState> = {}
   for (const m of form.members) participants[m.id] = { present: true, note: "", isBlocker: false }
-  return { reviews, participants, rows: [newRow(nextDaily)], summary: "", decisions: "" }
+  return { reviews, participants, rows: [newRow(dailyDate)], summary: "", decisions: "" }
 }
 
 /** Rascunho só vale para a mesma daily e só para o que ainda existe na tela. */
@@ -135,8 +136,7 @@ function clearDraft() {
 export function DailyForm({ form }: { form: DailyFormData }) {
   const router = useRouter()
   const dateText = formatDate(form.date, "business")
-  const nextDaily = formatDate(form.nextDaily, "business")
-  const [state, setState] = React.useState<FormState>(() => initialState(form, nextDaily))
+  const [state, setState] = React.useState<FormState>(() => initialState(form, dateText))
   const [restoredAt, setRestoredAt] = React.useState<string | null>(null)
   const [showExtra, setShowExtra] = React.useState(false)
   const [errors, setErrors] = React.useState<Record<string, string>>({})
@@ -161,14 +161,14 @@ export function DailyForm({ form }: { form: DailyFormData }) {
   React.useEffect(() => {
     const draft = readDraft(dateText)
     if (draft) {
-      setState(restore(initialState(form, nextDaily), draft))
+      setState(restore(initialState(form, dateText), draft))
       setRestoredAt(formatTime(new Date(draft.savedAt)))
     }
     // Foco inicial: primeiro combinado a revisar; sem revisão, a primeira nota.
     const first = groups.current[0]?.querySelector<HTMLButtonElement>("button[tabindex='0']")
     if (first) first.focus()
     else noteRefs.current[form.members[0]?.id ?? ""]?.focus()
-  }, [dateText, form, nextDaily])
+  }, [dateText, form])
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -199,7 +199,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       rowMemberRefs.current[following.key]?.focus()
       return
     }
-    const row = newRow(nextDaily)
+    const row = newRow(dateText)
     setState((s) => ({ ...s, rows: [...s.rows, row] }))
     requestAnimationFrame(() => rowMemberRefs.current[row.key]?.focus())
   }
@@ -328,7 +328,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             size="sm"
             onClick={() => {
               clearDraft()
-              setState(initialState(form, nextDaily))
+              setState(initialState(form, dateText))
               setRestoredAt(null)
             }}
           >
@@ -531,7 +531,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                     onClick={() =>
                       setState((s) => ({
                         ...s,
-                        rows: s.rows.length === 1 ? [newRow(nextDaily)] : s.rows.filter((r) => r.key !== row.key),
+                        rows: s.rows.length === 1 ? [newRow(dateText)] : s.rows.filter((r) => r.key !== row.key),
                       }))
                     }
                   >

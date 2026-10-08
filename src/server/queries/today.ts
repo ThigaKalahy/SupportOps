@@ -85,7 +85,8 @@ export async function getTodayPanel(viewer: Viewer, today: Date): Promise<TodayP
       select: { status: true, originalDueDate: true, completedAt: true },
     }),
     db.agreement.findMany({
-      where: { member: people, status: { in: ["OPEN", "IN_PROGRESS"] }, dueDate: { gte: today, lte: until } },
+      // Combinado com prazo hoje fica fora da home (D28): a daily é quem o revisa.
+      where: { member: people, status: { in: ["OPEN", "IN_PROGRESS"] }, dueDate: { gt: today, lte: until } },
       select: { id: true, title: true, dueDate: true, member },
     }),
     // O 1:1 mais recente de cada pessoa: só a revisão marcada nele está pendente (P13).

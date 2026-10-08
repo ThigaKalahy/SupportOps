@@ -51,6 +51,17 @@ function clean(text: string): string {
   return text.replace(/[*_~`]/g, "").replace(/\s+/g, " ").trim()
 }
 
+/**
+ * Linha de "Combinados de hoje". O prazo padrão é a data da própria daily (D28),
+ * então ele só aparece quando é outro: aí foi alterado à mão e virou informação.
+ */
+function createdLine(dailyDate: Date) {
+  return (c: WhatsAppDaily["created"][number]) => {
+    const line = `- ${clean(c.name)} — ${clean(c.title)}`
+    return c.dueDate.getTime() === dailyDate.getTime() ? line : `${line} — ${dayMonth(c.dueDate)}`
+  }
+}
+
 const MARK = { DONE: "✅", PARTIAL: "⚠️", NOT_DONE: "⚠️" } as const
 
 export function buildDailyWhatsApp(daily: WhatsAppDaily): string {
@@ -70,7 +81,7 @@ export function buildDailyWhatsApp(daily: WhatsAppDaily): string {
 
   if (daily.created.length) {
     sections.push(
-      ["*Combinados de hoje*", ...daily.created.map((c) => `- ${clean(c.name)} — ${clean(c.title)} — ${dayMonth(c.dueDate)}`)].join(
+      ["*Combinados de hoje*", ...daily.created.map(createdLine(daily.date))].join(
         "\n",
       ),
     )

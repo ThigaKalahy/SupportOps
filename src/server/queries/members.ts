@@ -111,7 +111,7 @@ export async function listTeamMembers(
           AND a."dueDate" < ${today}) AS "oldestOverdueDue",
       (SELECT count(*)::int FROM "Agreement" a
         WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
-          AND a."dueDate" >= ${today} AND a."dueDate" <= ${dueSoonLimit}) AS "dueSoonAgreements",
+          AND a."dueDate" > ${today} AND a."dueDate" <= ${dueSoonLimit}) AS "dueSoonAgreements",
       (SELECT count(*)::int FROM "Agreement" a
         WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
           AND (SELECT count(*) FROM "AgreementCheckin" c

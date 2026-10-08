@@ -302,7 +302,8 @@ export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds)
         nav: "agreements",
         informative: false,
       })
-    } else if (daysUntil <= t.dueSoonDays) {
+    } else if (daysUntil > 0 && daysUntil <= t.dueSoonDays) {
+      // Prazo hoje fica fora (D28): é o trabalho do dia, revisado pela daily de amanhã.
       const current = dueSoonBy.get(a.memberId)
       dueSoonBy.set(a.memberId, {
         count: (current?.count ?? 0) + 1,

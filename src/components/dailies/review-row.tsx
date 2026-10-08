@@ -53,7 +53,7 @@ function FieldError({ id, message }: { id: string; message?: string }) {
  * só parada de Tab: setas movem, Enter/Espaço escolhe, e F / P / N escolhem
  * direto. "Feito" recolhe a linha e leva o foco ao próximo combinado.
  * "Parcial" e "Não feito" abrem, na própria linha, impeditivo (obrigatório),
- * motivo e a escolha entre reagendar (padrão: próxima daily) e substituir.
+ * motivo e a escolha entre reagendar (padrão: a data desta daily, D28) e substituir.
  */
 export function ReviewRow({
   item,

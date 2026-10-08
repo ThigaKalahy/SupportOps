@@ -73,7 +73,7 @@ describe("texto para WhatsApp", () => {
         },
       ],
       created: [
-        { name: "Larissa", title: "Finalizar tutorial de instalação", dueDate: utc(2026, 10, 2) },
+        { name: "Larissa", title: "Finalizar tutorial de instalação", dueDate: utc(2026, 10, 1) },
         { name: "Vinícius", title: "Mapear chamados recorrentes do cliente Nbusiness", dueDate: utc(2026, 10, 3) },
       ],
       blockers: [{ name: "Henrique", text: "sem acesso ao ambiente de homologação" }],
@@ -90,7 +90,7 @@ describe("texto para WhatsApp", () => {
         "_Novo prazo: 03/10_",
         "",
         "*Combinados de hoje*",
-        "- Larissa — Finalizar tutorial de instalação — 02/10",
+        "- Larissa — Finalizar tutorial de instalação",
         "- Vinícius — Mapear chamados recorrentes do cliente Nbusiness — 03/10",
         "",
         "*Bloqueios*",
@@ -177,7 +177,6 @@ describe("registro de daily", () => {
     const all = form.review.flatMap((g) => g.items.map((i) => i.id))
     assert.equal(new Set(all).size, all.length)
     assert.ok(form.members.some((m) => m.id === ids[1]))
-    assert.equal(form.nextDaily.getTime(), nextBusinessDay(today).getTime())
   })
 
   const base = () => ({

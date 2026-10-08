@@ -57,10 +57,13 @@ describe("escala de prazo (src/lib/severity.ts)", () => {
     d.setUTCDate(d.getUTCDate() + days)
     return deadlineSeverity(d, { today })
   }
-  test("em dia, ≤ 3 dias, vencido ≤ 7, vencido > 7, vencido > 30", () => {
+  test("em dia, 1 a 3 dias, hoje neutro (D28), vencido 1 dia, ≤ 7, > 7, > 30", () => {
     assert.equal(at(4).severity, "neutral")
     assert.equal(at(3).severity, "attention")
-    assert.equal(at(0).severity, "attention")
+    assert.equal(at(1).severity, "attention")
+    assert.deepEqual([at(0).severity, at(0).stage], ["neutral", "due-today"])
+    assert.deepEqual([at(-1).severity, at(-1).strong], ["attention", false])
+    assert.deepEqual([at(-2).severity, at(-2).strong], ["attention", true])
     assert.deepEqual([at(-7).severity, at(-7).strong], ["attention", true])
     assert.deepEqual([at(-8).severity, at(-8).strong], ["overdue", false])
     assert.equal(at(-30).label, "Vencido há 30 dias")
