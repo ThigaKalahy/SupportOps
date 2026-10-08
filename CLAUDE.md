@@ -160,6 +160,8 @@ Nenhum componente novo sem primitivo correspondente em `/ui-lab`. Deriva visual 
 
 Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `src/server/whatsapp.ts` (D16). Nenhum componente de UI usa emoji.
 
+A sidebar tem 8 itens: Hoje, Em observação, Equipe, Combinados, Validação de prioridade (com aba de devoluções), Dailies, Registros, Desenvolvimento, mais Configurações no rodapé. Oito é o teto — nenhum item novo entra sem outro sair ou virar aba.
+
 ## Regras de modelagem
 
 - `TimelineEvent` é um **índice denormalizado**, nunca fonte de verdade. Os registros vivem nas tabelas concretas (`Feedback`, `OneOnOne`, `Daily`, `Agreement`, `Note`, `MemberChange`, `DevelopmentPlan`...). A `TimelineEvent` é a linha-espelho.
@@ -176,6 +178,18 @@ Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `s
 - `PriorityValidation.outcome` é calculado na escrita e nunca recalculado (D14). `RETURNED` é ação explícita, não derivável de ranks.
 - `reasonId` é obrigatório quando `outcome != MAINTAINED`, validado no zod e no banco.
 - Métricas de cumprimento são calculadas em query sobre `originalDueDate`, `completedAt` e `AgreementCheckin`. Nenhuma taxa é persistida (D19).
+- `Central.slug` é derivado do nome (minúsculas, sem acento, hífens) e é a chave de deduplicação. Criar central verifica o slug antes de inserir.
+- `Agreement.centralId` e `PriorityValidation.centralId` são opcionais. Registros anteriores ao P19 ficam sem central, e "sem central informada" é linha legítima em qualquer métrica.
+- `Central.externalId` existe para sincronização futura com a plataforma de rastreamento. Nenhuma integração foi feita.
+- `DevReturn.priorityValidationId` é preenchido automaticamente por `ticketRef` quando existe validação para o mesmo chamado; nulo é normal.
+- `DevReturn.reasonId` é obrigatório no zod e NOT NULL no banco.
+- `WatchItem` tem todos os vínculos opcionais; só `title` e `heat` são obrigatórios.
+- Estado de revisão e "fogo alto frio" são DERIVADOS em query a partir de `lastReviewedAt`, `heatChangedAt` e das cadências de Settings. Nunca persistidos (D9).
+- `WatchReview` registra cada revisão, com grau antes e depois. Revisão não escreve em `TimelineEvent`.
+- Nem `PriorityValidation` nem `DevReturn` escrevem em `TimelineEvent` (D15, D21).
+- Prazo de combinado (D28): combinado criado na Seção 3 de uma daily nasce com `originalDueDate` e `dueDate` iguais à DATA DA DAILY. Reagendar na daily do dia D propõe o próprio dia D. Combinado criado fora de daily nasce com prazo HOJE. `originalDueDate` continua imutável (D17).
+- Prazo igual a hoje é severidade `neutral`. O sinal de atraso começa no primeiro dia de vencimento.
+- Combinado com prazo hoje NÃO entra no alerta "Combinado vencendo" nem na home. A daily é o mecanismo de revisão dele.
 
 ## Métricas e score
 
@@ -200,6 +214,8 @@ Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `s
 - Dados de pessoas ficam no Brasil: banco Neon em `aws-sa-east-1`. Alinhar com RH/jurídico antes de inserir dados reais é responsabilidade do usuário, não do Claude Code — não presumir que já foi feito.
 - Padrão de visibilidade por entidade: `Note`, `OneOnOne` e `Feedback` nascem PRIVATE. A única exceção é `Feedback` de categoria RECOGNITION, cujo formulário sugere SHARED como padrão — sugere, não impõe.
 - A rota `/ui-lab` é bloqueada em produção via NODE_ENV. Ela expõe estados de componente e não deve existir fora de desenvolvimento.
+- `WatchItem` nasce com `visibility: PRIVATE` sem exceção, e não há configuração que mude esse padrão.
+- `src/server/whatsapp.ts` NUNCA inclui `WatchItem`, em nenhuma seção, nem quando a observação está marcada como SHARED. É proibição absoluta, não default.
 
 ## Contrato de importação de métricas
 
@@ -235,7 +251,16 @@ Nada disto está implementado no MVP (D5, P17): não há importador, rota ou int
 | D16 | Emoji permitido exclusivamente no texto exportado para WhatsApp | A proibição vale para a interface. O export é outro meio |
 | D17 | `Agreement.originalDueDate` é gravado na criação e NUNCA alterado | Reagendamento muda `dueDate`. Sem o prazo original não existe medição honesta de cumprimento — todo combinado arrastado pareceria cumprido no prazo |
 | D18 | `BlockerReason.category` (EXTERNAL / INTERNAL / CAPACITY) existe para separar cumprimento bruto de ajustado | "Aguardando acesso do cliente" e "esqueci" não podem pesar igual contra a pessoa |
-| D19 | Taxa de cumprimento nunca aparece sem o total de combinados ao lado, e nunca vira um número único por pessoa | Quem teve 3 combinados fáceis fecha 100%. Taxa sem denominador é propaganda, não medição |
+| D19 | Taxa de cumprimento nunca aparece sem o total de combinados ao lado, e nunca vira um número único por pessoa. Vale igualmente para taxa de devolução do desenvolvimento: o denominador é o total de chamados validados no período e aparece sempre ao lado. | Quem teve 3 combinados fáceis fecha 100%. Taxa sem denominador é propaganda, não medição |
+| D20 | `Central` é tabela com `slug` normalizado desde o início, nunca coluna de texto livre | "Central Alfa", "central alfa" e "Central Alfa " fragmentariam a métrica em três. A UI parece texto livre; o armazenamento é normalizado |
+| D21 | `DevReturn` é entidade separada, não um valor de `PriorityValidation.outcome` | Outro ator, outro momento, outra taxonomia de motivo, pode ocorrer sem validação prévia e pode repetir. Como valor de `outcome` sobrescreveria um fato datado (D14) |
+| D22 | `DevReturnReason.category` (ANALYST / PROCESS) separa devolução treinável de atrito entre áreas | Mesma lógica de D18. Dev que pede informação desnecessária não é falha do analista |
+| D23 | Migrations são aditivas e não destrutivas | O sistema está em produção com dados reais. Coluna nova é nullable, enum não perde valor, nenhum dado histórico é reescrito ou recebe backfill inventado |
+| D24 | `WatchItem` tem `lastReviewedAt` e cadência derivada do `heat`; item sem revisão vira alerta | Lista de observação sem ciclo de revisão vira cemitério em dois meses. A cadência obriga a lista a responder "isso ainda está quente?" |
+| D25 | `WatchItem` nasce PRIVATE e nunca entra na exportação do WhatsApp, em nenhuma hipótese | É a superfície mais provável de conter anotação gerencial crua sobre uma pessoa. Vazamento aqui é o pior do sistema |
+| D26 | `WatchItem` escreve `TimelineEvent` apenas quando `memberId` está preenchido | Observação sobre pessoa é prontuário. Observação sobre central ou processo não tem prontuário onde entrar |
+| D27 | Resolver um `WatchItem` exige texto de resolução | Fechar sem dizer o que aconteceu desperdiça o registro — o valor da observação está no que você aprendeu |
+| D28 | O prazo padrão de combinado criado em daily é a data da própria daily, não o dia seguinte. Prazo igual a hoje é severidade neutra | O combinado é o compromisso do dia. Prazo no dia seguinte empurra tudo para frente. E se o estado normal de todo combinado novo for amarelo, amarelo deixa de significar algo |
 
 Qualquer sessão de Claude Code que considerar revisar uma dessas decisões deve parar e perguntar ao usuário antes de agir — não decidir sozinha, mesmo que pareça uma melhoria técnica.
 
@@ -412,6 +437,12 @@ As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora
 - Hoje: registrar acompanhamento de PDI direto da lista; limiares por pessoa (hoje são por organização).
 - Métricas: importador do helpdesk segundo o "Contrato de importação de métricas" (nada implementado). Score: fórmula só depois de aprovada pelo usuário (D5), sempre com breakdown.
 - Fora do MVP por decisão: modo escuro, testes E2E, Sentry, upload de arquivo, notificações.
+
+**Próximas entregas (pós-MVP)**
+- C1 — Correção do prazo padrão do combinado (D28).
+- P19 — Central de atendimento (D20).
+- P20 — Devolução do desenvolvimento (D21, D22).
+- P21 — Em observação (D24–D27).
 
 ## Protocolo de execução autônoma
 
