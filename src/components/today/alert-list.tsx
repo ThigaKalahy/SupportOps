@@ -34,7 +34,11 @@ export function AlertList({ alerts, canWrite, hasTeam }: { alerts: Alert[]; canW
     <>
       {actionable.length === 0 ? (
         <div className="rounded-lg border border-line bg-surface">
-          <EmptyState size="compact" title={T.emptyTitle} direction={hasTeam ? T.emptyDirection : T.noTeam} />
+          <EmptyState
+            size="compact"
+            title={hasTeam ? T.emptyTitle : T.noTeamTitle}
+            direction={hasTeam ? T.emptyDirection : T.noTeam}
+          />
         </div>
       ) : (
         <ol aria-label={T.listLabel} className="flex flex-col rounded-lg border border-line bg-surface">

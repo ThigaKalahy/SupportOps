@@ -236,7 +236,8 @@ export const labels = {
     team: "Time",
     emptyTitle: "Nada vencido hoje",
     emptyDirection: "Nenhum combinado vencido, 1:1 atrasado, PDI parado, follow-up pendente ou daily em falta.",
-    noTeam: "Cadastre as pessoas do time para os alertas começarem a aparecer.",
+    noTeam: "Cadastre seu time para começar a ver o que precisa de atenção.",
+    noTeamTitle: "Nenhuma pessoa no time ainda",
     informativeHeading: "Informativo",
     composition: "Composição do time",
     compositionLabel: "{count} pessoas: {parts}",
@@ -561,7 +562,7 @@ export const labels = {
       done: "Nenhum combinado concluído",
       all: "Nenhum combinado registrado",
     },
-    emptyDirection: "Combinados nascem em dailies, 1:1, feedbacks ou pelo atalho C em qualquer tela.",
+    emptyDirection: "Os combinados aparecem aqui conforme você registra dailies e 1:1.",
     filteredDirection: "Ajuste ou limpe os filtros para ver mais combinados.",
     completeDialog: {
       title: "Concluir combinado",
@@ -710,7 +711,8 @@ export const labels = {
       doneTitle: "Encerrado pela conversa de {date}",
     },
     emptyTitle: "Nenhum 1:1 ou feedback no período",
-    emptyDirection: "Registre 1:1 e feedbacks pelo perfil de cada pessoa. Eles aparecem aqui, com o follow-up.",
+    emptyDirection: "Registre seu primeiro 1:1 ou feedback.",
+    emptyDirectionReadOnly: "Os 1:1 e feedbacks compartilhados do time aparecem aqui.",
     filteredDirection: "Ajuste ou limpe os filtros para ver mais registros.",
     detail: {
       open: "Abrir registro",
@@ -868,6 +870,10 @@ export const labels = {
       stale: "PDIs parados",
       staleDirection: "Sem acompanhamento há mais de {days} dias. Um PDI sem acompanhamento é um PDI morto.",
       staleNone: "Nenhum PDI parado.",
+      noCompetenciesTitle: "Nenhuma competência cadastrada",
+      noCompetenciesDirection: "Cadastre competências em Configurações antes de criar PDIs.",
+      noCompetenciesReadOnly: "O gestor ainda não cadastrou as competências deste time.",
+      noCompetenciesAction: "Ir para Competências",
       allPlans: "Todos os PDIs",
       columns: { member: "Pessoa", objective: "Objetivo", competency: "Competência", status: "Status", progress: "Ações", review: "Acompanhamento" },
       tableLabel: "PDIs do time",
@@ -1358,7 +1364,7 @@ export const labels = {
     archivedToast: "Observação arquivada.",
     empty: {
       active: "Nada em observação",
-      activeDirection: "Coloque em observação a partir da daily, de um combinado, de uma validação, de uma devolução, de um 1:1 ou com \u201cNova observação\u201d.",
+      activeDirection: "Você pode marcar algo de qualquer tela.",
       unreviewed: "Nada sem revisão",
       unreviewedDirection: "Todas as observações ativas estão em dia com a cadência do grau.",
       resolved: "Nenhuma observação resolvida",
@@ -2005,8 +2011,8 @@ export const labels = {
     team: {
       subtitle: "Cadastro das pessoas do time, com senioridade, último 1:1 e combinados em aberto.",
       emptyTitle: "Nenhuma pessoa cadastrada",
-      emptyDirection:
-        "Cada analista cadastrado ganha um perfil com timeline, combinados, 1:1, feedbacks e plano de desenvolvimento.",
+      emptyDirection: "Comece cadastrando as pessoas do seu time.",
+      emptyDirectionReadOnly: "O gestor ainda não cadastrou as pessoas deste time.",
     },
     agreements: {
       subtitle: "Compromissos combinados com o time, com responsável, prazo e histórico de reagendamento.",
@@ -2017,8 +2023,8 @@ export const labels = {
     dailies: {
       subtitle: "Revisão dos combinados do dia anterior e registro dos novos, por pessoa.",
       emptyTitle: "Nenhuma daily registrada",
-      emptyDirection:
-        "Ao registrar uma daily, os combinados da anterior e os vencidos entram para revisão automaticamente.",
+      emptyDirection: "Registre sua primeira daily.",
+      emptyDirectionReadOnly: "Nenhuma daily foi registrada neste time ainda.",
     },
     settings: {
       subtitle: "Catálogos, limiares e cadastros que alimentam o produto. Toda alteração fica na auditoria.",

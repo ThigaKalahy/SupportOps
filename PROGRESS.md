@@ -27,6 +27,7 @@
 | P21 Em observação             | código pronto — migration aguarda autorização (junto com as do P19 e P20) | | 10/10/2026 |
 | P22 Multi-tenancy (banco e acesso) | concluída — ensaiada no branch de teste; migrations aguardam aplicação em produção | 1fba67d | 11/10/2026 |
 | P23 Seleção e troca de time   | concluída | 9c75315 | 09/10/2026 |
+| P24 Provisionamento de time   | concluída — Treinamento e Hardware criados em produção | | 09/10/2026 |
 
 ## Notas de handoff
 
@@ -421,4 +422,11 @@
 - **Decisões tomadas sem perguntar:** o redirecionamento para /select-team fica em `requireTeamContext`, não no middleware (Edge, sem Prisma — importar Prisma no middleware quebra o build); com um time só a sidebar mostra o nome do time em texto (seção 2 do prompt), o único acréscimo visível para quem tem um time; conta sem nenhum time vai para /select-team com o aviso e o botão de sair; o `<title>` fica "Página · Prontuário · Time"; o admin não revoga o próprio acesso; conceder de novo a quem foi revogado reabre a mesma linha (`@@unique([userId, teamId])`), e o histórico fica no AuditLog.
 - **O P24 assume:** `requireAdminContext`, `/settings/team` e `src/server/teams.ts` existem; criar time entra ali, nascendo vazio (D33).
 - **Verificado:** typecheck, lint, build; `pnpm test` 275/275 no banco de teste, inclusive `tests/isolation.test.ts`.
+
+### P24 — Provisionamento de time (branch `fase/24-team-provisioning`)
+
+- **Execução real (09/10/2026, produção já migrada por você):** Jean Ricardo criado como VIEWER do Suporte; `team:create` Treinamento (Jeff Borges) e Hardware (Vinícius Saraiva), sem módulos opcionais; o Jean ganhou VIEWER nos dois automaticamente. `db:verify-teams` depois: Thiago MANAGER só no Suporte, Jeff MANAGER só no Treinamento, Vinícius MANAGER só no Hardware, Jean VIEWER nos três; Suporte com PRIORITY_VALIDATION, DEV_RETURNS e CENTRALS; Treinamento e Hardware sem módulo, sem pessoa, sem daily, sem combinado (16 linhas cada: 3 senioridades, 9 motivos, 4 cadências); Suporte idêntico tabela a tabela (322 linhas antes e depois). Nomes completos deduzidos dos e-mails.
+- **Ficou de fora / depende de você:** ALLOWED_EMAILS na Vercel (e no .env.local) com Jean, Jeff e Vinícius + redeploy; o código do P22–P24 ainda não está publicado na Vercel (só o banco foi migrado). Nada visto no navegador — o critério de aceite (Jeff vê sistema vazio com 8 itens e nenhum vestígio dos módulos; Jean escolhe entre três times) precisa ser conferido por você depois do deploy.
+- **Decisões tomadas sem perguntar:** `team:create` não exige o e-mail no ALLOWED_EMAILS (o prompt pede para imprimir a linha); o administrador do script é o único `isPlatformAdmin` da organização, ou `ADMIN_EMAIL` se houver mais de um; "VIEWER em todos os outros times" exige ao menos um time e exclui quem é MANAGER em algum; as cadências de observação viram linhas de `AlertThreshold` com os valores padrão (antes, sem linha = padrão — o efeito é o mesmo); para o VIEWER, as telas vazias dizem o estado em vez de mandar registrar; /development só troca a tela inteira pela direção quando não há competência NEM PDI.
+- **Verificado:** typecheck, lint, build; `pnpm test` 279/279 no banco de teste; os dois scripts rodados por pipe no banco de teste (time de ensaio criado, acesso concedido e revogado, recusa de nome curto) e o ensaio apagado depois.
 

@@ -48,7 +48,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 Não existe cadastro público, convite nem recuperação de senha por e-mail. A única forma de criar usuário ou trocar senha é pela CLI:
 
 ```
-pnpm user:create         # pergunta e-mail, nome e papel (OWNER ou VIEWER)
+pnpm user:create         # pergunta e-mail, nome, papel (OWNER ou VIEWER) e time; concede o acesso ao time
 pnpm user:password       # gera nova senha para um e-mail existente e desbloqueia a conta
 ```
 
@@ -58,7 +58,30 @@ Os dois geram uma senha aleatória, mostram **uma única vez** no terminal e gra
 - 5 senhas erradas seguidas bloqueiam a conta por 15 minutos. `pnpm user:password` desbloqueia.
 - O seed cria o OWNER com o primeiro e-mail de `ALLOWED_EMAILS`, sem senha: defina com `pnpm user:password`.
 
-Papéis: `OWNER` (leitura e escrita), `VIEWER` (só leitura; nunca vê registro privado). `MANAGER` é reservado.
+Acesso é por time (`TeamAccess`): **gestor** (MANAGER — registra e lê tudo do time, inclusive o privado) ou **leitura** (VIEWER — só lê, e só o que foi compartilhado). O mesmo usuário pode ter acesso a vários times; quem tem mais de um escolhe o time depois do login e troca pela barra lateral. `User.role` é obsoleto e não decide nada.
+
+## Abrir um time novo
+
+```
+pnpm team:create         # nome, slug, e-mail e nome do gestor, módulos opcionais (padrão: nenhum)
+pnpm team:access         # conceder (MANAGER ou VIEWER) ou revogar acesso, por e-mail e slug do time
+```
+
+Os dois rodam contra o banco do `.env.local` e precisam de um usuário com `isPlatformAdmin` na organização (se houver mais de um, informe `ADMIN_EMAIL=...`). Tudo vai para o AuditLog.
+
+`pnpm team:create`, numa única transação:
+
+- cria o time e a conta do gestor — se o e-mail já existe, reaproveita a conta (o mesmo gestor pode ter vários times); se não, gera uma senha aleatória e mostra **uma única vez**;
+- dá ao gestor acesso de gestor (MANAGER) ao time;
+- dá acesso de leitura (VIEWER) a quem já é VIEWER de **todos** os outros times ativos — quem acompanha todos os times passa a ver o novo automaticamente; VIEWER de um time só não entra;
+- liga só os módulos escolhidos (`PRIORITY_VALIDATION`, `DEV_RETURNS`, `CENTRALS`);
+- semeia **só o mínimo** para o sistema funcionar: senioridades Júnior, Pleno e Sênior (renomeáveis em Configurações), os nove motivos de impeditivo com as categorias e as cadências de "Em observação" (2 / 7 / 21 / 30 dias).
+
+O que **não** é semeado, de propósito: nenhuma pessoa, nenhuma competência, nenhuma responsabilidade, nenhuma daily, combinado, 1:1 ou feedback, nenhum dado de demonstração. O gestor cadastra o próprio time; cada tela vazia diz o que fazer primeiro. O `pnpm db:seed` é só do time do Suporte.
+
+**Passo manual — `ALLOWED_EMAILS`:** sem o e-mail na variável, o gestor não entra. O script imprime a linha pronta (`ALLOWED_EMAILS=...`) quando o e-mail ainda não está nela. Cole o valor na Vercel (Settings → Environment Variables → `ALLOWED_EMAILS`, ambiente Production), faça um redeploy para valer, e atualize também o `.env.local`. Revogar acesso a um time é `pnpm team:access`; tirar o e-mail da variável bloqueia a conta inteira.
+
+Times, módulos e acessos também podem ser ajustados pela tela **Configurações → Times e acessos**, visível só para quem tem `isPlatformAdmin`. Desligar um módulo não apaga nada: os registros ficam no banco e só deixam de aparecer naquele time.
 
 ## Banco de dados
 

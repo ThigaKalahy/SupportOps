@@ -59,6 +59,20 @@ Onde consigo:
 4. Só depois disso, com a suíte passando, aplicar em produção (`pnpm db:migrate:deploy` ou o push para o master, que roda o mesmo comando na Vercel) e conferir com `pnpm db:verify-teams`.
 Enquanto isso: o código do P22 está pronto e compila, mas a fase não está aceita. NÃO faça push para o master: o build da Vercel aplicaria as migrations em produção sem o ensaio.
 
+## [x] Criar Treinamento e Hardware em produção (P24, seção 3)
+Feito em 09/10/2026: Jean criado (VIEWER do Suporte), Treinamento (Jeff) e Hardware (Vinícius) criados sem módulos; `pnpm db:verify-teams` conferido; Suporte idêntico (322 linhas). Falta só o passo 6 (ALLOWED_EMAILS na Vercel), que é seu.
+Fase: P24
+Preciso de: (1) produção migrada — as migrations do P22 entram no deploy do branch (push/merge para o master) ou com `pnpm db:migrate:deploy`; (2) os e-mails do Jeff (gestor do Treinamento), do Vinícius (gestor do Hardware) e do Jean (leitura em todos os times); (3) seu ok para escrever em produção.
+Onde consigo: os e-mails são seus. Para o Jean ganhar VIEWER automático nos times novos, ele precisa ser VIEWER do Suporte ANTES de criar os times.
+Ordem (eu rodo, com o `.env.local` de produção, quando você mandar):
+1. `pnpm db:verify-teams` — guarda a contagem do Suporte (antes).
+2. Acrescentar o e-mail do Jean ao ALLOWED_EMAILS do `.env.local` e rodar `pnpm user:create` (Jean, VIEWER, time suporte) — a senha dele aparece uma vez.
+3. `pnpm team:create` — Treinamento, slug `treinamento`, Jeff, módulos: nenhum.
+4. `pnpm team:create` — Hardware, slug `hardware`, Vinícius, módulos: nenhum.
+5. `pnpm db:verify-teams` — conferir: Thiago MANAGER só no Suporte; Jeff MANAGER só no Treinamento; Vinícius MANAGER só no Hardware; Jean VIEWER nos três; Suporte com os três módulos; Treinamento e Hardware sem módulo, sem pessoa, sem daily, sem combinado; Suporte com a mesma contagem de antes.
+6. Você cola na Vercel a linha `ALLOWED_EMAILS=...` com Jean, Jeff e Vinícius e faz redeploy.
+Enquanto isso: o mecanismo está pronto e testado; nada foi criado em produção.
+
 <!--
 FORMATO — o Claude Code adiciona blocos assim e PARA (sem o recuo, que só existe
 aqui para o exemplo não ser lido como bloqueio real pelo phase-gate):

@@ -22,10 +22,11 @@ export const metadata: Metadata = {
 export default async function DailiesPage() {
   const ctx = await requireTeamContext()
   const dailies = await listDailies(ctx)
+  const writer = canWrite(ctx)
 
   return (
     <div className="flex flex-col gap-6">
-      {canWrite(ctx) ? (
+      {writer ? (
         <ContextActions>
           <Button asChild size="sm">
             <Link href="/dailies/new">
@@ -38,7 +39,17 @@ export default async function DailiesPage() {
       <PageHeader title={labels.nav.dailies} subtitle={plural(labels.dailies.history.count, dailies.length)} />
       {dailies.length === 0 ? (
         <div className="rounded-lg border border-line bg-surface">
-          <EmptyState title={page.emptyTitle} direction={page.emptyDirection} />
+          <EmptyState
+            title={page.emptyTitle}
+            direction={writer ? page.emptyDirection : page.emptyDirectionReadOnly}
+            action={
+              writer ? (
+                <Button asChild size="sm" variant="secondary">
+                  <Link href="/dailies/new">{labels.dailies.new}</Link>
+                </Button>
+              ) : undefined
+            }
+          />
         </div>
       ) : (
         <DailyHistory dailies={dailies} />

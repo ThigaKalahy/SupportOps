@@ -3,7 +3,8 @@
  * SOMENTE LEITURA. Imprime:
  * - linhas com teamId nulo em cada tabela de dado de time (tem que ser 0 em todas);
  * - os times, com slug, ativo e módulos ligados;
- * - quantos TeamAccess ativos (e revogados) cada usuário tem, com o nível.
+ * - quantos TeamAccess ativos (e revogados) cada usuário tem, com o nível;
+ * - linhas por time em cada tabela (P24: comparar antes e depois de abrir um time).
  * Sai com código 1 se alguma tabela tiver teamId nulo.
  */
 import { Prisma } from "@prisma/client"
@@ -50,6 +51,19 @@ async function main() {
     const list = active.map((a) => `${a.team.slug}:${a.level}`).join(", ") || "nenhum"
     console.log(`  ${u.email}${u.isPlatformAdmin ? " [admin]" : ""} — ${active.length} ativo(s): ${list}${revoked ? ` · ${revoked} revogado(s)` : ""}`)
   }
+
+  console.log("\nLinhas por time (tabelas com dado):")
+  const slugs = new Map(teams.map((t) => [t.id, t.slug]))
+  const totals = new Map<string, number>()
+  for (const table of TABLES) {
+    const rows = await db.$queryRaw<{ teamId: string | null; n: number }[]>(
+      Prisma.sql`SELECT "teamId", count(*)::int AS "n" FROM ${Prisma.raw(`"${table}"`)} GROUP BY "teamId" ORDER BY "teamId"`,
+    )
+    if (rows.length === 0) continue
+    console.log(`  ${table.padEnd(24)} ${rows.map((r) => `${slugs.get(r.teamId ?? "") ?? r.teamId}=${r.n}`).join("  ")}`)
+    for (const r of rows) totals.set(r.teamId ?? "", (totals.get(r.teamId ?? "") ?? 0) + r.n)
+  }
+  console.log(`  ${"TOTAL".padEnd(24)} ${[...totals].map(([id, n]) => `${slugs.get(id) ?? id}=${n}`).join("  ")}`)
 
   console.log(nulls === 0 ? "\nOK: nenhuma linha sem time." : `\nFALHA: ${nulls} linha(s) sem time.`)
   if (nulls > 0) process.exitCode = 1

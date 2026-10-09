@@ -19,6 +19,8 @@
     "db:backup": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db-backup.ts",
     "user:create": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/user-create.ts",
     "user:password": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/user-password.ts",
+    "team:create": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/team-create.ts",
+    "team:access": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/team-access.ts",
     "db:verify-teams": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-team-scope.ts",
     "test": "node --env-file=.env.test --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "test:db:prepare": "node --env-file=.env.test node_modules/prisma/build/index.js migrate deploy && node --env-file=.env.test node_modules/prisma/build/index.js db seed",

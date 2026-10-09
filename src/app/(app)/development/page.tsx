@@ -3,6 +3,8 @@ import Link from "next/link"
 
 import { PlanReviewAge } from "@/components/development/plan-block"
 import { PlansTable } from "@/components/development/plans-table"
+import { Button } from "@/components/ui/button"
+import { EmptyState } from "@/components/ui/empty-state"
 import { PageHeader } from "@/components/ui/page-header"
 import { Section } from "@/components/ui/section"
 import { StatStrip } from "@/components/ui/stat-strip"
@@ -10,6 +12,7 @@ import { formatDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { canWrite, requireTeamContext } from "@/server/scope"
 import { getDevelopmentOverview } from "@/server/queries/development"
+import { listCompetencies } from "@/server/queries/settings"
 
 const D = labels.development
 const O = D.overview
@@ -27,7 +30,29 @@ export const metadata: Metadata = {
  */
 export default async function DevelopmentPage() {
   const ctx = await requireTeamContext()
-  const overview = await getDevelopmentOverview(ctx)
+  const [overview, competencies] = await Promise.all([getDevelopmentOverview(ctx), listCompetencies(ctx)])
+
+  // Time recém-criado (P24): sem competência não há PDI possível — diga o que fazer.
+  if (competencies.length === 0 && overview.plans.length === 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title={D.title} subtitle={D.subtitle} />
+        <div className="rounded-lg border border-line bg-surface">
+          <EmptyState
+            title={O.noCompetenciesTitle}
+            direction={canWrite(ctx) ? O.noCompetenciesDirection : O.noCompetenciesReadOnly}
+            action={
+              canWrite(ctx) ? (
+                <Button asChild size="sm" variant="secondary">
+                  <Link href="/settings/competencies">{O.noCompetenciesAction}</Link>
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
+      </div>
+    )
+  }
   // Ordem da tabela: status (ativos primeiro) e nome — nunca desempenho.
   const plans = [...overview.plans].sort(
     (a, b) =>

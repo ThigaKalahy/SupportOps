@@ -87,6 +87,7 @@ export function TeamTable({
 }) {
   const [editing, setEditing] = React.useState<MemberForEdit | null>(null)
   const [deactivating, setDeactivating] = React.useState<TeamTableRow | null>(null)
+  const [adding, setAdding] = React.useState(false)
 
   const columns: DataTableColumn<TeamTableRow>[] = [
     { id: "person", header: C.person, cell: (r) => <PersonCell row={r} />, title: () => undefined, stacked: "primary" },
@@ -181,9 +182,19 @@ export function TeamTable({
         empty={
           filtered
             ? { title: labels.team.empty.filteredTitle, direction: labels.team.empty.filteredDirection }
-            : { title: labels.pages.team.emptyTitle, direction: labels.pages.team.emptyDirection }
+            : {
+                title: labels.pages.team.emptyTitle,
+                // Time recém-criado (P24): a direção e a ação, sem tour nem checklist.
+                direction: catalogs ? labels.pages.team.emptyDirection : labels.pages.team.emptyDirectionReadOnly,
+                action: catalogs ? (
+                  <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
+                    {labels.team.add}
+                  </Button>
+                ) : undefined,
+              }
         }
       />
+      {catalogs && adding ? <MemberDialog open onOpenChange={setAdding} catalogs={catalogs} /> : null}
       {catalogs && editing ? (
         <MemberDialog open onOpenChange={(open) => !open && setEditing(null)} catalogs={catalogs} member={editing} />
       ) : null}

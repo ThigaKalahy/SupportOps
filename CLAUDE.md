@@ -156,6 +156,8 @@ pnpm db:seed             # popular dados de demonstração
 pnpm db:studio           # inspecionar dados
 pnpm user:create         # criar usuário (único meio de criar conta)
 pnpm user:password       # redefinir senha de usuário
+pnpm team:create         # abrir um time novo (P24): time, gestor, acessos, módulos e só o mínimo semeado
+pnpm team:access         # conceder ou revogar acesso a um time, por e-mail e slug
 pnpm test                # node:test (tests/), em série, no banco de TESTE (.env.test) — nunca no de produção
 pnpm test:db:prepare     # migrations + seed no banco de teste (.env.test)
 pnpm db:verify-teams     # verificação do P22 (teamId nulo por tabela, TeamAccess por usuário); só leitura
@@ -501,6 +503,14 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Gating de módulo complementado: o atalho "Validar prioridade" da home some sem o módulo. Somente leitura: o indicador já reflete o nível no time ativo; as ações de escrita continuam ausentes para o VIEWER.
 - `tests/isolation.test.ts`: seleção lista só os times com acesso (o admin sem TeamAccess não vê nenhum); administração só para `isPlatformAdmin`, com auditoria no time alvo, módulo desligado sem apagar dado e revogação sem apagar a linha; as três escritas novas entram na tabela de escritas (VIEWER recebe erro).
 
+**P24 — Provisionamento de time (D33)**
+- `pnpm team:create` (`scripts/team-create.ts` → `createTeam` em `src/server/provisioning.ts`), interativo, numa transação: Team (ativo, `createdByUserId` = o `isPlatformAdmin` da organização, ou `ADMIN_EMAIL`), conta do gestor (reaproveitada se o e-mail existe; senão senha aleatória mostrada uma vez), TeamAccess MANAGER do gestor, TeamAccess VIEWER para quem é VIEWER em TODOS os outros times ativos (VIEWER de um time só, ou quem gerencia algum, não entra), TeamModule só dos módulos escolhidos (padrão: nenhum), e o mínimo de `src/lib/team-defaults.ts` — senioridades Júnior/Pleno/Sênior, os nove motivos de impeditivo, cadências de observação 2/7/21/30 (`AlertThreshold`). AuditLog `team.create` (e `user.create` da conta nova). Não exige o e-mail no ALLOWED_EMAILS: imprime a linha pronta para a Vercel. Nenhuma pessoa, competência, responsabilidade, registro ou demonstração (D33).
+- `pnpm team:access` (`grantAccess`/`revokeAccess`): conceder, mudar o nível e revogar por e-mail e slug; revogar preenche `revokedAt`; conceder de novo reabre a mesma linha. Auditado.
+- `pnpm db:verify-teams` também imprime as linhas por time em cada tabela, para comparar antes e depois de abrir um time.
+- Primeiro acesso (time vazio): /team "Comece cadastrando as pessoas do seu time." + Adicionar pessoa; / "Cadastre seu time para começar a ver o que precisa de atenção." (e o motor não acusa nada com o time vazio); /dailies "Registre sua primeira daily." + botão; /agreements "Os combinados aparecem aqui conforme você registra dailies e 1:1."; /watch "Nada em observação. Você pode marcar algo de qualquer tela."; /development sem competência e sem PDI mostra só "Cadastre competências em Configurações antes de criar PDIs." + Ir para Competências; /records "Registre seu primeiro 1:1 ou feedback.". Para o VIEWER, as telas que mandariam registrar dizem o estado ("O gestor ainda não cadastrou…").
+- README: seção "Abrir um time novo" (comandos, o que é e o que não é semeado, o passo manual do ALLOWED_EMAILS na Vercel).
+- `tests/provisioning.test.ts`: organização própria (`prov_`) com Suporte, Extra, um VIEWER de todos e um VIEWER de um só; confere a transação inteira, o mínimo semeado, nenhum módulo, o Suporte intacto, o reaproveitamento do gestor, as recusas e conceder/mudar/revogar sem apagar.
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:
@@ -534,7 +544,7 @@ As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora
 - P21 — Em observação (D24–D27). _(Código entregue; migration aguarda aplicação no banco de produção, junto com as do P19 e P20.)_
 - P22 — Multi-tenancy no banco e no acesso (D29–D36). _(Entregue e ensaiado no banco de teste; migrations aguardam aplicação em produção.)_
 - P23 — Seleção e troca de time. _(Entregue.)_
-- P24 — Provisionamento de time.
+- P24 — Provisionamento de time. _(Entregue. Treinamento e Hardware criados em produção em 09/10/2026.)_
 
 ## Protocolo de execução autônoma
 

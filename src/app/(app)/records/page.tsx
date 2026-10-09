@@ -38,7 +38,7 @@ export default async function RecordsPage({
         rows={rows}
         initialOpen={open}
         canWrite={canWrite(ctx)}
-        empty={{ title: R.emptyTitle, direction: hasRecordFilters(filters) ? R.filteredDirection : R.emptyDirection }}
+        empty={{ title: R.emptyTitle, direction: hasRecordFilters(filters) ? R.filteredDirection : canWrite(ctx) ? R.emptyDirection : R.emptyDirectionReadOnly }}
       />
     </div>
   )
