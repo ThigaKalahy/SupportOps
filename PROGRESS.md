@@ -25,7 +25,7 @@
 | P19 Central de atendimento     | código pronto — migration aguarda autorização para rodar no banco de produção | | 08/10/2026 |
 | P20 Devolução do desenvolvimento | código pronto — migration aguarda autorização (junto com a do P19) | | 09/10/2026 |
 | P21 Em observação             | código pronto — migration aguarda autorização (junto com as do P19 e P20) | | 10/10/2026 |
-| P22 Multi-tenancy (banco e acesso) | concluída — ensaiada no branch de teste; migrations aguardam aplicação em produção | | 11/10/2026 |
+| P22 Multi-tenancy (banco e acesso) | concluída — ensaiada no branch de teste; migrations aguardam aplicação em produção | 1fba67d | 11/10/2026 |
 
 ## Notas de handoff
 
