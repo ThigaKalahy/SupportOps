@@ -216,6 +216,7 @@ A sidebar tem 8 itens: Hoje, Em observação, Equipe, Combinados, Validação de
 - A rota `/ui-lab` é bloqueada em produção via NODE_ENV. Ela expõe estados de componente e não deve existir fora de desenvolvimento.
 - `WatchItem` nasce com `visibility: PRIVATE` sem exceção, e não há configuração que mude esse padrão.
 - `src/server/whatsapp.ts` NUNCA inclui `WatchItem`, em nenhuma seção, nem quando a observação está marcada como SHARED. É proibição absoluta, não default.
+- O PDF da daily (`src/lib/daily-report.ts`) inclui TODAS as observações ativas que quem gera pode ler — para o OWNER, inclusive as PRIVATE; para o VIEWER, só as SHARED (a query aplica `visibilityFilter`). Decisão do usuário em 08/10/2026: o PDF é documento gerencial e avisa no topo quando contém observação privada. Cada exportação grava `daily.export.pdf` no AuditLog. A proibição do WhatsApp (D25) não muda.
 
 ## Contrato de importação de métricas
 
@@ -441,6 +442,12 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - `/watch` (2º item da sidebar, contador = fogo alto ativo, da mesma fonte de `getAlerts`): abas Ativas | Sem revisão | Resolvidas | Arquivadas | Todas e filtros (grau, pessoa, central, origem) na URL; agrupada por grau, o mais esquecido no topo; linha com SeverityDot do estado de revisão, título, vínculos clicáveis, dias desde a última revisão, contagem de revisões e "fogo alto há N dias sem mudar de grau"; painel com o histórico completo de revisões e a visibilidade.
 - Home: alertas "sem revisão", "fogo alto frio" e "parada" (no máximo um por item, o mais forte) na lista única; ritmo de gestão com "Em observação" e o fogo alto ao lado. Perfil: bloco das ativas da pessoa (até 4) acima dos blocos de métrica.
 - WhatsApp nunca lê observação (teste garante).
+
+**C2 — PDF da daily**
+- "Baixar PDF" no detalhe da daily e em cada linha do histórico (`DownloadDailyPdfButton`, no /ui-lab). A Server Action de leitura `exportDailyPdf` monta o arquivo no servidor e o navegador baixa `daily-DD-MM-AAAA.pdf`, sem janela nem diálogo.
+- Modelo do time de treinamento adaptado ao suporte: cabeçalho (data, quem registrou, presentes, ausentes), uma seção por pessoa em ordem alfabética — "Combinados de ontem" (desfecho, impeditivo com motivo, novo prazo ou substituto), "Nota" (bloqueio em negrito) e "Combinados de hoje | DD/MM" (central e prazo quando difere da daily) —, quem não teve registro numa linha só, resumo, decisões e o bloco "Em observação".
+- "Em observação": todas as ativas legíveis por quem gera, agrupadas por grau e com a mais esquecida primeiro. Observação ligada a um combinado ou nota desta daily ganha "em observação (grau)" na linha da pessoa e, no bloco final, só o título com "aparece acima" — sem repetir o contexto. As demais saem com o contexto (até 180 caracteres), exceto fogo baixo (só o título); estado "sem revisão há N dias" ou "fogo alto há N dias sem mudar de grau" ao lado.
+- Gerador de PDF próprio em `src/lib/pdf.ts` (sem biblioteca nova): A4, Helvetica/negrito/itálico padrão em WinAnsi (acentos do português), quebra de linha e de página, rodapé com "gerado em DD/MM/AAAA HH:mm" e "Página N de M". Emoji e caracteres fora do WinAnsi viram "?". Testes em `tests/daily-report.test.ts`.
 
 ## Backlog de curto prazo
 

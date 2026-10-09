@@ -388,3 +388,9 @@
   - **Observação sem pessoa** aparece na home como alerta do time (como a daily).
 - **Verificado:** typecheck, lint e build; testes sem banco: `tests/watch.test.ts` (14), `tests/dev-returns.test.ts`, `tests/centrals.test.ts`, `tests/due-default.test.ts`, `tests/a11y.test.ts` — 66 no total. `tests/visibility.test.ts` (estático + banco) passou a cobrir WatchItem, mas não rodou (lê o banco).
 
+### C2 — PDF da daily (08/10/2026, branch `fase/21-watch`, depois do commit 682017a)
+
+- **Ficou de fora:** PDF do formulário ainda não salvo (só da daily registrada); o PDF não tem link clicável para o chamado ou o registro; nenhuma verificação no navegador do download real (o arquivo foi gerado e conferido pelo teste e por leitura do PDF de exemplo).
+- **Decisões tomadas (revise):** observação já presente na daily entra no bloco final só com o título e "aparece acima"; fogo baixo sai sem contexto; contexto cortado em 180 caracteres; quem esteve presente sem nenhum registro aparece numa linha só ("Sem anotação nesta daily"); título "Daily do Suporte — DD/MM/AAAA".
+- **Verificado:** typecheck, lint, build; `tests/daily-report.test.ts` (6) e `tests/watch.test.ts`.
+

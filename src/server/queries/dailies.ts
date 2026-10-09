@@ -143,6 +143,7 @@ const detailInclude = {
         select: {
           id: true,
           title: true,
+          memberId: true,
           member: { select: { preferredName: true } },
           replacedBy: { select: { id: true, title: true, dueDate: true } },
         },
@@ -158,6 +159,7 @@ const detailInclude = {
       dueDate: true,
       status: true,
       replacesAgreementId: true,
+      memberId: true,
       member: { select: { preferredName: true } },
       central: { select: { name: true } },
     },
@@ -184,6 +186,7 @@ export interface DailyDetail {
   reviewed: {
     id: string
     agreementId: string
+    memberId: string
     title: string
     name: string
     outcome: CheckinOutcome
@@ -192,7 +195,7 @@ export interface DailyDetail {
     newDueDate: Date | null
     replacement: { id: string; title: string; dueDate: Date } | null
   }[]
-  created: { id: string; title: string; name: string; dueDate: Date; central: string | null; isReplacement: boolean }[]
+  created: { id: string; memberId: string; title: string; name: string; dueDate: Date; central: string | null; isReplacement: boolean }[]
   whatsapp: WhatsAppDaily
 }
 
@@ -209,6 +212,7 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
   const reviewed = daily.checkins.map((c) => ({
     id: c.id,
     agreementId: c.agreement.id,
+    memberId: c.agreement.memberId,
     title: c.agreement.title,
     name: c.agreement.member.preferredName,
     outcome: c.outcome,
@@ -219,6 +223,7 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
   }))
   const created = daily.sourcedAgreements.map((a) => ({
     id: a.id,
+    memberId: a.memberId,
     title: a.title,
     name: a.member.preferredName,
     dueDate: a.dueDate,

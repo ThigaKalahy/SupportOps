@@ -6,6 +6,7 @@ import { ChevronRightIcon } from "lucide-react"
 
 import { CopyWhatsAppButton } from "@/components/dailies/copy-whatsapp-button"
 import { DailyDetail } from "@/components/dailies/daily-detail"
+import { DownloadDailyPdfButton } from "@/components/dailies/download-pdf-button"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { StatusPill } from "@/components/ui/status-pill"
 import { formatDate } from "@/lib/dates"
@@ -65,6 +66,7 @@ export function DailyHistory({ dailies }: { dailies: Detail[] }) {
                 {summary}
               </span>
               <CopyWhatsAppButton daily={daily.whatsapp} variant="ghost" />
+              <DownloadDailyPdfButton dailyId={daily.id} variant="ghost" />
             </div>
             {expanded ? (
               <div id={panelId} className="border-t border-line bg-canvas px-4 py-4 md:pl-10">

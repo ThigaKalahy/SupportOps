@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { CopyWhatsAppButton } from "@/components/dailies/copy-whatsapp-button"
+import { DownloadDailyPdfButton } from "@/components/dailies/download-pdf-button"
 import { ReviewRow, type ReviewState } from "@/components/dailies/review-row"
 import { formatDate, todayBusinessDate } from "@/lib/dates"
 import { deadlineSeverity } from "@/lib/severity"
@@ -78,6 +79,10 @@ export function LabDaily() {
           }}
         />
         <CopyWhatsAppButton daily={{ date: todayBusinessDate(), reviewed: [], created: [], blockers: [] }} variant="ghost" />
+      </Specimen>
+      <Specimen state="DownloadDailyPdfButton · secondary · ghost (aqui, sem daily real, mostra o aviso de falha)">
+        <DownloadDailyPdfButton dailyId="ui-lab" />
+        <DownloadDailyPdfButton dailyId="ui-lab" variant="ghost" />
       </Specimen>
     </div>
   )

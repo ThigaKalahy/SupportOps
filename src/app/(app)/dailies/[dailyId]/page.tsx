@@ -4,6 +4,7 @@ import { cache } from "react"
 
 import { CopyWhatsAppButton } from "@/components/dailies/copy-whatsapp-button"
 import { DailyDetail } from "@/components/dailies/daily-detail"
+import { DownloadDailyPdfButton } from "@/components/dailies/download-pdf-button"
 import { EditDailyButton } from "@/components/dailies/edit-daily-dialog"
 import { ContextActions } from "@/components/shell/context-actions"
 import { CrumbLabel } from "@/components/shell/crumb-label"
@@ -39,6 +40,7 @@ export default async function DailyPage({ params }: { params: Promise<{ dailyId:
       <ContextActions>
         {canWrite(user) ? <EditDailyButton daily={daily} /> : null}
         <CopyWhatsAppButton daily={daily.whatsapp} />
+        <DownloadDailyPdfButton dailyId={daily.id} />
       </ContextActions>
       <PageHeader
         title={fill(labels.dailies.newTitle, { date })}

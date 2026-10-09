@@ -1,6 +1,7 @@
 import type { Prisma, WatchHeat, WatchOrigin, WatchStatus, Visibility } from "@prisma/client"
 
 import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
+import type { DailyReportWatch } from "../../lib/daily-report.ts"
 import type { WatchFilters, WatchTab } from "../../lib/watch-filters.ts"
 import { coldHighDays, compareWatch, reviewState, type ReviewState } from "../../lib/watch.ts"
 import { db } from "../db.ts"
@@ -278,4 +279,43 @@ export async function watchFilterOptions(viewer: Viewer) {
     db.central.findMany({ where: { organizationId: viewer.organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true } }),
   ])
   return { members, centrals }
+}
+
+/**
+ * Bloco "Em observação" do PDF da daily: as ATIVAS que quem gera pode ler
+ * (VIEWER só SHARED), com os vínculos que apontam redundância com a daily.
+ */
+export async function activeWatchForReport(viewer: Viewer, t: AlertThresholds, now = new Date()): Promise<DailyReportWatch[]> {
+  const rows = await db.watchItem.findMany({
+    where: { ...scopeWhere(viewer), status: "ACTIVE", ...visibilityFilter(viewer) },
+    select: {
+      title: true,
+      context: true,
+      heat: true,
+      status: true,
+      visibility: true,
+      lastReviewedAt: true,
+      heatChangedAt: true,
+      agreementId: true,
+      dailyId: true,
+      member: { select: { id: true, preferredName: true } },
+      central: { select: { name: true } },
+    },
+  })
+  return rows.sort(compareWatch).map((r) => {
+    const review = reviewState(r, now, t)
+    return {
+      title: r.title,
+      context: r.context,
+      heat: r.heat,
+      visibility: r.visibility,
+      member: r.member,
+      central: r.central,
+      agreementId: r.agreementId,
+      dailyId: r.dailyId,
+      lastReviewedAt: r.lastReviewedAt,
+      unreviewedDays: review.status === "ok" ? null : review.daysSinceReview,
+      coldHighDays: coldHighDays(r, now, t),
+    }
+  })
 }
