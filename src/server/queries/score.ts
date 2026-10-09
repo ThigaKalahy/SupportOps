@@ -1,7 +1,7 @@
 import type { MetricDirection } from "@prisma/client"
 
 import { db } from "../db.ts"
-import type { Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
 
 /**
  * Leituras de /settings/score: definições versionadas e seus componentes.
@@ -66,26 +66,26 @@ function toView(d: Row): ScoreDefinitionView {
 }
 
 /** Todas as versões, por nome e da mais nova para a mais antiga. */
-export async function listScoreDefinitions(viewer: Viewer): Promise<ScoreDefinitionView[]> {
+export async function listScoreDefinitions(ctx: TeamContext): Promise<ScoreDefinitionView[]> {
   const rows = await db.scoreDefinition.findMany({
-    where: { organizationId: viewer.organizationId },
+    where: teamScope(ctx),
     orderBy: [{ name: "asc" }, { version: "desc" }],
     include,
   })
   return rows.map(toView)
 }
 
-export async function getScoreDefinition(viewer: Viewer, id: string) {
-  const row = await db.scoreDefinition.findFirst({ where: { id, organizationId: viewer.organizationId }, include })
+export async function getScoreDefinition(ctx: TeamContext, id: string) {
+  const row = await db.scoreDefinition.findFirst({ where: { ...teamScope(ctx), id }, include })
   if (!row) return null
   const [versions, metrics] = await Promise.all([
     db.scoreDefinition.findMany({
-      where: { organizationId: viewer.organizationId, name: row.name },
+      where: { ...teamScope(ctx), name: row.name },
       orderBy: { version: "desc" },
       select: { id: true, version: true, isActive: true, createdAt: true },
     }),
     db.metricDefinition.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: { label: "asc" },
       select: { id: true, key: true, label: true, unit: true, direction: true },
     }),

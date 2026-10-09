@@ -13,6 +13,7 @@ import type { DevReturnFormData, DevReturnRow } from "@/server/queries/dev-retur
 import { Specimen } from "./specimen"
 
 const DATA: DevReturnFormData = {
+  centralsEnabled: true,
   members: [
     { id: "m1", preferredName: "Camila" },
     { id: "m2", preferredName: "Diego" },

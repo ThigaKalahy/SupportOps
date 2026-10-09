@@ -17,13 +17,13 @@ import { getTimelinePage, TIMELINE_PAGE, type TimelineItem } from "../src/server
 import { createMemberRecord } from "../src/server/members.ts"
 import { createNoteRecord, setRecordVisibilityRecord } from "../src/server/records.ts"
 import { createAgreementRecord } from "../src/server/agreements.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const TEST_NAME = "Pessoa de Teste da Timeline"
 const ALL: TimelineFilters = { types: [], period: "all", q: "" }
 
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 
 async function cleanup() {
   const members = await dbIncludingDeleted.teamMember.findMany({ where: { fullName: TEST_NAME }, select: { id: true } })
@@ -246,8 +246,7 @@ describe("alternar privado/compartilhado", () => {
     const note = items.find((i) => i.type === "NOTE")!
     const agreement = items.find((i) => i.type === "AGREEMENT")!
     assert.equal(agreement.toggleable, false)
-    const asViewer = await setRecordVisibilityRecord(viewerOnly, { eventId: note.id, visibility: "SHARED" })
-    assert.ok(!asViewer.ok)
+    await assert.rejects(setRecordVisibilityRecord(viewerOnly, { eventId: note.id, visibility: "SHARED" }), { name: "ForbiddenError" })
     const onAgreement = await setRecordVisibilityRecord(ownerViewer, { eventId: agreement.id, visibility: "PRIVATE" })
     assert.ok(!onAgreement.ok)
     assert.equal((await db.timelineEvent.findUniqueOrThrow({ where: { id: agreement.id } })).visibility, "SHARED")

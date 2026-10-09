@@ -334,18 +334,20 @@ export function ValidationForm({
           )}
         </FieldGroup>
 
-        {/* Central (P19): opcional, entre o responsável e a prioridade do analista. */}
-        <FieldGroup label={labels.centrals.field} error={errors.centralId} className="w-44 shrink-0">
-          {(control) => (
-            <CentralCombobox
-              {...control}
-              data-field="centralId"
-              options={centralOptions}
-              value={values.centralId || null}
-              onValueChange={(id) => patch({ centralId: id ?? "" })}
-            />
-          )}
-        </FieldGroup>
+        {/* Central (P19): opcional. Só com o módulo ligado no time (D32). */}
+        {data.centralsEnabled ? (
+          <FieldGroup label={labels.centrals.field} error={errors.centralId} className="w-44 shrink-0">
+            {(control) => (
+              <CentralCombobox
+                {...control}
+                data-field="centralId"
+                options={centralOptions}
+                value={values.centralId || null}
+                onValueChange={(id) => patch({ centralId: id ?? "" })}
+              />
+            )}
+          </FieldGroup>
+        ) : null}
 
         <FieldGroup label={L.analystPriority} required error={errors.analystPriorityId} className="w-36 shrink-0">
           {(control) => (

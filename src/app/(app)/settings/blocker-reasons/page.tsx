@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 
 import { BlockerReasonsSettings } from "@/components/settings/catalogs"
 import { labels } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { listBlockerReasons } from "@/server/queries/settings"
 
 export const metadata: Metadata = {
@@ -10,6 +10,6 @@ export const metadata: Metadata = {
 }
 
 export default async function BlockerReasonsPage() {
-  const user = await requireUser()
-  return <BlockerReasonsSettings items={await listBlockerReasons(user)} canWrite={canWrite(user)} />
+  const ctx = await requireTeamContext()
+  return <BlockerReasonsSettings items={await listBlockerReasons(ctx)} canWrite={canWrite(ctx)} />
 }

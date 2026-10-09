@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 
 import { CompetenciesSettings } from "@/components/settings/catalogs"
 import { labels } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { listCompetencies } from "@/server/queries/settings"
 
 export const metadata: Metadata = {
@@ -10,6 +10,6 @@ export const metadata: Metadata = {
 }
 
 export default async function CompetenciesPage() {
-  const user = await requireUser()
-  return <CompetenciesSettings items={await listCompetencies(user)} canWrite={canWrite(user)} />
+  const ctx = await requireTeamContext()
+  return <CompetenciesSettings items={await listCompetencies(ctx)} canWrite={canWrite(ctx)} />
 }

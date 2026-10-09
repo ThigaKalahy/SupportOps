@@ -5,7 +5,8 @@ import { enumLabel, fill, labels } from "../../lib/labels.ts"
 import { deadlineSeverity, type Severity } from "../../lib/severity.ts"
 import { periodStart, type TimelineFilters } from "../../lib/timeline-filters.ts"
 import { db } from "../db.ts"
-import { memberScope, visibilityFilter, type Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
+import { visibilityFilter } from "../visibility.ts"
 
 import { getThresholds } from "./thresholds.ts"
 
@@ -95,18 +96,18 @@ const agreementSelect = {
 } as const
 
 export async function getTimelinePage(
-  viewer: Viewer,
+  ctx: TeamContext,
   memberId: string,
   filters: TimelineFilters,
   cursor?: string | null,
 ): Promise<TimelinePage> {
   const since = periodStart(filters.period)
-  const thresholds = await getThresholds(viewer)
+  const thresholds = await getThresholds(ctx)
   const rows = await db.timelineEvent.findMany({
     where: {
       memberId,
-      member: memberScope(viewer),
-      ...visibilityFilter(viewer),
+      ...teamScope(ctx),
+      ...visibilityFilter(ctx),
       ...(filters.types.length ? { type: { in: filters.types } } : {}),
       ...(since ? { occurredAt: { gte: since } } : {}),
       ...(filters.q
@@ -140,6 +141,7 @@ export async function getTimelinePage(
     oneOnOneIds.length + feedbackIds.length + dailyIds.length
       ? db.agreement.findMany({
           where: {
+            ...teamScope(ctx),
             memberId,
             OR: [
               { sourceOneOnOneId: { in: oneOnOneIds } },
@@ -153,7 +155,7 @@ export async function getTimelinePage(
       : Promise.resolve([]),
     // A revisão marcada só é pendência no 1:1 mais recente que a pessoa pode ver.
     db.oneOnOne.findFirst({
-      where: { memberId, member: memberScope(viewer), ...visibilityFilter(viewer) },
+      where: { memberId, ...teamScope(ctx), ...visibilityFilter(ctx) },
       orderBy: { date: "desc" },
       select: { id: true, nextReviewAt: true },
     }),

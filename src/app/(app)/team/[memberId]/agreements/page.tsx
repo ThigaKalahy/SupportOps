@@ -3,7 +3,8 @@ import { notFound } from "next/navigation"
 import { AdherencePanel } from "@/components/adherence/adherence-panel"
 import { AgreementsView } from "@/components/agreements/agreements-view"
 import { parseAgreementFilters } from "@/lib/agreement-filters"
-import { canWrite } from "@/server/access"
+import { MODULES } from "@/lib/modules"
+import { canWrite, hasModule } from "@/server/scope"
 import { getMemberAdherenceProfile } from "@/server/queries/adherence"
 import { listAgreements } from "@/server/queries/agreements"
 
@@ -21,15 +22,15 @@ export default async function MemberAgreementsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { memberId } = await params
-  const { user, profile } = await loadProfile(memberId)
+  const { ctx, profile } = await loadProfile(memberId)
   if (!profile) notFound()
 
   const raw = await searchParams
   const view = parseAgreementFilters(raw).view
   const filters = { ...parseAgreementFilters({}), view, memberId: profile.id }
   const [{ rows, counts }, adherence] = await Promise.all([
-    listAgreements(user, filters),
-    getMemberAdherenceProfile(user, profile.id),
+    listAgreements(ctx, filters),
+    getMemberAdherenceProfile(ctx, profile.id),
   ])
   const search = new URLSearchParams(typeof raw.view === "string" ? { view: raw.view } : {})
 
@@ -37,12 +38,13 @@ export default async function MemberAgreementsPage({
     <div className="flex flex-col gap-8">
       <AdherencePanel {...adherence} />
       <AgreementsView
+        showCentral={hasModule(ctx, MODULES.CENTRALS)}
         basePath={`/team/${profile.id}/agreements`}
         search={search}
         filters={filters}
         rows={rows}
         counts={counts}
-        canWrite={canWrite(user) && profile.status !== "INACTIVE"}
+        canWrite={canWrite(ctx) && profile.status !== "INACTIVE"}
         showMember={false}
       />
     </div>

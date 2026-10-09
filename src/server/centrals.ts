@@ -5,9 +5,11 @@ import { CENTRAL_NAME_MAX, centralSlug, cleanCentralName, previewCentralImport }
 import { fill, labels } from "../lib/labels.ts"
 import type { ActionResult } from "../lib/validators/fields.ts"
 
-import { writeAudit } from "./audit.ts"
+import { MODULES } from "../lib/modules.ts"
+
+import { auditOf, writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
-import { canWrite, type Viewer } from "./visibility.ts"
+import { hasModule, requireManager, requireModule, teamScope, type TeamContext } from "./scope.ts"
 
 /**
  * Escrita de Central fora do CRUD de /settings (P19, D20): a criação no próprio
@@ -16,6 +18,7 @@ import { canWrite, type Viewer } from "./visibility.ts"
  *
  * Dedupe sempre pelo slug: digitar "central alfa" com "Central Alfa" cadastrada
  * devolve a existente, nunca cria outra. Desativada não é reativada aqui.
+ * Módulo CENTRALS (D32): com ele desligado, nada daqui escreve.
  */
 
 const C = labels.centrals
@@ -28,8 +31,9 @@ export type EnsureCentralResult =
 const ensureSchema = z.object({ name: z.string().max(CENTRAL_NAME_MAX * 2) })
 
 /** Central pelo nome digitado: a existente (mesmo slug) ou uma nova, criada e auditada. */
-export async function ensureCentralRecord(user: Viewer, input: unknown): Promise<EnsureCentralResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function ensureCentralRecord(ctx: TeamContext, input: unknown): Promise<EnsureCentralResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.CENTRALS)
   const parsed = ensureSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
   const name = cleanCentralName(parsed.data.name)
@@ -37,8 +41,7 @@ export async function ensureCentralRecord(user: Viewer, input: unknown): Promise
   if (!slug) return { ok: false, error: labels.settings.validation.labelRequired }
   if (name.length > CENTRAL_NAME_MAX) return { ok: false, error: labels.validation.tooLong }
 
-  const organizationId = user.organizationId
-  const existing = await db.central.findUnique({ where: { organizationId_slug: { organizationId, slug } } })
+  const existing = await db.central.findUnique({ where: { teamId_slug: { teamId: ctx.teamId, slug } } })
   if (existing) {
     if (!existing.isActive) return { ok: false, error: fill(C.inactive, { name: existing.name }) }
     return { ok: true, id: existing.id, name: existing.name, existed: true }
@@ -46,10 +49,10 @@ export async function ensureCentralRecord(user: Viewer, input: unknown): Promise
 
   try {
     const created = await db.$transaction(async (tx) => {
-      const central = await tx.central.create({ data: { organizationId, name, slug } })
+      const central = await tx.central.create({ data: { ...teamScope(ctx), organizationId: ctx.organizationId, name, slug } })
       await writeAudit(
         { action: "settings.central.create", entity: "Central", entityId: central.id, after: { name, slug, via: "form" } },
-        { organizationId, userId: user.id, tx },
+        auditOf(ctx, tx),
       )
       return central
     })
@@ -57,7 +60,7 @@ export async function ensureCentralRecord(user: Viewer, input: unknown): Promise
   } catch (error) {
     // Outra aba criou a mesma central no meio do caminho: usa a que ficou.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      const winner = await db.central.findUnique({ where: { organizationId_slug: { organizationId, slug } } })
+      const winner = await db.central.findUnique({ where: { teamId_slug: { teamId: ctx.teamId, slug } } })
       if (winner) return { ok: true, id: winner.id, name: winner.name, existed: true }
     }
     throw error
@@ -71,15 +74,15 @@ const importSchema = z.object({ text: z.string().max(200_000) })
  * só as novas, numa transação, com uma entrada de auditoria com a contagem.
  * Nunca sobrescreve nem reativa.
  */
-export async function importCentralsRecord(user: Viewer, input: unknown): Promise<{ ok: true; created: number } | Extract<ActionResult, { ok: false }>> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function importCentralsRecord(ctx: TeamContext, input: unknown): Promise<{ ok: true; created: number } | Extract<ActionResult, { ok: false }>> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.CENTRALS)
   const parsed = importSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
   if (parsed.data.text.split(/\r?\n/).length > MAX_IMPORT_LINES) return { ok: false, error: C.import.tooLarge }
 
-  const organizationId = user.organizationId
   const existing = await db.central.findMany({
-    where: { organizationId },
+    where: teamScope(ctx),
     select: { id: true, name: true, slug: true, isActive: true },
   })
   const preview = previewCentralImport(parsed.data.text, existing)
@@ -88,7 +91,7 @@ export async function importCentralsRecord(user: Viewer, input: unknown): Promis
   await db.$transaction(async (tx) => {
     // skipDuplicates: se outra aba criou alguma no meio do caminho, ela é ignorada em vez de derrubar o lote.
     const result = await tx.central.createMany({
-      data: preview.created.map((c) => ({ organizationId, name: c.name, slug: c.slug, externalId: c.externalId })),
+      data: preview.created.map((c) => ({ ...teamScope(ctx), organizationId: ctx.organizationId, name: c.name, slug: c.slug, externalId: c.externalId })),
       skipDuplicates: true,
     })
     await writeAudit(
@@ -103,21 +106,22 @@ export async function importCentralsRecord(user: Viewer, input: unknown): Promis
           names: preview.created.map((c) => c.name),
         },
       },
-      { organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
   })
   return { ok: true, created: preview.created.length }
 }
 
 /**
- * Confere a central escolhida num formulário: precisa ser da organização e
- * estar ativa. Vazio vira null (campo opcional). Devolve undefined quando o
- * id não serve — a action recusa com erro de campo.
+ * Confere a central escolhida num formulário: precisa ser do time e estar ativa,
+ * e o módulo CENTRALS precisa estar ligado. Vazio vira null (campo opcional).
+ * Devolve undefined quando o id não serve — a action recusa com erro de campo.
  */
-export async function resolveCentralId(organizationId: string, centralId: string | null | undefined): Promise<string | null | undefined> {
+export async function resolveCentralId(ctx: TeamContext, centralId: string | null | undefined): Promise<string | null | undefined> {
   if (!centralId) return null
+  if (!hasModule(ctx, MODULES.CENTRALS)) return undefined
   const central = await db.central.findFirst({
-    where: { id: centralId, organizationId, isActive: true, deletedAt: null },
+    where: { ...teamScope(ctx), id: centralId, isActive: true, deletedAt: null },
     select: { id: true },
   })
   return central ? central.id : undefined

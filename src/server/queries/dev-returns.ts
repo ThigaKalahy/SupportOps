@@ -5,8 +5,9 @@ import { businessRangeInstants, todayBusinessDate } from "../../lib/dates.ts"
 import { periodRange } from "../../lib/validation-filters.ts"
 import type { DevReturnFilters } from "../../lib/dev-return-filters.ts"
 import { devReturnStats, type DevReturnStats } from "../../lib/dev-returns.ts"
+import { MODULES } from "../../lib/modules.ts"
 import { db } from "../db.ts"
-import { memberScope, type Viewer } from "../visibility.ts"
+import { hasModule, requireModule, teamScope, type TeamContext } from "../scope.ts"
 
 import { listActiveCentrals } from "./centrals.ts"
 
@@ -32,28 +33,31 @@ export interface DevReturnFormData {
   reasons: { id: string; label: string; category: DevReturnCategory; requiresDetail: boolean }[]
   patterns: { id: string; label: string; regex: string; captureGroup: number }[]
   centrals: { id: string; name: string }[]
+  /** Módulo de centrais ligado no time (D32): sem ele, o campo some do formulário. */
+  centralsEnabled: boolean
 }
 
-export async function getDevReturnFormData(viewer: Viewer): Promise<DevReturnFormData> {
+export async function getDevReturnFormData(ctx: TeamContext): Promise<DevReturnFormData> {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const [members, reasons, patterns, centrals] = await Promise.all([
     db.teamMember.findMany({
-      where: { ...memberScope(viewer), status: { in: ["ACTIVE", "OFFBOARDING"] } },
+      where: { ...teamScope(ctx), status: { in: ["ACTIVE", "OFFBOARDING"] } },
       orderBy: { preferredName: "asc" },
       select: { id: true, preferredName: true },
     }),
     db.devReturnReason.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: [{ category: "asc" }, { order: "asc" }, { label: "asc" }],
       select: { id: true, label: true, category: true, requiresDetail: true },
     }),
     db.ticketUrlPattern.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: { order: "asc" },
       select: { id: true, label: true, regex: true, captureGroup: true },
     }),
-    listActiveCentrals(viewer),
+    hasModule(ctx, MODULES.CENTRALS) ? listActiveCentrals(ctx) : Promise.resolve([]),
   ])
-  return { members, reasons, patterns, centrals }
+  return { members, reasons, patterns, centrals, centralsEnabled: hasModule(ctx, MODULES.CENTRALS) }
 }
 
 export interface TicketContext {
@@ -74,8 +78,9 @@ export interface TicketContext {
 }
 
 /** Contexto do chamado colado no formulário: a validação mais recente e quantas devoluções ele já teve. */
-export async function getTicketContext(viewer: Viewer, ticketRef: string, exceptId?: string): Promise<TicketContext> {
-  const where = { organizationId: viewer.organizationId, ticketRef, member: memberScope(viewer) }
+export async function getTicketContext(ctx: TeamContext, ticketRef: string, exceptId?: string): Promise<TicketContext> {
+  requireModule(ctx, MODULES.DEV_RETURNS)
+  const where = { ...teamScope(ctx), ticketRef }
   const [latest, validations, previousReturns] = await Promise.all([
     db.priorityValidation.findFirst({
       where,
@@ -119,37 +124,36 @@ interface Scope {
   central?: string | null
 }
 
-function returnWhere(viewer: Viewer, scope: Scope, from: Date, to: Date): Prisma.DevReturnWhereInput {
+function returnWhere(ctx: TeamContext, scope: Scope, from: Date, to: Date): Prisma.DevReturnWhereInput {
   return {
-    organizationId: viewer.organizationId,
+    ...teamScope(ctx),
     deletedAt: null,
     returnedAt: { gte: from, lte: to },
-    member: memberScope(viewer),
     ...(scope.memberId ? { memberId: scope.memberId } : {}),
     ...centralWhere(scope.central ?? null),
   }
 }
 
-function validationWhere(viewer: Viewer, scope: Scope, from: Date, to: Date): Prisma.PriorityValidationWhereInput {
+function validationWhere(ctx: TeamContext, scope: Scope, from: Date, to: Date): Prisma.PriorityValidationWhereInput {
   return {
-    organizationId: viewer.organizationId,
+    ...teamScope(ctx),
     deletedAt: null,
     validatedAt: businessRangeInstants(from, to),
-    member: memberScope(viewer),
     ...(scope.memberId ? { memberId: scope.memberId } : {}),
     ...centralWhere(scope.central ?? null),
   }
 }
 
 /** Devoluções e o denominador (chamados validados) de um recorte. */
-export async function getDevReturns(viewer: Viewer, memberId: string | null, from: Date, to: Date, central: string | null = null): Promise<DevReturnStats> {
+export async function getDevReturns(ctx: TeamContext, memberId: string | null, from: Date, to: Date, central: string | null = null): Promise<DevReturnStats> {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const scope = { memberId, central }
   const [returns, ticketsValidated] = await Promise.all([
     db.devReturn.findMany({
-      where: returnWhere(viewer, scope, from, to),
+      where: returnWhere(ctx, scope, from, to),
       select: { returnedAt: true, resolvedAt: true, reason: { select: { category: true } } },
     }),
-    db.priorityValidation.count({ where: validationWhere(viewer, scope, from, to) }),
+    db.priorityValidation.count({ where: validationWhere(ctx, scope, from, to) }),
   ])
   return devReturnStats(
     returns.map((r) => ({ category: r.reason.category, returnedAt: r.returnedAt, resolvedAt: r.resolvedAt })),
@@ -164,12 +168,13 @@ export interface DevReturnMonth {
 }
 
 /** Mês a mês (o corrente até hoje), do mais antigo ao mais recente, para tendência. */
-export async function getDevReturnSeries(viewer: Viewer, memberId: string | null, months: number, today = todayBusinessDate()): Promise<DevReturnMonth[]> {
+export async function getDevReturnSeries(ctx: TeamContext, memberId: string | null, months: number, today = todayBusinessDate()): Promise<DevReturnMonth[]> {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const out: DevReturnMonth[] = []
   for (let i = months - 1; i >= 0; i--) {
     const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1))
     const end = i === 0 ? today : new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0))
-    out.push({ month: start, stats: await getDevReturns(viewer, memberId, start, end) })
+    out.push({ month: start, stats: await getDevReturns(ctx, memberId, start, end) })
   }
   return out
 }
@@ -180,10 +185,11 @@ export interface ReasonBreakdown {
 }
 
 /** Por motivo (do mais frequente) e por categoria. */
-export async function getReasonBreakdown(viewer: Viewer, memberId: string | null, from: Date, to: Date): Promise<ReasonBreakdown> {
+export async function getReasonBreakdown(ctx: TeamContext, memberId: string | null, from: Date, to: Date): Promise<ReasonBreakdown> {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const rows = await db.devReturn.groupBy({
     by: ["reasonId"],
-    where: returnWhere(viewer, { memberId }, from, to),
+    where: returnWhere(ctx, { memberId }, from, to),
     _count: { _all: true },
   })
   const reasons = await db.devReturnReason.findMany({
@@ -203,15 +209,16 @@ export async function getReasonBreakdown(viewer: Viewer, memberId: string | null
 }
 
 /** Por pessoa ativa (em ordem alfabética, nunca por taxa — D7), mais o total do time. */
-export async function getTeamDevReturns(viewer: Viewer, from: Date, to: Date) {
+export async function getTeamDevReturns(ctx: TeamContext, from: Date, to: Date) {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const members = await db.teamMember.findMany({
-    where: { ...memberScope(viewer), status: { not: "INACTIVE" } },
+    where: { ...teamScope(ctx), status: { not: "INACTIVE" } },
     orderBy: { preferredName: "asc" },
     select: { id: true, preferredName: true },
   })
   const [perMember, team] = await Promise.all([
-    Promise.all(members.map(async (m) => ({ member: m, stats: await getDevReturns(viewer, m.id, from, to) }))),
-    getDevReturns(viewer, null, from, to),
+    Promise.all(members.map(async (m) => ({ member: m, stats: await getDevReturns(ctx, m.id, from, to) }))),
+    getDevReturns(ctx, null, from, to),
   ])
   return { from, to, members: perMember, team }
 }
@@ -230,15 +237,16 @@ export interface OverlapRow {
  * devolvida) E devolvidos pelo desenvolvimento no período: a interseção que
  * aponta problema de triagem, não dois problemas separados.
  */
-export async function getReturnOverlap(viewer: Viewer, from: Date, to: Date, memberId: string | null = null): Promise<OverlapRow[]> {
+export async function getReturnOverlap(ctx: TeamContext, from: Date, to: Date, memberId: string | null = null): Promise<OverlapRow[]> {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const returns = await db.devReturn.findMany({
-    where: returnWhere(viewer, { memberId }, from, to),
+    where: returnWhere(ctx, { memberId }, from, to),
     select: { ticketRef: true, returnedAt: true, member: { select: { id: true, preferredName: true } } },
   })
   if (returns.length === 0) return []
   const refs = [...new Set(returns.map((r) => r.ticketRef))]
   const changed = await db.priorityValidation.findMany({
-    where: { organizationId: viewer.organizationId, ticketRef: { in: refs }, outcome: { not: "MAINTAINED" }, member: memberScope(viewer) },
+    where: { ...teamScope(ctx), ticketRef: { in: refs }, outcome: { not: "MAINTAINED" } },
     orderBy: { validatedAt: "desc" },
     select: { ticketRef: true, outcome: true },
   })
@@ -281,13 +289,14 @@ export interface DevReturnRow {
  * "apenas em aberto", que só recortam a tabela (filtrar por "Processo" faria
  * o resumo dizer sempre "0 atribuíveis").
  */
-export async function listDevReturns(viewer: Viewer, filters: DevReturnFilters, today = todayBusinessDate()) {
+export async function listDevReturns(ctx: TeamContext, filters: DevReturnFilters, today = todayBusinessDate()) {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const { from, to } = periodRange(filters, today)
   const scope = { memberId: filters.memberId, central: filters.central }
   const [rows, summary, overlap] = await Promise.all([
     db.devReturn.findMany({
       where: {
-        ...returnWhere(viewer, scope, from, to),
+        ...returnWhere(ctx, scope, from, to),
         ...(filters.reasonId ? { reasonId: filters.reasonId } : {}),
         ...(filters.category ? { reason: { category: filters.category } } : {}),
         ...(filters.openOnly ? { resolvedAt: null } : {}),
@@ -309,8 +318,8 @@ export async function listDevReturns(viewer: Viewer, filters: DevReturnFilters, 
         priorityValidation: { select: { outcome: true, deletedAt: true } },
       },
     }),
-    getDevReturns(viewer, filters.memberId, from, to, filters.central),
-    getReturnOverlap(viewer, from, to, filters.memberId),
+    getDevReturns(ctx, filters.memberId, from, to, filters.central),
+    getReturnOverlap(ctx, from, to, filters.memberId),
   ])
   const list: DevReturnRow[] = rows.map(({ priorityValidation, ...r }) => ({
     ...r,
@@ -332,13 +341,14 @@ export interface MemberDevReturnProfile {
 }
 
 /** Bloco do perfil: 90 dias com o total de chamados ao lado, motivo mais frequente e a série de 6 meses. */
-export async function getMemberDevReturnProfile(viewer: Viewer, memberId: string, today = todayBusinessDate()): Promise<MemberDevReturnProfile> {
+export async function getMemberDevReturnProfile(ctx: TeamContext, memberId: string, today = todayBusinessDate()): Promise<MemberDevReturnProfile> {
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const from = new Date(today)
   from.setUTCDate(from.getUTCDate() - (PROFILE_DEV_RETURN_DAYS - 1))
   const [stats, breakdown, series] = await Promise.all([
-    getDevReturns(viewer, memberId, from, today),
-    getReasonBreakdown(viewer, memberId, from, today),
-    getDevReturnSeries(viewer, memberId, 6, today),
+    getDevReturns(ctx, memberId, from, today),
+    getReasonBreakdown(ctx, memberId, from, today),
+    getDevReturnSeries(ctx, memberId, 6, today),
   ])
   const top = breakdown.byReason[0]
   return {

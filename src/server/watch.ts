@@ -12,11 +12,11 @@ import {
 } from "../lib/validators/watch.ts"
 import { cooler, hotter } from "../lib/watch.ts"
 
-import { writeAudit } from "./audit.ts"
+import { auditOf, writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
 import { recordTimelineEvents, syncTimelineVisibility, timelineEventFor } from "./timeline.ts"
 import { findActiveWatchForLink, findWatchForWrite, resolveWatchLinks, WATCH_LINKS } from "./queries/watch.ts"
-import { canWrite, type Viewer } from "./visibility.ts"
+import { requireManager, teamScope, type TeamContext } from "./scope.ts"
 
 /**
  * Escrita de "Em observação" (P21, D24–D27). Núcleo de src/actions/watch.ts.
@@ -34,7 +34,7 @@ type Result = { ok: true; id: string; existed: boolean } | Extract<ActionResult,
 
 const LINKS = WATCH_LINKS
 
-function audit(user: Viewer, action: string, entityId: string, before?: unknown, after?: unknown, tx?: Tx) {
+function audit(ctx: TeamContext, action: string, entityId: string, before?: unknown, after?: unknown, tx?: Tx) {
   const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue
   return writeAudit(
     {
@@ -44,25 +44,26 @@ function audit(user: Viewer, action: string, entityId: string, before?: unknown,
       ...(before === undefined ? {} : { before: json(before) }),
       ...(after === undefined ? {} : { after: json(after) }),
     },
-    { organizationId: user.organizationId, userId: user.id, tx },
+    auditOf(ctx, tx),
   )
 }
 
-export async function createWatchItemRecord(user: Viewer, input: unknown): Promise<Result> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function createWatchItemRecord(ctx: TeamContext, input: unknown): Promise<Result> {
+  requireManager(ctx)
   const parsed = createWatchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   const data = parsed.data
-  const resolved = await resolveWatchLinks(user, data)
+  const resolved = await resolveWatchLinks(ctx, data)
   if (!resolved) return { ok: false, error: labels.validation.generic }
-  const existing = await findActiveWatchForLink(user, { ...data, memberId: resolved.memberId ?? "" })
+  const existing = await findActiveWatchForLink(ctx, { ...data, memberId: resolved.memberId ?? "" })
   if (existing) return { ok: true, id: existing.id, existed: true }
 
   const now = new Date()
   const created = await db.$transaction(async (tx) => {
     const item = await tx.watchItem.create({
       data: {
-        organizationId: user.organizationId,
+        ...teamScope(ctx),
+        organizationId: ctx.organizationId,
         title: data.title,
         context: textOrNull(data.context),
         heat: data.heat,
@@ -73,17 +74,17 @@ export async function createWatchItemRecord(user: Viewer, input: unknown): Promi
         centralId: resolved.centralId,
         ...Object.fromEntries(LINKS.map((k) => [k, data[k] || null])),
         createdAt: now,
-        createdByUserId: user.id,
+        createdByUserId: ctx.userId,
         lastReviewedAt: now,
         heatChangedAt: now,
       },
     })
     if (item.memberId) {
-      await recordTimelineEvents(tx, [
-        timelineEventFor.watchCreated({ ...item, memberId: item.memberId, authorUserId: user.id }),
+      await recordTimelineEvents(tx, ctx, [
+        timelineEventFor.watchCreated({ ...item, memberId: item.memberId, authorUserId: ctx.userId }),
       ])
     }
-    await audit(user, "create", item.id, undefined, { title: item.title, heat: item.heat, origin: item.origin, memberId: item.memberId }, tx)
+    await audit(ctx, "create", item.id, undefined, { title: item.title, heat: item.heat, origin: item.origin, memberId: item.memberId }, tx)
     return item
   })
   return { ok: true, id: created.id, existed: false }
@@ -92,56 +93,56 @@ export async function createWatchItemRecord(user: Viewer, input: unknown): Promi
 const findOwned = findWatchForWrite
 
 /** "Revisado hoje": um clique, nota opcional. Grava WatchReview, lastReviewedAt e reviewCount. Sem timeline. */
-export async function reviewWatchItemRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function reviewWatchItemRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
   const parsed = reviewWatchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
-  const item = await findOwned(user, parsed.data.id)
+  const item = await findOwned(ctx, parsed.data.id)
   if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.validation.generic }
   const now = new Date()
   await db.$transaction(async (tx) => {
     await tx.watchReview.create({
-      data: { watchItemId: item.id, reviewedAt: now, note: textOrNull(parsed.data.note), heatBefore: item.heat, heatAfter: item.heat, authorUserId: user.id },
+      data: { ...teamScope(ctx), watchItemId: item.id, reviewedAt: now, note: textOrNull(parsed.data.note), heatBefore: item.heat, heatAfter: item.heat, authorUserId: ctx.userId },
     })
-    await tx.watchItem.update({ where: { id: item.id }, data: { lastReviewedAt: now, reviewCount: { increment: 1 } } })
-    await audit(user, "review", item.id, { lastReviewedAt: item.lastReviewedAt }, { lastReviewedAt: now }, tx)
+    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { lastReviewedAt: now, reviewCount: { increment: 1 } } })
+    await audit(ctx, "review", item.id, { lastReviewedAt: item.lastReviewedAt }, { lastReviewedAt: now }, tx)
   })
   return { ok: true }
 }
 
 /** Esfriar / Esquentar: um grau, com WatchReview (antes → depois); conta como revisão. */
-export async function changeWatchHeatRecord(user: Viewer, input: unknown): Promise<ActionResult & { heat?: WatchHeat }> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function changeWatchHeatRecord(ctx: TeamContext, input: unknown): Promise<ActionResult & { heat?: WatchHeat }> {
+  requireManager(ctx)
   const parsed = heatWatchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
-  const item = await findOwned(user, parsed.data.id)
+  const item = await findOwned(ctx, parsed.data.id)
   if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.validation.generic }
   const next = parsed.data.direction === "up" ? hotter(item.heat) : cooler(item.heat)
   if (!next) return { ok: false, error: labels.validation.generic }
   const now = new Date()
   await db.$transaction(async (tx) => {
-    await tx.watchReview.create({ data: { watchItemId: item.id, reviewedAt: now, heatBefore: item.heat, heatAfter: next, authorUserId: user.id } })
+    await tx.watchReview.create({ data: { ...teamScope(ctx), watchItemId: item.id, reviewedAt: now, heatBefore: item.heat, heatAfter: next, authorUserId: ctx.userId } })
     await tx.watchItem.update({
-      where: { id: item.id },
+      where: { id: item.id, ...teamScope(ctx) },
       data: { heat: next, heatChangedAt: now, lastReviewedAt: now, reviewCount: { increment: 1 } },
     })
-    await audit(user, "heat", item.id, { heat: item.heat }, { heat: next }, tx)
+    await audit(ctx, "heat", item.id, { heat: item.heat }, { heat: next }, tx)
   })
   return { ok: true, heat: next }
 }
 
 /** Resolver: texto obrigatório (D27); com pessoa, linha WATCH na timeline com a resolução. */
-export async function resolveWatchItemRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function resolveWatchItemRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
   const parsed = resolveWatchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
-  const item = await findOwned(user, parsed.data.id)
+  const item = await findOwned(ctx, parsed.data.id)
   if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.validation.generic }
   const now = new Date()
   await db.$transaction(async (tx) => {
-    await tx.watchItem.update({ where: { id: item.id }, data: { status: "RESOLVED", resolvedAt: now, resolutionNote: parsed.data.note } })
+    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { status: "RESOLVED", resolvedAt: now, resolutionNote: parsed.data.note } })
     if (item.memberId) {
-      await recordTimelineEvents(tx, [
+      await recordTimelineEvents(tx, ctx, [
         timelineEventFor.watchResolved({
           id: item.id,
           memberId: item.memberId,
@@ -149,41 +150,41 @@ export async function resolveWatchItemRecord(user: Viewer, input: unknown): Prom
           createdAt: item.createdAt,
           resolvedAt: now,
           note: parsed.data.note,
-          authorUserId: user.id,
+          authorUserId: ctx.userId,
           visibility: item.visibility,
         }),
       ])
     }
-    await audit(user, "resolve", item.id, { status: item.status }, { status: "RESOLVED", resolutionNote: parsed.data.note }, tx)
+    await audit(ctx, "resolve", item.id, { status: item.status }, { status: "RESOLVED", resolutionNote: parsed.data.note }, tx)
   })
   return { ok: true }
 }
 
 /** Arquivar: o que deixou de fazer sentido (não o que foi resolvido). Sem texto, sem timeline. */
-export async function archiveWatchItemRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function archiveWatchItemRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
   const parsed = watchRefSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
-  const item = await findOwned(user, parsed.data.id)
+  const item = await findOwned(ctx, parsed.data.id)
   if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.validation.generic }
   await db.$transaction(async (tx) => {
-    await tx.watchItem.update({ where: { id: item.id }, data: { status: "ARCHIVED" } })
-    await audit(user, "archive", item.id, { status: item.status }, { status: "ARCHIVED" }, tx)
+    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { status: "ARCHIVED" } })
+    await audit(ctx, "archive", item.id, { status: item.status }, { status: "ARCHIVED" }, tx)
   })
   return { ok: true }
 }
 
 /** Visibilidade: muda a observação e as linhas da timeline dela na mesma transação. */
-export async function setWatchVisibilityRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function setWatchVisibilityRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
   const parsed = visibilityWatchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
-  const item = await findOwned(user, parsed.data.id)
+  const item = await findOwned(ctx, parsed.data.id)
   if (!item) return { ok: false, error: labels.validation.generic }
   await db.$transaction(async (tx) => {
-    await tx.watchItem.update({ where: { id: item.id }, data: { visibility: parsed.data.visibility } })
-    await syncTimelineVisibility(tx, { kind: "watchItem", id: item.id }, parsed.data.visibility)
-    await audit(user, "visibility.update", item.id, { visibility: item.visibility }, { visibility: parsed.data.visibility }, tx)
+    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { visibility: parsed.data.visibility } })
+    await syncTimelineVisibility(tx, ctx, { kind: "watchItem", id: item.id }, parsed.data.visibility)
+    await audit(ctx, "visibility.update", item.id, { visibility: item.visibility }, { visibility: parsed.data.visibility }, tx)
   })
   return { ok: true }
 }
@@ -191,11 +192,11 @@ export async function setWatchVisibilityRecord(user: Viewer, input: unknown): Pr
 /**
  * Observações criadas num formulário ainda não salvo (nota da daily, combinado
  * novo da daily, 1:1, feedback): ao salvar, ganham o vínculo com o registro,
- * na mesma transação. Só as da organização, ativas e ainda sem esse vínculo.
+ * na mesma transação. Só as do time do contexto e ainda sem esse vínculo.
  */
 export async function linkPendingWatchItems(
   tx: Tx,
-  organizationId: string,
+  ctx: Pick<TeamContext, "teamId">,
   ids: string[],
   link: Partial<Record<(typeof LINKS)[number], string>>,
 ): Promise<void> {
@@ -203,7 +204,7 @@ export async function linkPendingWatchItems(
   const [key, value] = Object.entries(link)[0] ?? []
   if (!key || !value) return
   await tx.watchItem.updateMany({
-    where: { id: { in: ids }, organizationId, [key]: null },
+    where: { ...teamScope(ctx), id: { in: ids }, [key]: null },
     data: { [key]: value },
   })
 }

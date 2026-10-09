@@ -12,6 +12,7 @@ import { Specimen } from "./specimen"
 /** Formulário de validação com catálogo de exemplo, os quatro resultados e o bloco do perfil. */
 
 const DATA: ValidationFormData = {
+  centralsEnabled: true,
   members: [
     { id: "m1", preferredName: "Camila" },
     { id: "m2", preferredName: "Diego" },

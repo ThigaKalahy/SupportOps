@@ -50,7 +50,8 @@ export function AgreementDialog({
   member?: RecordTarget
   members?: { id: string; preferredName: string }[]
   /** Centrais ativas (P19). */
-  centrals?: CentralOption[]
+  /** Centrais ativas (P19); null com o módulo de centrais desligado no time (D32). */
+  centrals?: CentralOption[] | null
   origin?: CreateAgreementInput["origin"]
 }) {
   const defaults = React.useCallback(
@@ -156,17 +157,19 @@ export function AgreementDialog({
                 )}
               </FieldGroup>
             )}
-            {/* Central (P19): triagem, visível de cara e opcional. */}
-            <FieldGroup label={labels.centrals.field} error={err.centralId?.message}>
-              {(control) => (
-                <CentralCombobox
-                  {...control}
-                  options={centrals}
-                  value={form.watch("centralId") || null}
-                  onValueChange={(id) => form.setValue("centralId", id ?? "")}
-                />
-              )}
-            </FieldGroup>
+            {/* Central (P19): triagem, visível de cara e opcional. Sem o módulo no time (D32), não existe. */}
+            {centrals ? (
+              <FieldGroup label={labels.centrals.field} error={err.centralId?.message}>
+                {(control) => (
+                  <CentralCombobox
+                    {...control}
+                    options={centrals}
+                    value={form.watch("centralId") || null}
+                    onValueChange={(id) => form.setValue("centralId", id ?? "")}
+                  />
+                )}
+              </FieldGroup>
+            ) : null}
             <FieldGroup label={L.dueDate} error={err.dueDate?.message} required>
               <Input
                 inputMode="numeric"

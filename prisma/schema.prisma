@@ -191,7 +191,12 @@ model User {
   email               String    @unique
   name                String
   image               String?
+  /// OBSOLETO desde o P22: não participa de nenhuma decisão de autorização sobre dado de
+  /// time — o escopo vem de TeamAccess (D30). A coluna fica por compatibilidade.
   role                Role
+  /// Pode criar time, criar usuário, conceder/revogar TeamAccess e ligar módulo. NÃO dá
+  /// acesso a dado de time nenhum: até o administrador precisa de TeamAccess.
+  isPlatformAdmin     Boolean   @default(false)
   organizationId      String
   /// Hash bcryptjs (cost 12). Nunca a senha em texto.
   passwordHash        String?
@@ -206,6 +211,10 @@ model User {
   organization Organization @relation(fields: [organizationId], references: [id])
 
   managedTeams        Team[]
+  createdTeams        Team[]               @relation("TeamCreatedBy")
+  teamAccesses        TeamAccess[]         @relation("TeamAccessUser")
+  grantedTeamAccesses TeamAccess[]         @relation("TeamAccessGrantedBy")
+  teamModuleChanges   TeamModule[]
   auditLogs           AuditLog[]
   memberChanges       MemberChange[]
   dailies             Daily[]
@@ -225,17 +234,63 @@ model User {
 }
 
 model Team {
-  id             String @id @default(cuid())
-  organizationId String
-  name           String
-  managerUserId  String
+  id              String   @id @default(cuid())
+  organizationId  String
+  name            String
+  managerUserId   String
+  slug            String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  /// Quem criou o time (P24). Nulo no time que existia antes do P22.
+  createdByUserId String?
 
   organization Organization @relation(fields: [organizationId], references: [id])
   manager      User         @relation(fields: [managerUserId], references: [id])
+  createdBy    User?        @relation("TeamCreatedBy", fields: [createdByUserId], references: [id])
 
-  members TeamMember[]
-  dailies Daily[]
+  members                 TeamMember[]
+  dailies                 Daily[]
+  accesses                TeamAccess[]
+  modules                 TeamModule[]
+  auditLogs               AuditLog[]
+  seniorities             Seniority[]
+  competencies            Competency[]
+  competencyExpectations  CompetencyExpectation[]
+  responsibilities        Responsibility[]
+  blockerReasons          BlockerReason[]
+  centrals                Central[]
+  ticketUrlPatterns       TicketUrlPattern[]
+  priorityLevels          PriorityLevel[]
+  reclassificationReasons ReclassificationReason[]
+  devReturnReasons        DevReturnReason[]
+  metricDefinitions       MetricDefinition[]
+  scoreDefinitions        ScoreDefinition[]
+  watchItems              WatchItem[]
+  alertThresholds         AlertThreshold[]
+  agreements              Agreement[]
+  oneOnOnes               OneOnOne[]
+  feedbacks               Feedback[]
+  notes                   Note[]
+  timelineEvents          TimelineEvent[]
+  developmentPlans        DevelopmentPlan[]
+  memberChanges           MemberChange[]
+  mentorshipLinks         MentorshipLink[]
+  memberCompetencies      MemberCompetency[]
+  agreementCheckins       AgreementCheckin[]
+  priorityValidations     PriorityValidation[]
+  devReturns              DevReturn[]
+  memberTraits            MemberTrait[]
+  memberResponsibilities  MemberResponsibility[]
+  dailyParticipants       DailyParticipant[]
+  agreementParticipants   AgreementParticipant[]
+  watchReviews            WatchReview[]
+  developmentActions      DevelopmentAction[]
+  scoreComponents         ScoreComponent[]
+  metricResults           MetricResult[]
+  scoreResults            ScoreResult[]
+  scoreResultComponents   ScoreResultComponent[]
 
+  @@unique([organizationId, slug])
   @@index([organizationId])
 }
 
@@ -246,6 +301,8 @@ model Team {
 model AuditLog {
   id             String   @id @default(cuid())
   organizationId String
+  /// Time da escrita auditada (P22). Nulo em login, logout e ações de plataforma.
+  teamId         String?
   userId         String?
   action         String
   entity         String
@@ -256,10 +313,58 @@ model AuditLog {
 
   organization Organization @relation(fields: [organizationId], references: [id])
   user         User?        @relation(fields: [userId], references: [id])
+  team         Team?        @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, at(sort: Desc)])
+  @@index([teamId, at(sort: Desc)])
   @@index([entity, entityId])
   @@index([userId, at(sort: Desc)])
+}
+
+/// Nível de acesso a um time (P22, D34): MANAGER registra e lê PRIVATE; VIEWER só lê SHARED.
+enum TeamAccessLevel {
+  MANAGER
+  VIEWER
+}
+
+/// ÚNICA fonte de verdade do escopo de time (D30). O time ativo da sessão é
+/// revalidado contra esta tabela em toda requisição (src/server/scope.ts).
+/// Revogar preenche `revokedAt` e NUNCA apaga a linha: é o registro de quem pôde
+/// ver o quê. `grantedByUserId` nulo = concedido pela migration do P22.
+model TeamAccess {
+  id              String          @id @default(cuid())
+  userId          String
+  teamId          String
+  level           TeamAccessLevel
+  grantedAt       DateTime        @default(now()) @db.Timestamptz
+  grantedByUserId String?
+  revokedAt       DateTime?       @db.Timestamptz
+
+  user      User  @relation("TeamAccessUser", fields: [userId], references: [id])
+  team      Team  @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  grantedBy User? @relation("TeamAccessGrantedBy", fields: [grantedByUserId], references: [id])
+
+  @@unique([userId, teamId])
+  @@index([userId, revokedAt])
+  @@index([teamId, level])
+}
+
+/// Módulo opcional ligado num time (D32). `moduleKey` é texto (não enum) para que
+/// acrescentar módulo não exija migration; as chaves válidas vivem em
+/// src/lib/modules.ts. Desligar não apaga dado: só torna inacessível.
+/// `changedByUserId` nulo = ligado pela migration do P22.
+model TeamModule {
+  id              String   @id @default(cuid())
+  teamId          String
+  moduleKey       String
+  isEnabled       Boolean  @default(true)
+  enabledAt       DateTime @default(now()) @db.Timestamptz
+  changedByUserId String?
+
+  team      Team  @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  changedBy User? @relation(fields: [changedByUserId], references: [id])
+
+  @@unique([teamId, moduleKey])
 }
 
 /// Limiar do motor de alertas (P15), um valor por chave e organização,
@@ -269,13 +374,16 @@ model AuditLog {
 /// chave "oneOnOneDays.<Seniority.key>".
 model AlertThreshold {
   organizationId String
+  teamId         String
   key            String
   value          Int
   updatedAt      DateTime @updatedAt @db.Timestamptz
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
-  @@id([organizationId, key])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@id([teamId, key])
 }
 
 // ═══════════════════════════ PESSOAS ═══════════════════════════
@@ -285,6 +393,7 @@ model AlertThreshold {
 /// progressão (próxima senioridade = order + 1).
 model Seniority {
   id             String @id @default(cuid())
+  teamId         String
   organizationId String
   key            String
   label          String
@@ -294,8 +403,10 @@ model Seniority {
   members      TeamMember[]
   expectations CompetencyExpectation[]
 
-  @@unique([organizationId, key])
-  @@unique([organizationId, order])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, key])
+  @@unique([teamId, order])
 }
 
 /// Analista do time. NÃO é User: não autentica, não tem sessão nem convite (D1).
@@ -351,6 +462,7 @@ model TeamMember {
 /// Métrica operacional nunca escreve aqui (princípio "Métrica não é avaliação").
 model MemberTrait {
   id         String    @id @default(cuid())
+  teamId     String
   memberId   String
   kind       TraitKind
   text       String
@@ -359,7 +471,9 @@ model MemberTrait {
 
   member TeamMember @relation(fields: [memberId], references: [id])
 
-  @@index([memberId, kind, isActive])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, kind, isActive])
 }
 
 /// Evento de carreira (senioridade, cargo, status, responsabilidade) com motivo
@@ -367,6 +481,7 @@ model MemberTrait {
 /// fromValue é opcional: a primeira atribuição não tem valor anterior.
 model MemberChange {
   id           String           @id @default(cuid())
+  teamId       String
   memberId     String
   changeType   MemberChangeType
   fromValue    String?
@@ -379,11 +494,14 @@ model MemberChange {
   author         User            @relation(fields: [authorUserId], references: [id])
   timelineEvents TimelineEvent[]
 
-  @@index([memberId, effectiveAt(sort: Desc)])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, effectiveAt(sort: Desc)])
 }
 
 model Responsibility {
   id             String  @id @default(cuid())
+  teamId         String
   organizationId String
   name           String
   description    String?
@@ -391,13 +509,16 @@ model Responsibility {
   organization Organization           @relation(fields: [organizationId], references: [id])
   members      MemberResponsibility[]
 
-  @@unique([organizationId, name])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, name])
 }
 
 /// Atribuição datada. A chave inclui assignedAt para a mesma responsabilidade
 /// poder voltar à pessoa depois de encerrada (endedAt).
 model MemberResponsibility {
   memberId         String
+  teamId           String
   responsibilityId String
   isPrimary        Boolean   @default(false)
   assignedAt       DateTime  @db.Date
@@ -406,14 +527,17 @@ model MemberResponsibility {
   member         TeamMember     @relation(fields: [memberId], references: [id])
   responsibility Responsibility @relation(fields: [responsibilityId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@id([memberId, responsibilityId, assignedAt])
-  @@index([responsibilityId])
+  @@index([teamId, responsibilityId])
 }
 
 /// Vínculo temporário e por competência — responde "como os Plenos estão
 /// ajudando os Juniors" sem virar organograma. CHECK no banco: mentor ≠ mentorado.
 model MentorshipLink {
   id             String    @id @default(cuid())
+  teamId         String
   mentorMemberId String
   menteeMemberId String
   competencyId   String?
@@ -425,7 +549,9 @@ model MentorshipLink {
   mentee     TeamMember  @relation("Mentee", fields: [menteeMemberId], references: [id])
   competency Competency? @relation(fields: [competencyId], references: [id])
 
-  @@index([mentorMemberId])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, mentorMemberId])
   @@index([menteeMemberId])
 }
 
@@ -457,6 +583,7 @@ model Daily {
 /// impeditivo da pessoa no dia ficam aqui, sem tabela separada.
 model DailyParticipant {
   dailyId  String
+  teamId   String
   memberId String
   present  Boolean @default(true)
   note     String?
@@ -465,8 +592,10 @@ model DailyParticipant {
   daily  Daily      @relation(fields: [dailyId], references: [id], onDelete: Cascade)
   member TeamMember @relation(fields: [memberId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@id([dailyId, memberId])
-  @@index([memberId])
+  @@index([teamId, memberId])
 }
 
 /// Combinado com uma pessoa.
@@ -482,6 +611,7 @@ model DailyParticipant {
 /// completedAt é data de negócio: a data da daily em que foi dado como feito.
 model Agreement {
   id                  String                   @id @default(cuid())
+  teamId              String
   memberId            String
   title               String
   description         String?
@@ -524,8 +654,10 @@ model Agreement {
 
   watchItems WatchItem[]
 
-  @@index([memberId, originalDueDate])
-  @@index([status, dueDate])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, originalDueDate])
+  @@index([teamId, status, dueDate])
   @@index([sourceDailyId])
   @@index([centralId, createdAt])
   @@index([searchVector], type: Gin, map: "Agreement_searchVector_idx")
@@ -533,18 +665,22 @@ model Agreement {
 
 model AgreementParticipant {
   agreementId String
+  teamId      String
   memberId    String
 
   agreement Agreement  @relation(fields: [agreementId], references: [id], onDelete: Cascade)
   member    TeamMember @relation(fields: [memberId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@id([agreementId, memberId])
-  @@index([memberId])
+  @@index([teamId, memberId])
 }
 
 /// Motivo de impeditivo, com categoria (D18). Configurável em /settings.
 model BlockerReason {
   id             String          @id @default(cuid())
+  teamId         String
   organizationId String
   label          String
   category       BlockerCategory
@@ -554,7 +690,9 @@ model BlockerReason {
   organization Organization       @relation(fields: [organizationId], references: [id])
   checkins     AgreementCheckin[]
 
-  @@index([organizationId, order])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, order])
 }
 
 /// Cada revisão de um combinado numa daily (D11). Um combinado arrastado 4x é
@@ -564,6 +702,7 @@ model BlockerReason {
 /// PARTIAL ou NOT_DONE.
 model AgreementCheckin {
   id              String         @id @default(cuid())
+  teamId          String
   agreementId     String
   dailyId         String
   outcome         CheckinOutcome
@@ -578,7 +717,9 @@ model AgreementCheckin {
   blockerReason BlockerReason? @relation(fields: [blockerReasonId], references: [id])
   author        User           @relation(fields: [authorUserId], references: [id])
 
-  @@index([agreementId, createdAt])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, agreementId, createdAt])
   @@index([dailyId])
 }
 
@@ -586,6 +727,7 @@ model AgreementCheckin {
 /// na mesma transação (src/server/timeline.ts).
 model OneOnOne {
   id                String                   @id @default(cuid())
+  teamId            String
   memberId          String
   date              DateTime                 @db.Date
   durationMinutes   Int?
@@ -612,7 +754,9 @@ model OneOnOne {
 
   watchItems WatchItem[]
 
-  @@index([memberId, date(sort: Desc)])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, date(sort: Desc)])
   @@index([searchVector], type: Gin, map: "OneOnOne_searchVector_idx")
 }
 
@@ -620,6 +764,7 @@ model OneOnOne {
 /// Nasce PRIVATE no banco; o formulário de RECOGNITION sugere SHARED, sem impor.
 model Feedback {
   id           String                   @id @default(cuid())
+  teamId       String
   memberId     String
   date         DateTime                 @db.Date
   category     FeedbackCategory
@@ -644,7 +789,9 @@ model Feedback {
 
   watchItems WatchItem[]
 
-  @@index([memberId, date(sort: Desc)])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, date(sort: Desc)])
   @@index([followUpAt])
   @@index([searchVector], type: Gin, map: "Feedback_searchVector_idx")
 }
@@ -652,6 +799,7 @@ model Feedback {
 /// Anotação gerencial ou ocorrência. Nasce PRIVATE.
 model Note {
   id           String                   @id @default(cuid())
+  teamId       String
   memberId     String
   occurredAt   DateTime                 @db.Timestamptz
   title        String
@@ -669,7 +817,9 @@ model Note {
 
   timelineEvents TimelineEvent[]
 
-  @@index([memberId, occurredAt(sort: Desc)])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, occurredAt(sort: Desc)])
   @@index([searchVector], type: Gin, map: "Note_searchVector_idx")
 }
 
@@ -681,6 +831,7 @@ model Note {
 /// do momento (PriorityValidation.*RankSnapshot).
 model PriorityLevel {
   id             String  @id @default(cuid())
+  teamId         String
   organizationId String
   key            String
   label          String
@@ -692,11 +843,14 @@ model PriorityLevel {
   analystValidations    PriorityValidation[] @relation("AnalystPriority")
   supervisorValidations PriorityValidation[] @relation("SupervisorPriority")
 
-  @@unique([organizationId, key])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, key])
 }
 
 model ReclassificationReason {
   id             String  @id @default(cuid())
+  teamId         String
   organizationId String
   label          String
   isActive       Boolean @default(true)
@@ -708,7 +862,9 @@ model ReclassificationReason {
   organization Organization         @relation(fields: [organizationId], references: [id])
   validations  PriorityValidation[]
 
-  @@index([organizationId, order])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, order])
 }
 
 /// Padrão para extrair o ID do chamado da URL colada. Aplicados em ordem
@@ -716,6 +872,7 @@ model ReclassificationReason {
 /// que contém o ID.
 model TicketUrlPattern {
   id             String  @id @default(cuid())
+  teamId         String
   organizationId String
   label          String
   regex          String
@@ -725,7 +882,9 @@ model TicketUrlPattern {
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
-  @@index([organizationId, order])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, order])
 }
 
 /// Validação da prioridade que o analista deu a um chamado.
@@ -743,6 +902,7 @@ model TicketUrlPattern {
 /// - outcome coerente com os snapshots (MAINTAINED =, RAISED >, LOWERED <).
 model PriorityValidation {
   id                     String            @id @default(cuid())
+  teamId                 String
   organizationId         String
   ticketUrl              String
   /// ID do chamado extraído da URL (ou digitado, se nenhum padrão casou).
@@ -775,7 +935,9 @@ model PriorityValidation {
 
   watchItems WatchItem[]
 
-  @@index([organizationId, validatedAt])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, validatedAt])
   @@index([memberId, validatedAt])
   @@index([reasonId])
   @@index([outcome, validatedAt])
@@ -790,6 +952,7 @@ model PriorityValidation {
 /// a sincronização futura com a plataforma de rastreamento — nenhuma integração existe.
 model Central {
   id             String    @id @default(cuid())
+  teamId         String
   organizationId String
   name           String
   slug           String
@@ -807,14 +970,17 @@ model Central {
 
   watchItems WatchItem[]
 
-  @@unique([organizationId, slug])
-  @@index([organizationId, isActive])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, slug])
+  @@index([teamId, isActive])
 }
 
 // ═══════════════════════ DESENVOLVIMENTO ═══════════════════════
 
 model Competency {
   id             String  @id @default(cuid())
+  teamId         String
   organizationId String
   name           String
   description    String?
@@ -827,13 +993,16 @@ model Competency {
   developmentPlans DevelopmentPlan[]
   mentorships      MentorshipLink[]
 
-  @@unique([organizationId, name])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, name])
 }
 
 /// Nível esperado de uma competência para cada senioridade — o esqueleto da
 /// matriz de competências. Base do alerta informativo de prontidão.
 model CompetencyExpectation {
   competencyId  String
+  teamId        String
   seniorityId   String
   expectedLevel Int
   descriptor    String?
@@ -841,13 +1010,17 @@ model CompetencyExpectation {
   competency Competency @relation(fields: [competencyId], references: [id])
   seniority  Seniority  @relation(fields: [seniorityId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@id([competencyId, seniorityId])
+  @@index([teamId])
 }
 
 /// Nível atual de uma pessoa numa competência (uma linha por par pessoa ×
 /// competência; reavaliar atualiza a linha e a data).
 model MemberCompetency {
   memberId     String
+  teamId       String
   competencyId String
   currentLevel Int
   targetLevel  Int?
@@ -857,14 +1030,17 @@ model MemberCompetency {
   member     TeamMember @relation(fields: [memberId], references: [id])
   competency Competency @relation(fields: [competencyId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@id([memberId, competencyId])
-  @@index([competencyId])
+  @@index([teamId, competencyId])
 }
 
 /// PDI. lastReviewedAt alimenta o alerta "PDI parado" — plano sem
 /// acompanhamento é plano morto.
 model DevelopmentPlan {
   id               String                @id @default(cuid())
+  teamId           String
   memberId         String
   competencyId     String?
   currentSituation String
@@ -886,7 +1062,9 @@ model DevelopmentPlan {
   actions        DevelopmentAction[]
   timelineEvents TimelineEvent[]
 
-  @@index([memberId, status])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, status])
   @@index([status, lastReviewedAt])
 }
 
@@ -894,6 +1072,7 @@ model DevelopmentPlan {
 /// pessoa ou um mentor (TeamMember); vazio quando é o gestor.
 model DevelopmentAction {
   id            String                  @id @default(cuid())
+  teamId        String
   planId        String
   description   String
   ownerType     ActionOwnerType
@@ -906,7 +1085,9 @@ model DevelopmentAction {
   plan        DevelopmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   ownerMember TeamMember?     @relation(fields: [ownerMemberId], references: [id])
 
-  @@index([planId])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, planId])
 }
 
 // ═══════════════ MÉTRICAS E SCORE (arquitetura apenas) ═══════════════
@@ -917,6 +1098,7 @@ model DevelopmentAction {
 
 model MetricDefinition {
   id             String          @id @default(cuid())
+  teamId         String
   organizationId String
   key            String
   label          String
@@ -931,7 +1113,9 @@ model MetricDefinition {
   scoreComponents       ScoreComponent[]
   scoreResultComponents ScoreResultComponent[]
 
-  @@unique([organizationId, key])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, key])
 }
 
 /// Valor de uma métrica para uma pessoa num período.
@@ -940,6 +1124,7 @@ model MetricDefinition {
 /// a cobertura ao lado.
 model MetricResult {
   id                 String   @id @default(cuid())
+  teamId             String
   memberId           String
   metricDefinitionId String
   periodStart        DateTime @db.Date
@@ -952,14 +1137,17 @@ model MetricResult {
   member           TeamMember       @relation(fields: [memberId], references: [id])
   metricDefinition MetricDefinition @relation(fields: [metricDefinitionId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@unique([memberId, metricDefinitionId, periodStart, periodEnd])
-  @@index([metricDefinitionId, periodStart])
+  @@index([teamId, metricDefinitionId, periodStart])
 }
 
 /// Definição versionada de score: alterar pesos cria nova versão em vez de
 /// reescrever resultados antigos.
 model ScoreDefinition {
   id             String   @id @default(cuid())
+  teamId         String
   organizationId String
   name           String
   version        Int
@@ -971,11 +1159,14 @@ model ScoreDefinition {
   components   ScoreComponent[]
   results      ScoreResult[]
 
-  @@unique([organizationId, name, version])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, name, version])
 }
 
 model ScoreComponent {
   scoreDefinitionId  String
+  teamId             String
   metricDefinitionId String
   weight             Float
   normalizationMin   Float
@@ -984,11 +1175,15 @@ model ScoreComponent {
   scoreDefinition  ScoreDefinition  @relation(fields: [scoreDefinitionId], references: [id], onDelete: Cascade)
   metricDefinition MetricDefinition @relation(fields: [metricDefinitionId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@id([scoreDefinitionId, metricDefinitionId])
+  @@index([teamId])
 }
 
 model ScoreResult {
   id                String   @id @default(cuid())
+  teamId            String
   memberId          String
   scoreDefinitionId String
   periodStart       DateTime @db.Date
@@ -1000,7 +1195,9 @@ model ScoreResult {
   scoreDefinition ScoreDefinition        @relation(fields: [scoreDefinitionId], references: [id])
   components      ScoreResultComponent[]
 
-  @@index([memberId, periodStart])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, periodStart])
 }
 
 /// Breakdown de cada score: valor bruto, normalizado, peso e contribuição de
@@ -1008,6 +1205,7 @@ model ScoreResult {
 /// caixa-preta. Todo score exibido precisa poder ser aberto até aqui.
 model ScoreResultComponent {
   scoreResultId      String
+  teamId             String
   metricDefinitionId String
   rawValue           Float
   normalizedValue    Float
@@ -1017,7 +1215,10 @@ model ScoreResultComponent {
   scoreResult      ScoreResult      @relation(fields: [scoreResultId], references: [id], onDelete: Cascade)
   metricDefinition MetricDefinition @relation(fields: [metricDefinitionId], references: [id])
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
   @@id([scoreResultId, metricDefinitionId])
+  @@index([teamId])
 }
 
 // ═══════════════════════════ TIMELINE ═══════════════════════════
@@ -1036,6 +1237,7 @@ model ScoreResultComponent {
 /// - Apagar o registro de origem apaga a linha-espelho (onDelete: Cascade).
 model TimelineEvent {
   id                String                   @id @default(cuid())
+  teamId            String
   memberId          String
   occurredAt        DateTime                 @db.Timestamptz
   type              TimelineEventType
@@ -1067,7 +1269,9 @@ model TimelineEvent {
   memberChange    MemberChange?    @relation(fields: [memberChangeId], references: [id], onDelete: Cascade)
   watchItem       WatchItem?       @relation(fields: [watchItemId], references: [id], onDelete: Cascade)
 
-  @@index([memberId, occurredAt(sort: Desc)])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, occurredAt(sort: Desc)])
   @@index([type])
   @@index([agreementId])
   @@index([oneOnOneId])
@@ -1088,6 +1292,7 @@ enum DevReturnCategory {
 /// Motivo de devolução do desenvolvimento (P20). Catálogo editável em /settings.
 model DevReturnReason {
   id             String            @id @default(cuid())
+  teamId         String
   organizationId String
   label          String
   category       DevReturnCategory
@@ -1100,7 +1305,9 @@ model DevReturnReason {
   organization Organization @relation(fields: [organizationId], references: [id])
   devReturns   DevReturn[]
 
-  @@index([organizationId, order])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, order])
 }
 
 /// Devolução de um chamado pelo desenvolvimento ao analista (P20, D21). Evento
@@ -1110,6 +1317,7 @@ model DevReturnReason {
 /// pelo servidor pelo `ticketRef` (a validação mais recente do chamado); nulo é normal.
 model DevReturn {
   id                   String    @id @default(cuid())
+  teamId               String
   organizationId       String
   ticketUrl            String
   ticketRef            String
@@ -1140,7 +1348,9 @@ model DevReturn {
 
   watchItems WatchItem[]
 
-  @@index([organizationId, returnedAt])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, returnedAt])
   @@index([memberId, returnedAt])
   @@index([reasonId])
   @@index([ticketRef])
@@ -1177,6 +1387,7 @@ enum WatchOrigin {
 /// alto frio" são derivados de `lastReviewedAt`/`heatChangedAt` (D9).
 model WatchItem {
   id                   String      @id @default(cuid())
+  teamId               String
   organizationId       String
   title                String
   context              String?
@@ -1218,7 +1429,9 @@ model WatchItem {
   reviews        WatchReview[]
   timelineEvents TimelineEvent[]
 
-  @@index([organizationId, status, heat])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, status, heat])
   @@index([memberId, status])
   @@index([centralId, status])
   @@index([status, lastReviewedAt])
@@ -1228,6 +1441,7 @@ model WatchItem {
 /// trabalhado ou só acumulando dias. Nota opcional. Não escreve na timeline.
 model WatchReview {
   id           String    @id @default(cuid())
+  teamId       String
   watchItemId  String
   reviewedAt   DateTime  @default(now()) @db.Timestamptz
   note         String?
@@ -1238,5 +1452,7 @@ model WatchReview {
   watchItem WatchItem @relation(fields: [watchItemId], references: [id], onDelete: Cascade)
   author    User      @relation(fields: [authorUserId], references: [id])
 
-  @@index([watchItemId, reviewedAt])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, watchItemId, reviewedAt])
 }

@@ -1,10 +1,10 @@
 import { defaultFor, ONE_ON_ONE_PREFIX, resolveThresholds, THRESHOLD_LIMITS, type AlertThresholds } from "../../lib/alert-thresholds.ts"
 import { db } from "../db.ts"
-import type { Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
 
-/** Limiares do motor de alertas da organização (o que não foi alterado fica no padrão). */
-export async function getThresholds(viewer: Pick<Viewer, "organizationId">): Promise<AlertThresholds> {
-  const rows = await db.alertThreshold.findMany({ where: { organizationId: viewer.organizationId }, select: { key: true, value: true } })
+/** Limiares do motor de alertas do time (o que não foi alterado fica no padrão). */
+export async function getThresholds(ctx: Pick<TeamContext, "teamId">): Promise<AlertThresholds> {
+  const rows = await db.alertThreshold.findMany({ where: teamScope(ctx), select: { key: true, value: true } })
   return resolveThresholds(rows)
 }
 
@@ -21,10 +21,10 @@ export interface ThresholdSetting {
 }
 
 /** Linhas do /settings: os escalares e uma cadência de 1:1 por senioridade (da mais baixa para a mais alta). */
-export async function listThresholdSettings(viewer: Viewer): Promise<ThresholdSetting[]> {
+export async function listThresholdSettings(ctx: TeamContext): Promise<ThresholdSetting[]> {
   const [rows, seniorities] = await Promise.all([
-    db.alertThreshold.findMany({ where: { organizationId: viewer.organizationId }, select: { key: true, value: true } }),
-    db.seniority.findMany({ where: { organizationId: viewer.organizationId }, orderBy: { order: "asc" }, select: { key: true, label: true } }),
+    db.alertThreshold.findMany({ where: teamScope(ctx), select: { key: true, value: true } }),
+    db.seniority.findMany({ where: teamScope(ctx), orderBy: { order: "asc" }, select: { key: true, label: true } }),
   ])
   const stored = new Map(rows.map((r) => [r.key, r.value]))
   const setting = (key: string, limits: { min: number; max: number }, seniority?: ThresholdSetting["seniority"]): ThresholdSetting => {

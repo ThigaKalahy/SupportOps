@@ -1,28 +1,26 @@
-/** Regras de papel e allowlist (sem banco). */
+/** Níveis de acesso ao time e allowlist (sem banco). */
 import assert from "node:assert/strict"
 import { describe, test } from "node:test"
 
 import { isAllowedEmail } from "../src/server/allowlist.ts"
-import { canWrite, memberScope, visibilityFilter } from "../src/server/visibility.ts"
+import { canWrite, requireManager, teamScope } from "../src/server/scope.ts"
+import { visibilityFilter } from "../src/server/visibility.ts"
 
-describe("papéis", () => {
-  test("VIEWER só enxerga SHARED; OWNER e MANAGER sem filtro de visibilidade", () => {
-    assert.deepEqual(visibilityFilter({ role: "VIEWER" }), { visibility: "SHARED" })
-    assert.deepEqual(visibilityFilter({ role: "OWNER" }), {})
-    assert.deepEqual(visibilityFilter({ role: "MANAGER" }), {})
+describe("níveis de acesso ao time (P22, D34)", () => {
+  test("VIEWER só enxerga SHARED; MANAGER sem filtro de visibilidade", () => {
+    assert.deepEqual(visibilityFilter({ level: "VIEWER" }), { visibility: "SHARED" })
+    assert.deepEqual(visibilityFilter({ level: "MANAGER" }), {})
   })
 
-  test("só OWNER e MANAGER escrevem", () => {
-    assert.equal(canWrite({ role: "OWNER" }), true)
-    assert.equal(canWrite({ role: "MANAGER" }), true)
-    assert.equal(canWrite({ role: "VIEWER" }), false)
+  test("só MANAGER escreve; VIEWER recebe erro, não silêncio", () => {
+    assert.equal(canWrite({ level: "MANAGER" }), true)
+    assert.equal(canWrite({ level: "VIEWER" }), false)
+    assert.doesNotThrow(() => requireManager({ level: "MANAGER" }))
+    assert.throws(() => requireManager({ level: "VIEWER" }), { name: "ForbiddenError" })
   })
 
-  test("MANAGER fica restrito ao próprio time; os demais à organização", () => {
-    assert.deepEqual(memberScope({ id: "u1", role: "MANAGER", organizationId: "o1" }), {
-      team: { organizationId: "o1", managerUserId: "u1" },
-    })
-    assert.deepEqual(memberScope({ id: "u1", role: "VIEWER", organizationId: "o1" }), { team: { organizationId: "o1" } })
+  test("o escopo é sempre o teamId do contexto, nunca a organização (D36)", () => {
+    assert.deepEqual(teamScope({ teamId: "t1" }), { teamId: "t1" })
   })
 })
 

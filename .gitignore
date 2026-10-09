@@ -1,5 +1,6 @@
 .env
 .env*.local
+.env.test
 .claude/.autorun
 .claude/settings.local.json
 node_modules

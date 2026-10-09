@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Section } from "@/components/ui/section"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { highlight, parseSearchFilters, SEARCH_PARAMS, toTsQuery, type SearchKind } from "@/lib/search"
-import { requireUser } from "@/server/access"
+import { requireTeamContext } from "@/server/scope"
 import { searchAll } from "@/server/queries/search"
 
 const S = labels.search
@@ -30,11 +30,11 @@ export default async function SearchPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
   const filters = parseSearchFilters(await searchParams)
   const searchable = toTsQuery(filters.q) !== null
   const results = searchable
-    ? await searchAll(user, filters.q, { kinds: filters.type ? [filters.type] : null, limit: filters.type ? 50 : 10, period: filters.period })
+    ? await searchAll(ctx, filters.q, { kinds: filters.type ? [filters.type] : null, limit: filters.type ? 50 : 10, period: filters.period })
     : null
   const total = results?.groups.reduce((sum, g) => sum + g.total, 0) ?? 0
 

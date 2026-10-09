@@ -10,7 +10,8 @@ import { ADHERENCE, percent } from "@/lib/adherence"
 import { adherenceRange, parseAdherenceFilters } from "@/lib/adherence-filters"
 import { formatDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { MODULES } from "@/lib/modules"
+import { canWrite, hasModule, requireTeamContext } from "@/server/scope"
 import { getTeamAdherence } from "@/server/queries/adherence"
 import { centralMetrics } from "@/server/queries/centrals"
 
@@ -33,10 +34,13 @@ export default async function TeamAdherencePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
   const filters = parseAdherenceFilters(await searchParams)
   const range = adherenceRange(filters)
-  const [team, centrals] = await Promise.all([getTeamAdherence(user, range.from, range.to), centralMetrics(user, range.from, range.to)])
+  const [team, centrals] = await Promise.all([
+    getTeamAdherence(ctx, range.from, range.to),
+    hasModule(ctx, MODULES.CENTRALS) ? centralMetrics(ctx, range.from, range.to) : null,
+  ])
   const rate = percent(team.teamRate)
 
   return (
@@ -48,7 +52,7 @@ export default async function TeamAdherencePage({
         title={L.title}
         subtitle={fill(L.teamSubtitle, { from: formatDate(team.from, "business"), to: formatDate(team.to, "business") })}
       />
-      <AdherenceTable rows={team.members} sort={filters.sort} from={team.from} to={team.to} canWrite={canWrite(user)} />
+      <AdherenceTable rows={team.members} sort={filters.sort} from={team.from} to={team.to} canWrite={canWrite(ctx)} />
       <div className="flex flex-col gap-1 border-t border-line pt-3 text-sm text-ink">
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
           {fill(L.teamLine, {
@@ -70,19 +74,21 @@ export default async function TeamAdherencePage({
         ) : null}
       </div>
 
-      {/* P19: volume por central no mesmo período. A unidade é a central, não a pessoa (D7). */}
-      <Section title={labels.centrals.metrics.title} className="border-t border-line pt-6">
-        <p className="-mt-2 max-w-3xl text-sm text-ink-secondary">{labels.centrals.metrics.direction}</p>
-        <CentralMetricsTable rows={centrals.rows} none={centrals.none} />
-        {centrals.totals.agreements + centrals.totals.validations > 0 ? (
-          <p className="text-xs text-ink-secondary">
-            {fill(labels.centrals.metrics.coverage, {
-              agreements: coverage(centrals.totals.agreements - centrals.none.agreements, centrals.totals.agreements),
-              validations: coverage(centrals.totals.validations - centrals.none.validations, centrals.totals.validations),
-            })}
-          </p>
-        ) : null}
-      </Section>
+      {/* P19: volume por central no mesmo período. A unidade é a central, não a pessoa (D7). Só com o módulo ligado (D32). */}
+      {centrals ? (
+        <Section title={labels.centrals.metrics.title} className="border-t border-line pt-6">
+          <p className="-mt-2 max-w-3xl text-sm text-ink-secondary">{labels.centrals.metrics.direction}</p>
+          <CentralMetricsTable rows={centrals.rows} none={centrals.none} />
+          {centrals.totals.agreements + centrals.totals.validations > 0 ? (
+            <p className="text-xs text-ink-secondary">
+              {fill(labels.centrals.metrics.coverage, {
+                agreements: coverage(centrals.totals.agreements - centrals.none.agreements, centrals.totals.agreements),
+                validations: coverage(centrals.totals.validations - centrals.none.validations, centrals.totals.validations),
+              })}
+            </p>
+          ) : null}
+        </Section>
+      ) : null}
     </div>
   )
 }

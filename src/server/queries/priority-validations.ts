@@ -4,24 +4,28 @@ import { businessRangeInstants, todayBusinessDate } from "../../lib/dates.ts"
 import { isChanged, rate } from "../../lib/priority-validation.ts"
 import { periodRange, type ValidationFilters } from "../../lib/validation-filters.ts"
 import { centralWhere } from "../../lib/centrals.ts"
+import { MODULES } from "../../lib/modules.ts"
 import { db } from "../db.ts"
 import { listActiveCentrals } from "./centrals.ts"
-import { memberScope, type Viewer } from "../visibility.ts"
+import { hasModule, requireModule, teamScope, teamSql, type TeamContext } from "../scope.ts"
 
 /**
  * Leituras de validação de prioridade. PriorityValidation não tem
  * visibilidade própria (é registro operacional, não de prontuário) e não
- * entra na timeline (D15); segue o escopo de organização e de pessoas.
+ * entra na timeline (D15); segue o escopo de time (teamScope, D30). Módulo
+ * PRIORITY_VALIDATION (D32): toda leitura daqui lança com ele desligado.
  *
  * Os quatro resumos de relatório recebem um intervalo de datas de negócio
- * (inclusivo) e rodam sobre os índices do schema — `(organizationId,
- * validatedAt)` filtra o período; tests/priority-validations.test.ts confere
+ * (inclusivo) e rodam sobre os índices do schema — `(teamId, validatedAt)`
+ * filtra o período; tests/priority-validations.test.ts confere
  * o plano de execução. Nenhum ordena pessoas por taxa (D7).
  */
 
 /* ───────────────────────────── Formulário ───────────────────────────── */
 
 export interface ValidationFormData {
+  /** Módulo de centrais ligado no time (D32). */
+  centralsEnabled: boolean
   members: { id: string; preferredName: string }[]
   /** Ativos, do rank mais alto para o mais baixo. */
   levels: { id: string; label: string; rank: number }[]
@@ -31,31 +35,32 @@ export interface ValidationFormData {
   centrals: { id: string; name: string }[]
 }
 
-export async function getValidationFormData(viewer: Viewer): Promise<ValidationFormData> {
+export async function getValidationFormData(ctx: TeamContext): Promise<ValidationFormData> {
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
   const [members, levels, reasons, patterns, centrals] = await Promise.all([
     db.teamMember.findMany({
-      where: { ...memberScope(viewer), status: { in: ["ACTIVE", "OFFBOARDING"] } },
+      where: { ...teamScope(ctx), status: { in: ["ACTIVE", "OFFBOARDING"] } },
       orderBy: { preferredName: "asc" },
       select: { id: true, preferredName: true },
     }),
     db.priorityLevel.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: { rank: "desc" },
       select: { id: true, label: true, rank: true },
     }),
     db.reclassificationReason.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: { order: "asc" },
       select: { id: true, label: true, requiresDetail: true },
     }),
     db.ticketUrlPattern.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: { order: "asc" },
       select: { id: true, label: true, regex: true, captureGroup: true },
     }),
-    listActiveCentrals(viewer),
+    hasModule(ctx, MODULES.CENTRALS) ? listActiveCentrals(ctx) : Promise.resolve([]),
   ])
-  return { members, levels, reasons, patterns, centrals }
+  return { members, levels, reasons, patterns, centrals, centralsEnabled: hasModule(ctx, MODULES.CENTRALS) }
 }
 
 /* ──────────────────────────── Lista do período ──────────────────────────── */
@@ -80,12 +85,11 @@ export interface ValidationRow {
   supervisorRankSnapshot: number | null
 }
 
-function rangeWhere(viewer: Viewer, from: Date, to: Date): Prisma.PriorityValidationWhereInput {
+function rangeWhere(ctx: TeamContext, from: Date, to: Date): Prisma.PriorityValidationWhereInput {
   return {
-    organizationId: viewer.organizationId,
+    ...teamScope(ctx),
     deletedAt: null,
     validatedAt: businessRangeInstants(from, to),
-    member: memberScope(viewer),
   }
 }
 
@@ -94,11 +98,12 @@ function rangeWhere(viewer: Viewer, from: Date, to: Date): Prisma.PriorityValida
  * O resumo segue o período e a pessoa, não o filtro de resultado ou motivo —
  * filtrado por "Elevada", ele diria sempre "100% alterados".
  */
-export async function listValidations(viewer: Viewer, filters: ValidationFilters, today = todayBusinessDate()) {
+export async function listValidations(ctx: TeamContext, filters: ValidationFilters, today = todayBusinessDate()) {
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
   const { from, to } = periodRange(filters, today)
   const rows = await db.priorityValidation.findMany({
     where: {
-      ...rangeWhere(viewer, from, to),
+      ...rangeWhere(ctx, from, to),
       ...(filters.memberId ? { memberId: filters.memberId } : {}),
       // Central filtra como a pessoa: o resumo passa a ser o da central.
       ...centralWhere(filters.central),
@@ -156,18 +161,12 @@ export function summarize(outcomes: ValidationOutcome[]): ValidationSummary {
 
 /* ───────────────────────── Resumos para relatório ───────────────────────── */
 
-/** Escopo comum dos resumos: organização, período e pessoas visíveis (alias "pv"). */
-function scopeSql(viewer: Viewer, from: Date, to: Date): Prisma.Sql {
+/** Escopo comum dos resumos: time e período (alias "pv"). */
+function scopeSql(ctx: TeamContext, from: Date, to: Date): Prisma.Sql {
   const { gte, lt } = businessRangeInstants(from, to)
-  const manager =
-    viewer.role === "MANAGER"
-      ? Prisma.sql`AND pv."memberId" IN (
-          SELECT m."id" FROM "TeamMember" m JOIN "Team" t ON t."id" = m."teamId"
-          WHERE t."managerUserId" = ${viewer.id})`
-      : Prisma.empty
-  return Prisma.sql`pv."organizationId" = ${viewer.organizationId}
+  return Prisma.sql`${teamSql(ctx, "pv")}
     AND pv."validatedAt" >= ${gte} AND pv."validatedAt" < ${lt}
-    AND pv."deletedAt" IS NULL ${manager}`
+    AND pv."deletedAt" IS NULL`
 }
 
 const outcomeCounts = Prisma.sql`
@@ -186,54 +185,57 @@ function withRate<T extends CountRow>(row: T): T & Pick<ValidationSummary, "chan
 
 /** SQL de cada resumo, exposto para o teste de plano de execução. */
 export const summarySql = {
-  byPeriod: (viewer: Viewer, from: Date, to: Date) => Prisma.sql`
-    SELECT ${outcomeCounts} FROM "PriorityValidation" pv WHERE ${scopeSql(viewer, from, to)}`,
-  byMember: (viewer: Viewer, from: Date, to: Date) => Prisma.sql`
+  byPeriod: (ctx: TeamContext, from: Date, to: Date) => Prisma.sql`
+    SELECT ${outcomeCounts} FROM "PriorityValidation" pv WHERE ${scopeSql(ctx, from, to)}`,
+  byMember: (ctx: TeamContext, from: Date, to: Date) => Prisma.sql`
     SELECT pv."memberId", m."preferredName", ${outcomeCounts}
     FROM "PriorityValidation" pv JOIN "TeamMember" m ON m."id" = pv."memberId"
-    WHERE ${scopeSql(viewer, from, to)}
+    WHERE ${scopeSql(ctx, from, to)}
     GROUP BY pv."memberId", m."preferredName"
     ORDER BY m."preferredName"`,
-  byReason: (viewer: Viewer, from: Date, to: Date) => Prisma.sql`
+  byReason: (ctx: TeamContext, from: Date, to: Date) => Prisma.sql`
     SELECT pv."reasonId", r."label", count(*)::int AS "count"
     FROM "PriorityValidation" pv JOIN "ReclassificationReason" r ON r."id" = pv."reasonId"
-    WHERE ${scopeSql(viewer, from, to)}
+    WHERE ${scopeSql(ctx, from, to)}
     GROUP BY pv."reasonId", r."label", r."order"
     ORDER BY "count" DESC, r."order"`,
-  byTransition: (viewer: Viewer, from: Date, to: Date) => Prisma.sql`
+  byTransition: (ctx: TeamContext, from: Date, to: Date) => Prisma.sql`
     SELECT pv."analystPriorityId" AS "fromId", pv."supervisorPriorityId" AS "toId",
            pv."analystRankSnapshot" AS "fromRank", pv."supervisorRankSnapshot" AS "toRank",
            pv."outcome", count(*)::int AS "count"
     FROM "PriorityValidation" pv
-    WHERE ${scopeSql(viewer, from, to)}
+    WHERE ${scopeSql(ctx, from, to)}
     GROUP BY pv."analystPriorityId", pv."supervisorPriorityId", pv."analystRankSnapshot", pv."supervisorRankSnapshot", pv."outcome"
     ORDER BY pv."analystRankSnapshot" DESC, pv."supervisorRankSnapshot" DESC NULLS LAST, pv."outcome",
              pv."analystPriorityId", pv."supervisorPriorityId"`,
 }
 
 /** Totais do intervalo: avaliados, por resultado, alterados e taxa. */
-export async function summaryByPeriod(viewer: Viewer, from: Date, to: Date): Promise<ValidationSummary> {
-  const [row] = await db.$queryRaw<CountRow[]>(summarySql.byPeriod(viewer, from, to))
+export async function summaryByPeriod(ctx: TeamContext, from: Date, to: Date): Promise<ValidationSummary> {
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
+  const [row] = await db.$queryRaw<CountRow[]>(summarySql.byPeriod(ctx, from, to))
   return withRate(row ?? { total: 0, maintained: 0, raised: 0, lowered: 0, returned: 0 })
 }
 
 export type MemberValidationSummary = ValidationSummary & { memberId: string; preferredName: string }
 
 /** Por analista, com taxa de alteração e o total ao lado (D19). Ordem por nome, nunca por taxa (D7). */
-export async function summaryByMember(viewer: Viewer, from: Date, to: Date): Promise<MemberValidationSummary[]> {
+export async function summaryByMember(ctx: TeamContext, from: Date, to: Date): Promise<MemberValidationSummary[]> {
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
   const rows = await db.$queryRaw<(CountRow & { memberId: string; preferredName: string })[]>(
-    summarySql.byMember(viewer, from, to),
+    summarySql.byMember(ctx, from, to),
   )
   return rows.map(withRate)
 }
 
 /** Motivos mais frequentes (só validações com motivo), do mais ao menos usado. */
 export async function summaryByReason(
-  viewer: Viewer,
+  ctx: TeamContext,
   from: Date,
   to: Date,
 ): Promise<{ reasonId: string; label: string; count: number }[]> {
-  return db.$queryRaw(summarySql.byReason(viewer, from, to))
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
+  return db.$queryRaw(summarySql.byReason(ctx, from, to))
 }
 
 export interface PriorityTransition {
@@ -249,12 +251,13 @@ export interface PriorityTransition {
  * cada prioridade validada. Os ranks são os do momento da validação (D14) —
  * reordenar os níveis em /settings não muda a matriz histórica.
  */
-export async function summaryByPriorityTransition(viewer: Viewer, from: Date, to: Date): Promise<PriorityTransition[]> {
+export async function summaryByPriorityTransition(ctx: TeamContext, from: Date, to: Date): Promise<PriorityTransition[]> {
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
   const rows = await db.$queryRaw<
     { fromId: string; toId: string | null; fromRank: number; toRank: number | null; outcome: ValidationOutcome; count: number }[]
-  >(summarySql.byTransition(viewer, from, to))
+  >(summarySql.byTransition(ctx, from, to))
   const levels = await db.priorityLevel.findMany({
-    where: { organizationId: viewer.organizationId },
+    where: teamScope(ctx),
     select: { id: true, label: true },
   })
   const label = new Map(levels.map((l) => [l.id, l.label]))
@@ -271,10 +274,11 @@ export async function summaryByPriorityTransition(viewer: Viewer, from: Date, to
 export const PROFILE_VALIDATION_DAYS = 90
 
 /** Bloco do perfil: validações dos últimos 90 dias, taxa com o total e o motivo mais frequente. */
-export async function memberValidationSummary(viewer: Viewer, memberId: string, today = todayBusinessDate()) {
+export async function memberValidationSummary(ctx: TeamContext, memberId: string, today = todayBusinessDate()) {
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
   const from = new Date(today)
   from.setUTCDate(from.getUTCDate() - (PROFILE_VALIDATION_DAYS - 1))
-  const where = { ...rangeWhere(viewer, from, today), memberId }
+  const where = { ...rangeWhere(ctx, from, today), memberId }
   const [outcomes, reasons] = await Promise.all([
     db.priorityValidation.groupBy({ by: ["outcome"], where, _count: { _all: true } }),
     db.priorityValidation.groupBy({

@@ -23,10 +23,10 @@ import {
 } from "../src/server/score-definitions.ts"
 import { listMetrics } from "../src/server/queries/settings.ts"
 import { deleteCatalogItemRecord, saveCatalogItemRecord, setCatalogItemActiveRecord } from "../src/server/settings.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const NAME = "Definição de Teste do Score"
 const METRIC_KEY = "teste_metrica_score"
 
@@ -46,7 +46,7 @@ after(async () => {
   await dbIncludingDeleted.$disconnect()
 })
 
-const metricByKey = async (key: string) => db.metricDefinition.findFirstOrThrow({ where: { organizationId: owner.organizationId, key } })
+const metricByKey = async (key: string) => db.metricDefinition.findFirstOrThrow({ where: { teamId: ownerViewer.teamId, key } })
 
 describe("seed e regras puras", () => {
   test("seed: as nove métricas do P17, sem nenhum resultado e sem score", async () => {
@@ -84,7 +84,7 @@ describe("/settings/metrics", () => {
   test("chave válida e única; não muda na edição; em uso não se exclui; VIEWER não escreve", async () => {
     const base = { label: "Métrica de teste", key: METRIC_KEY, unit: "%", direction: "LOWER_IS_BETTER", sourceSystem: "helpdesk" }
     assert.equal((await saveCatalogItemRecord(ownerViewer, "metric", { ...base, key: "Chave Inválida" })).ok, false)
-    assert.equal((await saveCatalogItemRecord(viewerOnly, "metric", base)).ok, false)
+    await assert.rejects(saveCatalogItemRecord(viewerOnly, "metric", base), { name: "ForbiddenError" })
     assert.ok((await saveCatalogItemRecord(ownerViewer, "metric", base)).ok)
     const dup = await saveCatalogItemRecord(ownerViewer, "metric", { ...base, label: "Outra" })
     assert.equal(dup.ok, false)
@@ -141,7 +141,7 @@ describe("/settings/score", () => {
 
     // v1 agora inativa e sem resultado: volta a ser rascunho e pode sair.
     assert.ok((await deleteScoreDefinitionRecord(ownerViewer, { scoreDefinitionId: v1 })).ok)
-    assert.equal((await setScoreActiveRecord(viewerOnly, { scoreDefinitionId: v2.id, active: false })).ok, false)
+    await assert.rejects(setScoreActiveRecord(viewerOnly, { scoreDefinitionId: v2.id, active: false }), { name: "ForbiddenError" })
     assert.ok((await setScoreActiveRecord(ownerViewer, { scoreDefinitionId: v2.id, active: false })).ok)
 
     const actions = (await dbIncludingDeleted.auditLog.findMany({ where: { entityId: { in: [v1, v2.id] } }, select: { action: true } })).map((a) => a.action)

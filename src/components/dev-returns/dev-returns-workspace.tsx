@@ -21,7 +21,10 @@ export function DevReturnsWorkspace({
   periodEmpty,
   after,
   watching,
+  showCentral = true,
 }: {
+  /** Módulo de centrais ligado no time (D32): sem ele, a coluna não existe. */
+  showCentral?: boolean
   form: DevReturnFormData | null
   rows: DevReturnRow[]
   canWrite: boolean
@@ -50,6 +53,7 @@ export function DevReturnsWorkspace({
           canWrite={canWrite}
           empty={empty}
           watching={watching}
+          showCentral={showCentral}
           onEdit={(row) => {
             setEditing(row)
             window.scrollTo({ top: 0 })

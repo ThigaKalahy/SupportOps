@@ -1,7 +1,8 @@
 import { businessRangeInstants } from "../../lib/dates.ts"
 import { rate } from "../../lib/priority-validation.ts"
 import { db } from "../db.ts"
-import { memberScope, type Viewer } from "../visibility.ts"
+import { MODULES } from "../../lib/modules.ts"
+import { hasModule, requireModule, teamScope, type TeamContext } from "../scope.ts"
 
 /**
  * Leituras de Central (P19, D20). As métricas recebem um intervalo de datas de
@@ -12,40 +13,40 @@ import { memberScope, type Viewer } from "../visibility.ts"
  * A unidade de análise é a central. `centralByMember` existe para investigar
  * carga, nunca para comparar desempenho de pessoas (D7): não há tela que
  * ordene pessoas por ele.
+ *
+ * Módulo CENTRALS (D32): toda leitura daqui lança com ele desligado. As contagens de
+ * validação só existem com o módulo de validação de prioridade ligado.
  */
 
 /** Centrais ativas, por nome, para os comboboxes. */
-export async function listActiveCentrals(viewer: Viewer): Promise<{ id: string; name: string }[]> {
+export async function listActiveCentrals(ctx: TeamContext): Promise<{ id: string; name: string }[]> {
+  requireModule(ctx, MODULES.CENTRALS)
   return db.central.findMany({
-    where: { organizationId: viewer.organizationId, isActive: true, deletedAt: null },
+    where: { ...teamScope(ctx), isActive: true, deletedAt: null },
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   })
 }
 
 /** Todas as centrais (inclusive desativadas), para filtros de listagem: o histórico aponta para elas. */
-export async function listCentralsForFilter(viewer: Viewer): Promise<{ id: string; name: string; isActive: boolean }[]> {
+export async function listCentralsForFilter(ctx: TeamContext): Promise<{ id: string; name: string; isActive: boolean }[]> {
+  requireModule(ctx, MODULES.CENTRALS)
   return db.central.findMany({
-    where: { organizationId: viewer.organizationId },
+    where: teamScope(ctx),
     orderBy: { name: "asc" },
     select: { id: true, name: true, isActive: true },
   })
 }
 
-function scope(viewer: Viewer) {
-  return { member: memberScope(viewer) }
-}
-
 /** Combinados e validações por central no período, separados. */
-export async function volumeByCentral(viewer: Viewer, from: Date, to: Date) {
+export async function volumeByCentral(ctx: TeamContext, from: Date, to: Date) {
+  requireModule(ctx, MODULES.CENTRALS)
   const range = businessRangeInstants(from, to)
   const [agreements, validations] = await Promise.all([
-    db.agreement.groupBy({ by: ["centralId"], where: { ...scope(viewer), createdAt: range }, _count: { _all: true } }),
-    db.priorityValidation.groupBy({
-      by: ["centralId"],
-      where: { ...scope(viewer), organizationId: viewer.organizationId, validatedAt: range },
-      _count: { _all: true },
-    }),
+    db.agreement.groupBy({ by: ["centralId"], where: { ...teamScope(ctx), createdAt: range }, _count: { _all: true } }),
+    hasModule(ctx, MODULES.PRIORITY_VALIDATION)
+      ? db.priorityValidation.groupBy({ by: ["centralId"], where: { ...teamScope(ctx), validatedAt: range }, _count: { _all: true } })
+      : Promise.resolve([]),
   ])
   return {
     agreements: new Map(agreements.map((r) => [r.centralId, r._count._all])),
@@ -54,9 +55,10 @@ export async function volumeByCentral(viewer: Viewer, from: Date, to: Date) {
 }
 
 /** Centrais que apareceram em combinados criados em daily, com o número de dailies distintas. */
-export async function centralsInDailies(viewer: Viewer, from: Date, to: Date): Promise<Map<string, number>> {
+export async function centralsInDailies(ctx: TeamContext, from: Date, to: Date): Promise<Map<string, number>> {
+  requireModule(ctx, MODULES.CENTRALS)
   const rows = await db.agreement.findMany({
-    where: { ...scope(viewer), centralId: { not: null }, sourceDaily: { date: { gte: from, lte: to } } },
+    where: { ...teamScope(ctx), centralId: { not: null }, sourceDaily: { date: { gte: from, lte: to } } },
     select: { centralId: true, sourceDailyId: true },
   })
   const dailies = new Map<string, Set<string>>()
@@ -77,15 +79,14 @@ export interface CentralMemberLoad {
 }
 
 /** Cruzamento central × analista: quanto de cada central passou por cada pessoa (carga, não desempenho). */
-export async function centralByMember(viewer: Viewer, from: Date, to: Date): Promise<CentralMemberLoad[]> {
+export async function centralByMember(ctx: TeamContext, from: Date, to: Date): Promise<CentralMemberLoad[]> {
+  requireModule(ctx, MODULES.CENTRALS)
   const range = businessRangeInstants(from, to)
   const [agreements, validations] = await Promise.all([
-    db.agreement.groupBy({ by: ["centralId", "memberId"], where: { ...scope(viewer), createdAt: range }, _count: { _all: true } }),
-    db.priorityValidation.groupBy({
-      by: ["centralId", "memberId"],
-      where: { ...scope(viewer), organizationId: viewer.organizationId, validatedAt: range },
-      _count: { _all: true },
-    }),
+    db.agreement.groupBy({ by: ["centralId", "memberId"], where: { ...teamScope(ctx), createdAt: range }, _count: { _all: true } }),
+    hasModule(ctx, MODULES.PRIORITY_VALIDATION)
+      ? db.priorityValidation.groupBy({ by: ["centralId", "memberId"], where: { ...teamScope(ctx), validatedAt: range }, _count: { _all: true } })
+      : Promise.resolve([]),
   ])
   const key = (centralId: string | null, memberId: string) => `${centralId ?? ""}|${memberId}`
   const out = new Map<string, CentralMemberLoad>()
@@ -109,10 +110,12 @@ export interface CentralDispute {
 }
 
 /** Taxa de alteração de prioridade por central, sempre com o total ao lado (D19). */
-export async function priorityDisputeByCentral(viewer: Viewer, from: Date, to: Date): Promise<Map<string | null, CentralDispute>> {
+export async function priorityDisputeByCentral(ctx: TeamContext, from: Date, to: Date): Promise<Map<string | null, CentralDispute>> {
+  requireModule(ctx, MODULES.CENTRALS)
+  if (!hasModule(ctx, MODULES.PRIORITY_VALIDATION)) return new Map()
   const rows = await db.priorityValidation.groupBy({
     by: ["centralId", "outcome"],
-    where: { ...scope(viewer), organizationId: viewer.organizationId, validatedAt: businessRangeInstants(from, to) },
+    where: { ...teamScope(ctx), validatedAt: businessRangeInstants(from, to) },
     _count: { _all: true },
   })
   const out = new Map<string | null, CentralDispute>()
@@ -142,12 +145,12 @@ export interface CentralMetricRow {
  * com movimento no período, por volume total decrescente, e a linha "sem central
  * informada" sempre no fim (com a contagem, mesmo zero quando há outras linhas).
  */
-export async function centralMetrics(viewer: Viewer, from: Date, to: Date): Promise<{ rows: CentralMetricRow[]; none: CentralMetricRow; totals: { agreements: number; validations: number } }> {
+export async function centralMetrics(ctx: TeamContext, from: Date, to: Date): Promise<{ rows: CentralMetricRow[]; none: CentralMetricRow; totals: { agreements: number; validations: number } }> {
   const [volume, dailies, dispute, centrals] = await Promise.all([
-    volumeByCentral(viewer, from, to),
-    centralsInDailies(viewer, from, to),
-    priorityDisputeByCentral(viewer, from, to),
-    listCentralsForFilter(viewer),
+    volumeByCentral(ctx, from, to),
+    centralsInDailies(ctx, from, to),
+    priorityDisputeByCentral(ctx, from, to),
+    listCentralsForFilter(ctx),
   ])
   const row = (id: string | null, name: string | null, isActive: boolean): CentralMetricRow => ({
     id,

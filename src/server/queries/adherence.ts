@@ -15,7 +15,7 @@ import {
 } from "../../lib/adherence.ts"
 import { todayBusinessDate } from "../../lib/dates.ts"
 import { db } from "../db.ts"
-import { memberScope, type Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
 
 /**
  * Cumprimento de combinados ao longo do tempo. Nenhuma taxa é persistida
@@ -31,12 +31,13 @@ import { memberScope, type Viewer } from "../visibility.ts"
 type Row = AdherenceAgreement & { memberId: string }
 
 /** Combinados com prazo original no intervalo, já com reagendamentos e o último impeditivo. */
-async function loadAgreements(viewer: Viewer, memberId: string | null, from: Date, to: Date): Promise<Row[]> {
+async function loadAgreements(ctx: TeamContext, memberId: string | null, from: Date, to: Date): Promise<Row[]> {
   if (from.getTime() > to.getTime()) return []
   const rows = await db.agreement.findMany({
     where: {
+      ...teamScope(ctx),
       originalDueDate: { gte: from, lte: to },
-      member: { ...memberScope(viewer), ...(memberId ? { id: memberId } : {}) },
+      ...(memberId ? { memberId } : {}),
     },
     select: {
       id: true,
@@ -63,21 +64,21 @@ async function loadAgreements(viewer: Viewer, memberId: string | null, from: Dat
 
 /** Cumprimento de uma pessoa (ou do escopo inteiro, com memberId null) no período. */
 export async function getAdherence(
-  viewer: Viewer,
+  ctx: TeamContext,
   memberId: string | null,
   from: Date,
   to: Date,
   today = todayBusinessDate(),
 ): Promise<Adherence> {
   const period = clampPeriod(from, to, today)
-  return computeAdherence(await loadAgreements(viewer, memberId, period.from, period.to), period, today)
+  return computeAdherence(await loadAgreements(ctx, memberId, period.from, period.to), period, today)
 }
 
 export type MonthlyAdherence = Adherence & { month: Date }
 
 /** A mesma medida, mês a mês, nos últimos N meses (o corrente até hoje). "No decorrer do tempo". */
 export async function getAdherenceSeries(
-  viewer: Viewer,
+  ctx: TeamContext,
   memberId: string | null,
   months: number,
   today = todayBusinessDate(),
@@ -85,7 +86,7 @@ export async function getAdherenceSeries(
   const ranges = lastMonths(today, months)
   const first = ranges[0]
   if (!first) return []
-  const rows = await loadAgreements(viewer, memberId, first.from, today)
+  const rows = await loadAgreements(ctx, memberId, first.from, today)
   return ranges.map((range) => {
     const inMonth = rows.filter((r) => r.originalDueDate >= range.from && r.originalDueDate <= range.to)
     return { month: range.from, ...computeAdherence(inMonth, range, today) }
@@ -101,9 +102,9 @@ function trendOf(rows: Row[], today: Date): Trend {
   return makeTrend(current.adherenceRate, previous.adherenceRate)
 }
 
-export async function getAdherenceTrend(viewer: Viewer, memberId: string, today = todayBusinessDate()): Promise<Trend> {
+export async function getAdherenceTrend(ctx: TeamContext, memberId: string, today = todayBusinessDate()): Promise<Trend> {
   const w = trendWindows(today)
-  return trendOf(await loadAgreements(viewer, memberId, w.previous.from, today), today)
+  return trendOf(await loadAgreements(ctx, memberId, w.previous.from, today), today)
 }
 
 export interface BlockerBreakdown {
@@ -119,7 +120,7 @@ export interface BlockerBreakdown {
  * daily. Impeditivo sem motivo registrado aparece com label null.
  */
 export async function getBlockerBreakdown(
-  viewer: Viewer,
+  ctx: TeamContext,
   memberId: string | null,
   from: Date,
   to: Date,
@@ -128,9 +129,10 @@ export async function getBlockerBreakdown(
   const period = clampPeriod(from, to, today)
   const checkins = await db.agreementCheckin.findMany({
     where: {
+      ...teamScope(ctx),
       outcome: { in: ["PARTIAL", "NOT_DONE"] },
       daily: { date: { gte: period.from, lte: period.to } },
-      agreement: { deletedAt: null, member: { ...memberScope(viewer), ...(memberId ? { id: memberId } : {}) } },
+      agreement: { deletedAt: null, ...(memberId ? { memberId } : {}) },
     },
     select: { blockerReason: { select: { id: true, label: true, category: true, order: true } } },
   })
@@ -185,18 +187,18 @@ export interface TeamAdherence {
  * agregado do time. Pessoas ativas do escopo (desligadas ficam de fora).
  * Ordem alfabética; quem ordena por taxa é a tela, a pedido.
  */
-export async function getTeamAdherence(viewer: Viewer, from: Date, to: Date, today = todayBusinessDate()): Promise<TeamAdherence> {
+export async function getTeamAdherence(ctx: TeamContext, from: Date, to: Date, today = todayBusinessDate()): Promise<TeamAdherence> {
   const period = clampPeriod(from, to, today)
   const w = trendWindows(today)
   const [members, periodRows, trendRows, blockers] = await Promise.all([
     db.teamMember.findMany({
-      where: memberScope(viewer),
+      where: teamScope(ctx),
       orderBy: { preferredName: "asc" },
       select: { id: true, preferredName: true, fullName: true, seniority: { select: { label: true, order: true } } },
     }),
-    loadAgreements(viewer, null, period.from, period.to),
-    loadAgreements(viewer, null, w.previous.from, today),
-    getBlockerBreakdown(viewer, null, period.from, period.to, today),
+    loadAgreements(ctx, null, period.from, period.to),
+    loadAgreements(ctx, null, w.previous.from, today),
+    getBlockerBreakdown(ctx, null, period.from, period.to, today),
   ])
 
   const rows: MemberAdherenceRow[] = members.map((m) => ({
@@ -226,10 +228,10 @@ export async function getTeamAdherence(viewer: Viewer, from: Date, to: Date, tod
 }
 
 /** Títulos dos combinados (ex.: os crônicos do período), para os links do bloco. */
-export async function getAgreementTitles(viewer: Viewer, ids: string[]): Promise<{ id: string; title: string }[]> {
+export async function getAgreementTitles(ctx: TeamContext, ids: string[]): Promise<{ id: string; title: string }[]> {
   if (ids.length === 0) return []
   return db.agreement.findMany({
-    where: { id: { in: ids }, member: memberScope(viewer) },
+    where: { id: { in: ids }, ...teamScope(ctx) },
     orderBy: { originalDueDate: "asc" },
     select: { id: true, title: true },
   })
@@ -239,15 +241,15 @@ export const PROFILE_ADHERENCE_DAYS = 90
 export const PROFILE_SERIES_MONTHS = 6
 
 /** Tudo o que o perfil mostra de cumprimento: 90 dias, 6 meses, tendência, impeditivos e crônicos. */
-export async function getMemberAdherenceProfile(viewer: Viewer, memberId: string, today = todayBusinessDate()) {
+export async function getMemberAdherenceProfile(ctx: TeamContext, memberId: string, today = todayBusinessDate()) {
   const from = new Date(today)
   from.setUTCDate(from.getUTCDate() - (PROFILE_ADHERENCE_DAYS - 1))
   const [adherence, series, trend, breakdown] = await Promise.all([
-    getAdherence(viewer, memberId, from, today, today),
-    getAdherenceSeries(viewer, memberId, PROFILE_SERIES_MONTHS, today),
-    getAdherenceTrend(viewer, memberId, today),
-    getBlockerBreakdown(viewer, memberId, from, today, today),
+    getAdherence(ctx, memberId, from, today, today),
+    getAdherenceSeries(ctx, memberId, PROFILE_SERIES_MONTHS, today),
+    getAdherenceTrend(ctx, memberId, today),
+    getBlockerBreakdown(ctx, memberId, from, today, today),
   ])
-  const chronic = await getAgreementTitles(viewer, adherence.chronicIds)
+  const chronic = await getAgreementTitles(ctx, adherence.chronicIds)
   return { days: PROFILE_ADHERENCE_DAYS, adherence, series, trend, breakdown, chronic }
 }

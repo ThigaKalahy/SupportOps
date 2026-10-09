@@ -34,10 +34,11 @@ import {
 import { DateStamp } from "@/components/ui/date-stamp"
 import { HighlightedText } from "@/components/ui/highlighted-text"
 import { fill, labels } from "@/lib/labels"
+import { MODULES } from "@/lib/modules"
 import { highlight, MIN_QUERY, normalize, SEARCH_PARAMS, searchTerms } from "@/lib/search"
 import type { RecentAgreement, SearchResults } from "@/server/queries/search"
 
-import { footerNav, mainNav } from "./nav-config"
+import { footerNav, navItemsFor } from "./nav-config"
 
 const C = labels.command
 const K = labels.search.kinds
@@ -79,7 +80,7 @@ function matchesQuery(text: string, query: string): boolean {
  * 1:1, feedback, anotação e combinado sem pessoa definida pedem "com quem?"
  * dentro da própria paleta. O VIEWER só navega e busca.
  */
-export function CommandPalette({ people, canWrite }: { people: Person[]; canWrite: boolean }) {
+export function CommandPalette({ people, canWrite, modules }: { people: Person[]; canWrite: boolean; modules: readonly string[] }) {
   const router = useRouter()
   const pathname = usePathname()
   const quick = useQuickAgreement()
@@ -181,7 +182,10 @@ export function CommandPalette({ people, canWrite }: { people: Person[]; canWrit
             quick?.open(contextPerson ? { member: contextPerson } : {})
           },
         },
-        { id: "validation", label: C.actions.validation, icon: <ClipboardCheckIcon />, run: () => go("/priority-validations") },
+        // Módulo desligado no time (D32): a ação não existe.
+        ...(modules.includes(MODULES.PRIORITY_VALIDATION)
+          ? [{ id: "validation", label: C.actions.validation, icon: <ClipboardCheckIcon />, run: () => go("/priority-validations") }]
+          : []),
         { id: "oneOnOne", label: C.actions.oneOnOne, icon: <UsersIcon />, run: () => startPick("oneOnOne") },
         { id: "feedback", label: C.actions.feedback, icon: <MessageSquareIcon />, run: () => startPick("feedback") },
         { id: "note", label: C.actions.note, icon: <NotebookPenIcon />, run: () => startPick("note") },
@@ -194,7 +198,7 @@ export function CommandPalette({ people, canWrite }: { people: Person[]; canWrit
         },
       ]
     : []
-  const pages = [...mainNav, ...footerNav]
+  const pages = [...navItemsFor(modules), ...footerNav]
   const shownActions = typed ? registerActions.filter((a) => matchesQuery(a.label, query)) : registerActions
   const shownPages = typed ? pages.filter((p) => matchesQuery(p.label, query)) : pages
 

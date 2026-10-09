@@ -24,7 +24,7 @@ import {
   listOneOnOnes,
   searchRecords,
 } from "../src/server/queries/records.ts"
-import type { Viewer } from "../src/server/visibility.ts"
+import type { TeamContext } from "../src/server/scope.ts"
 
 const SRC = join(import.meta.dirname, "..", "src")
 // watchItem (P21, D25): observação é a superfície mais provável de anotação gerencial crua.
@@ -106,8 +106,9 @@ describe("camada estática: leituras sensíveis só com visibilityFilter", () =>
 
 describe("camada de banco: VIEWER nunca recebe PRIVATE (dados do seed)", async () => {
   const org = await dbIncludingDeleted.organization.findUnique({ where: { slug: "suporte" } })
-  const members = await dbIncludingDeleted.teamMember.findMany({ select: { id: true, preferredName: true } })
-  const privateTotal = await dbIncludingDeleted.timelineEvent.count({ where: { visibility: "PRIVATE" } })
+  const team = await dbIncludingDeleted.team.findFirst({ where: { slug: "suporte" }, select: { id: true } })
+  const members = await dbIncludingDeleted.teamMember.findMany({ where: { teamId: team?.id ?? "" }, select: { id: true, preferredName: true } })
+  const privateTotal = await dbIncludingDeleted.timelineEvent.count({ where: { teamId: team?.id ?? "", visibility: "PRIVATE" } })
 
   after(async () => {
     await db.$disconnect()
@@ -120,9 +121,11 @@ describe("camada de banco: VIEWER nunca recebe PRIVATE (dados do seed)", async (
     assert.ok(privateTotal > 0)
   })
 
-  if (!org) return
-  const viewer: Viewer = { id: "teste-viewer", role: "VIEWER", organizationId: org.id }
-  const owner: Viewer = { id: "teste-owner", role: "OWNER", organizationId: org.id }
+  if (!org || !team) return
+  // Contextos sintéticos do time do seed: o nível (D34) é o que decide a visibilidade.
+  const base = { organizationId: org.id, teamId: team.id, isPlatformAdmin: false, modules: new Set<string>() }
+  const viewer: TeamContext = { ...base, userId: "teste-viewer", level: "VIEWER" }
+  const owner: TeamContext = { ...base, userId: "teste-owner", level: "MANAGER" }
 
   test("timeline: nenhuma linha PRIVATE para VIEWER; OWNER vê as privadas", async () => {
     let ownerPrivate = 0
@@ -147,7 +150,7 @@ describe("camada de banco: VIEWER nunca recebe PRIVATE (dados do seed)", async (
   test("contadores: total do VIEWER é exatamente o total SHARED", async () => {
     const counts = await countRecordsByMember(viewer)
     const viewerTotal = [...counts.values()].reduce((a, b) => a + b, 0)
-    const sharedTotal = await dbIncludingDeleted.timelineEvent.count({ where: { visibility: "SHARED" } })
+    const sharedTotal = await dbIncludingDeleted.timelineEvent.count({ where: { teamId: team.id, visibility: "SHARED" } })
     assert.equal(viewerTotal, sharedTotal)
   })
 
@@ -159,8 +162,8 @@ describe("camada de banco: VIEWER nunca recebe PRIVATE (dados do seed)", async (
     }
   })
 
-  test("escopo de organização: outra organização não enxerga nada", async () => {
-    const stranger: Viewer = { id: "x", role: "OWNER", organizationId: "organizacao-inexistente" }
+  test("escopo de time: outro time não enxerga nada", async () => {
+    const stranger: TeamContext = { ...owner, teamId: "time-inexistente" }
     assert.equal((await searchRecords(stranger, "a", 50)).length, 0)
     assert.equal((await countRecordsByMember(stranger)).size, 0)
   })

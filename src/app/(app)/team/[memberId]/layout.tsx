@@ -6,7 +6,7 @@ import { ReactivateMemberButton } from "@/components/member/reactivate-member-di
 import { CrumbLabel } from "@/components/shell/crumb-label"
 import { RouteTabs } from "@/components/ui/route-tabs"
 import { labels } from "@/lib/labels"
-import { canWrite } from "@/server/access"
+import { canWrite } from "@/server/scope"
 import { getMemberForEdit, getMemberFormCatalogs } from "@/server/queries/members"
 
 import { ProfileHeader } from "./_components/profile-header"
@@ -25,13 +25,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  */
 export default async function MemberLayout({ children, params }: Params & { children: React.ReactNode }) {
   const { memberId } = await params
-  const { user, profile } = await loadProfile(memberId)
+  const { ctx, profile } = await loadProfile(memberId)
   if (!profile) notFound()
 
   // Pessoa desativada: perfil só de leitura (o histórico continua acessível).
-  const writable = canWrite(user) && profile.status !== "INACTIVE"
+  const writable = canWrite(ctx) && profile.status !== "INACTIVE"
   const [catalogs, forEdit] = writable
-    ? await Promise.all([getMemberFormCatalogs(user), getMemberForEdit(user, profile.id)])
+    ? await Promise.all([getMemberFormCatalogs(ctx), getMemberForEdit(ctx, profile.id)])
     : [null, null]
 
   const base = `/team/${profile.id}`
@@ -46,7 +46,7 @@ export default async function MemberLayout({ children, params }: Params & { chil
           actions={
             catalogs && forEdit ? (
               <ProfileActions member={forEdit} catalogs={catalogs} />
-            ) : canWrite(user) && profile.status === "INACTIVE" ? (
+            ) : canWrite(ctx) && profile.status === "INACTIVE" ? (
               <ReactivateMemberButton member={{ id: profile.id, preferredName: profile.preferredName }} />
             ) : null
           }

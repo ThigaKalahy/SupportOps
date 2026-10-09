@@ -6,13 +6,14 @@ import { recordPeriodStart, type RecordFilters } from "../../lib/records-filters
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 
 import { db } from "../db.ts"
-import { memberScope, visibilityFilter, type Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
+import { visibilityFilter } from "../visibility.ts"
 
 /**
  * Leituras de registros sensíveis: OneOnOne, Feedback, Note e TimelineEvent.
  *
  * Toda leitura desses quatro models no produto vive em src/server/queries e
- * aplica `visibilityFilter(viewer)` — VIEWER nunca recebe PRIVATE. Timeline,
+ * aplica `visibilityFilter(ctx)` — VIEWER nunca recebe PRIVATE. Timeline,
  * busca, command palette e contadores usam estas funções (ou novas funções
  * aqui, com o mesmo filtro). tests/visibility.test.ts reprova qualquer leitura
  * fora deste padrão.
@@ -21,9 +22,9 @@ import { memberScope, visibilityFilter, type Viewer } from "../visibility.ts"
 export const TIMELINE_PAGE_SIZE = 40
 
 /** Timeline de uma pessoa, mais recente primeiro, paginada por cursor. */
-export function getMemberTimeline(viewer: Viewer, memberId: string, options: { cursor?: string; take?: number } = {}) {
+export function getMemberTimeline(ctx: TeamContext, memberId: string, options: { cursor?: string; take?: number } = {}) {
   return db.timelineEvent.findMany({
-    where: { memberId, member: memberScope(viewer), ...visibilityFilter(viewer) },
+    where: { memberId, ...teamScope(ctx), ...visibilityFilter(ctx) },
     orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
     take: options.take ?? TIMELINE_PAGE_SIZE,
     ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
@@ -31,13 +32,13 @@ export function getMemberTimeline(viewer: Viewer, memberId: string, options: { c
 }
 
 /** Busca textual nos registros (título e resumo das linhas da timeline). */
-export function searchRecords(viewer: Viewer, term: string, take = 20) {
+export function searchRecords(ctx: TeamContext, term: string, take = 20) {
   const text = term.trim()
   if (!text) return Promise.resolve([])
   return db.timelineEvent.findMany({
     where: {
-      member: memberScope(viewer),
-      ...visibilityFilter(viewer),
+      ...teamScope(ctx),
+      ...visibilityFilter(ctx),
       OR: [{ title: { contains: text, mode: "insensitive" } }, { summary: { contains: text, mode: "insensitive" } }],
     },
     orderBy: { occurredAt: "desc" },
@@ -46,32 +47,32 @@ export function searchRecords(viewer: Viewer, term: string, take = 20) {
 }
 
 /** Contagem de registros por pessoa (contadores e indicadores de volume). */
-export async function countRecordsByMember(viewer: Viewer, where: Prisma.TimelineEventWhereInput = {}) {
+export async function countRecordsByMember(ctx: TeamContext, where: Prisma.TimelineEventWhereInput = {}) {
   const rows = await db.timelineEvent.groupBy({
     by: ["memberId"],
-    where: { ...where, member: memberScope(viewer), ...visibilityFilter(viewer) },
+    where: { ...where, ...teamScope(ctx), ...visibilityFilter(ctx) },
     _count: { _all: true },
   })
   return new Map(rows.map((r) => [r.memberId, r._count._all]))
 }
 
-export function listOneOnOnes(viewer: Viewer, memberId: string) {
+export function listOneOnOnes(ctx: TeamContext, memberId: string) {
   return db.oneOnOne.findMany({
-    where: { memberId, member: memberScope(viewer), ...visibilityFilter(viewer) },
+    where: { memberId, ...teamScope(ctx), ...visibilityFilter(ctx) },
     orderBy: { date: "desc" },
   })
 }
 
-export function listFeedbacks(viewer: Viewer, memberId: string) {
+export function listFeedbacks(ctx: TeamContext, memberId: string) {
   return db.feedback.findMany({
-    where: { memberId, member: memberScope(viewer), ...visibilityFilter(viewer) },
+    where: { memberId, ...teamScope(ctx), ...visibilityFilter(ctx) },
     orderBy: { date: "desc" },
   })
 }
 
-export function listNotes(viewer: Viewer, memberId: string) {
+export function listNotes(ctx: TeamContext, memberId: string) {
   return db.note.findMany({
-    where: { memberId, member: memberScope(viewer), ...visibilityFilter(viewer) },
+    where: { memberId, ...teamScope(ctx), ...visibilityFilter(ctx) },
     orderBy: { occurredAt: "desc" },
   })
 }
@@ -82,9 +83,9 @@ export function listNotes(viewer: Viewer, memberId: string) {
  * null quando a linha não existe, está fora do escopo ou não tem
  * visibilidade própria (combinado, daily, PDI, mudança de carreira).
  */
-export async function findToggleableSource(viewer: Viewer, eventId: string) {
+export async function findToggleableSource(ctx: TeamContext, eventId: string) {
   const event = await db.timelineEvent.findFirst({
-    where: { id: eventId, member: memberScope(viewer), ...visibilityFilter(viewer) },
+    where: { id: eventId, ...teamScope(ctx), ...visibilityFilter(ctx) },
     select: { memberId: true, visibility: true, oneOnOneId: true, feedbackId: true, noteId: true },
   })
   if (!event) return null
@@ -105,17 +106,17 @@ export type EditableKind = "oneOnOne" | "feedback" | "note"
  * (pessoa no escopo, não excluído). Com visibilityFilter: o VIEWER não chega
  * a um privado nem por aqui — e de todo modo não escreve.
  */
-export async function findEditableRecord(viewer: Viewer, kind: EditableKind, id: string) {
+export async function findEditableRecord(ctx: TeamContext, kind: EditableKind, id: string) {
   const include = { member: { select: { id: true, preferredName: true } } } as const
   if (kind === "oneOnOne") {
-    const record = await db.oneOnOne.findFirst({ where: { id, member: memberScope(viewer), ...visibilityFilter(viewer) }, include })
+    const record = await db.oneOnOne.findFirst({ where: { id, ...teamScope(ctx), ...visibilityFilter(ctx) }, include })
     return record ? ({ kind, record } as const) : null
   }
   if (kind === "feedback") {
-    const record = await db.feedback.findFirst({ where: { id, member: memberScope(viewer), ...visibilityFilter(viewer) }, include })
+    const record = await db.feedback.findFirst({ where: { id, ...teamScope(ctx), ...visibilityFilter(ctx) }, include })
     return record ? ({ kind, record } as const) : null
   }
-  const record = await db.note.findFirst({ where: { id, member: memberScope(viewer), ...visibilityFilter(viewer) }, include })
+  const record = await db.note.findFirst({ where: { id, ...teamScope(ctx), ...visibilityFilter(ctx) }, include })
   return record ? ({ kind, record } as const) : null
 }
 
@@ -171,11 +172,11 @@ const agreementSelect = {
  * do follow-up (src/lib/follow-up.ts) e os combinados gerados. VIEWER só vê
  * os SHARED — e só registros SHARED encerram pendência para ele.
  */
-export async function listRecords(viewer: Viewer, filters: RecordFilters, today = todayBusinessDate()): Promise<RecordRow[]> {
+export async function listRecords(ctx: TeamContext, filters: RecordFilters, today = todayBusinessDate()): Promise<RecordRow[]> {
   const start = recordPeriodStart(filters.period, today)
   const where = {
-    member: memberScope(viewer),
-    ...visibilityFilter(viewer),
+    ...teamScope(ctx),
+    ...visibilityFilter(ctx),
     ...(filters.memberId ? { memberId: filters.memberId } : {}),
     ...(start ? { date: { gte: start } } : {}),
   }
@@ -187,13 +188,13 @@ export async function listRecords(viewer: Viewer, filters: RecordFilters, today 
   const [oneOnOnes, feedbacks] = await Promise.all([
     wantOneOnOnes
       ? db.oneOnOne.findMany({
-          where: { ...where, ...visibilityFilter(viewer) },
+          where: { ...where, ...visibilityFilter(ctx) },
           include: { member, author, sourcedAgreements: agreementSelect },
         })
       : Promise.resolve([]),
     wantFeedbacks
       ? db.feedback.findMany({
-          where: { ...where, ...visibilityFilter(viewer), ...(filters.category ? { category: filters.category } : {}) },
+          where: { ...where, ...visibilityFilter(ctx), ...(filters.category ? { category: filters.category } : {}) },
           include: { member, author, sourcedAgreements: agreementSelect },
         })
       : Promise.resolve([]),
@@ -205,8 +206,8 @@ export async function listRecords(viewer: Viewer, filters: RecordFilters, today 
   const earliest = all.reduce<Date | null>((min, r) => (!min || r.date < min ? r.date : min), null)
   const convWhere = {
     memberId: { in: memberIds },
-    member: memberScope(viewer),
-    ...visibilityFilter(viewer),
+    ...teamScope(ctx),
+    ...visibilityFilter(ctx),
     ...(earliest ? { date: { gte: earliest } } : {}),
   }
   const [laterOneOnOnes, laterFeedbacks] =
@@ -214,11 +215,11 @@ export async function listRecords(viewer: Viewer, filters: RecordFilters, today 
       ? [[], []]
       : await Promise.all([
           db.oneOnOne.findMany({
-            where: { ...convWhere, ...visibilityFilter(viewer) },
+            where: { ...convWhere, ...visibilityFilter(ctx) },
             select: { id: true, memberId: true, date: true },
           }),
           db.feedback.findMany({
-            where: { ...convWhere, ...visibilityFilter(viewer) },
+            where: { ...convWhere, ...visibilityFilter(ctx) },
             select: { id: true, memberId: true, date: true },
           }),
         ])
@@ -307,11 +308,11 @@ const reschedules = { _count: { select: { checkins: { where: { newDueDate: { not
  * combinados gerados nele), os combinados em aberto, o último feedback e os
  * PDIs ativos com as ações em aberto.
  */
-export async function getOneOnOneContext(viewer: Viewer, memberId: string, today = todayBusinessDate()): Promise<OneOnOneContext> {
-  const scope = { memberId, member: memberScope(viewer) }
+export async function getOneOnOneContext(ctx: TeamContext, memberId: string, today = todayBusinessDate()): Promise<OneOnOneContext> {
+  const scope = { memberId, ...teamScope(ctx) }
   const [previous, lastFeedback, open, plans] = await Promise.all([
     db.oneOnOne.findFirst({
-      where: { ...scope, ...visibilityFilter(viewer) },
+      where: { ...scope, ...visibilityFilter(ctx) },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       include: {
         sourcedAgreements: {
@@ -322,7 +323,7 @@ export async function getOneOnOneContext(viewer: Viewer, memberId: string, today
       },
     }),
     db.feedback.findFirst({
-      where: { ...scope, ...visibilityFilter(viewer) },
+      where: { ...scope, ...visibilityFilter(ctx) },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     }),
     db.agreement.findMany({
@@ -350,7 +351,7 @@ export async function getOneOnOneContext(viewer: Viewer, memberId: string, today
   // Conversas a partir do follow-up do último feedback encerram a pendência dele.
   const after = lastFeedback?.followUpAt
     ? await db.oneOnOne.findMany({
-        where: { ...scope, ...visibilityFilter(viewer), date: { gte: lastFeedback.followUpAt } },
+        where: { ...scope, ...visibilityFilter(ctx), date: { gte: lastFeedback.followUpAt } },
         select: { id: true, date: true },
       })
     : []

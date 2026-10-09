@@ -1,7 +1,8 @@
 import { todayBusinessDate } from "../../lib/dates.ts"
 import type { MemberAttention } from "../alerts.ts"
 import { db, dbIncludingDeleted } from "../db.ts"
-import { memberScope, visibilityFilter, type Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
+import { visibilityFilter } from "../visibility.ts"
 
 import { listTeamMembers } from "./members.ts"
 
@@ -39,10 +40,10 @@ export interface MemberProfile {
   attention: MemberAttention | null
 }
 
-export async function getMemberProfile(viewer: Viewer, memberId: string): Promise<MemberProfile | null> {
+export async function getMemberProfile(ctx: TeamContext, memberId: string): Promise<MemberProfile | null> {
   // Perfil de pessoa desativada continua acessível (histórico), por isso sem o filtro de soft delete.
   const member = await dbIncludingDeleted.teamMember.findFirst({
-    where: { id: memberId, ...memberScope(viewer) },
+    where: { id: memberId, ...teamScope(ctx) },
     include: {
       seniority: { select: { key: true, label: true } },
       team: { select: { manager: { select: { name: true } } } },
@@ -57,14 +58,14 @@ export async function getMemberProfile(viewer: Viewer, memberId: string): Promis
 
   const today = todayBusinessDate()
   const [summaryRows, lastOneOnOne, nextFeedback] = await Promise.all([
-    listTeamMembers(viewer, { id: member.id }),
+    listTeamMembers(ctx, { id: member.id }),
     db.oneOnOne.findFirst({
-      where: { memberId: member.id, member: memberScope(viewer), ...visibilityFilter(viewer) },
+      where: { memberId: member.id, ...teamScope(ctx), ...visibilityFilter(ctx) },
       orderBy: { date: "desc" },
       select: { date: true, nextReviewAt: true },
     }),
     db.feedback.findFirst({
-      where: { memberId: member.id, followUpAt: { gte: today }, member: memberScope(viewer), ...visibilityFilter(viewer) },
+      where: { memberId: member.id, followUpAt: { gte: today }, ...teamScope(ctx), ...visibilityFilter(ctx) },
       orderBy: { followUpAt: "asc" },
       select: { followUpAt: true },
     }),
@@ -102,17 +103,17 @@ export async function getMemberProfile(viewer: Viewer, memberId: string): Promis
 
 export const RECENT_EVENTS = 5
 
-export async function getMemberOverview(viewer: Viewer, memberId: string) {
-  const scope = { memberId, member: memberScope(viewer) }
+export async function getMemberOverview(ctx: TeamContext, memberId: string) {
+  const scope = { memberId, ...teamScope(ctx) }
   const [recentEvents, lastFeedback, traits, agreements, plans, mentorships] = await Promise.all([
     db.timelineEvent.findMany({
-      where: { ...scope, ...visibilityFilter(viewer) },
+      where: { ...scope, ...visibilityFilter(ctx) },
       orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       take: RECENT_EVENTS,
       select: { id: true, type: true, title: true, occurredAt: true, visibility: true },
     }),
     db.feedback.findFirst({
-      where: { ...scope, ...visibilityFilter(viewer) },
+      where: { ...scope, ...visibilityFilter(ctx) },
       orderBy: { date: "desc" },
       select: { date: true },
     }),
@@ -147,10 +148,11 @@ export async function getMemberOverview(viewer: Viewer, memberId: string) {
     }),
     db.mentorshipLink.findMany({
       where: {
+        ...teamScope(ctx),
         endedAt: null,
         OR: [{ mentorMemberId: memberId }, { menteeMemberId: memberId }],
-        mentor: { deletedAt: null, ...memberScope(viewer) },
-        mentee: { deletedAt: null, ...memberScope(viewer) },
+        mentor: { deletedAt: null },
+        mentee: { deletedAt: null },
       },
       orderBy: { startedAt: "asc" },
       select: {

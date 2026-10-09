@@ -11,7 +11,7 @@ import { StatStrip } from "@/components/ui/stat-strip"
 import { percent } from "@/lib/adherence"
 import { businessDaysBetween, formatDate, formatWeekday, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { listAgreementMembers } from "@/server/queries/agreements"
 import { getTodayPanel } from "@/server/queries/today"
 
@@ -32,13 +32,13 @@ export const metadata: Metadata = {
  * de gestão, próximos acompanhamentos e últimas movimentações, sem card.
  */
 export default async function TodayPage() {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
   const today = todayBusinessDate()
-  const writer = canWrite(user)
+  const writer = canWrite(ctx)
   const [{ alerts, watch }, panel, members] = await Promise.all([
     loadAlerts(),
-    getTodayPanel(user, today),
-    writer ? listAgreementMembers(user) : Promise.resolve([]),
+    getTodayPanel(ctx, today),
+    writer ? listAgreementMembers(ctx) : Promise.resolve([]),
   ])
   const rate = panel.rhythm.adherence
   const sinceDaily = panel.rhythm.lastDaily ? businessDaysBetween(panel.rhythm.lastDaily, today) : null

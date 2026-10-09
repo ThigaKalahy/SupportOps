@@ -51,8 +51,8 @@ export function QuickAgreementProvider({
 }: {
   /** Pessoas ativas; null para quem só lê. */
   members: { id: string; preferredName: string }[] | null
-  /** Centrais ativas (P19). */
-  centrals: { id: string; name: string }[]
+  /** Centrais ativas (P19); null com o módulo de centrais desligado no time (D32). */
+  centrals: { id: string; name: string }[] | null
   children: React.ReactNode
 }) {
   const pathname = usePathname()

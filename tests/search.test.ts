@@ -14,11 +14,11 @@ import { highlight, normalize, parseSearchFilters, toTsQuery } from "../src/lib/
 import { db, dbIncludingDeleted } from "../src/server/db.ts"
 import { searchAll } from "../src/server/queries/search.ts"
 import { createNoteRecord } from "../src/server/records.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
-const stranger = { id: "x", role: "OWNER" as const, organizationId: "outra-organizacao" }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
+const stranger = { ...ownerViewer, teamId: "outro-time" }
 const NOTE_TITLE = "Teste da busca: xilofone ornitorrinco"
 
 async function cleanup() {

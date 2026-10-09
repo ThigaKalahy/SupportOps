@@ -28,6 +28,8 @@ export interface AuditEntry {
 
 export interface AuditContext {
   organizationId: string
+  /** Time da escrita (P22). Nulo/ausente só em login, logout e ações de plataforma. */
+  teamId?: string | null
   /** null para tentativa de login sem usuário e para os scripts de CLI. */
   userId: string | null
   /** Transação da escrita auditada, para a entrada nascer e morrer com ela. */
@@ -39,6 +41,7 @@ export async function writeAudit(entry: AuditEntry, context: AuditContext): Prom
   await client.auditLog.create({
     data: {
       organizationId: context.organizationId,
+      teamId: context.teamId ?? null,
       userId: context.userId,
       action: entry.action,
       entity: entry.entity,
@@ -55,4 +58,12 @@ export async function defaultOrganizationId(): Promise<string> {
   const org = await db.organization.findUnique({ where: { slug }, select: { id: true } })
   if (!org) throw new Error(`Organização "${slug}" (DEFAULT_ORG_SLUG) não existe.`)
   return org.id
+}
+
+/** Contexto de auditoria de uma escrita em dado de time: organização, time e autor do contexto. */
+export function auditOf(
+  ctx: { organizationId: string; teamId: string; userId: string },
+  tx?: AuditWriter,
+): AuditContext {
+  return { organizationId: ctx.organizationId, teamId: ctx.teamId, userId: ctx.userId, ...(tx ? { tx } : {}) }
 }

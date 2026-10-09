@@ -4,7 +4,7 @@ import { ContextActions } from "@/components/shell/context-actions"
 import { PageHeader } from "@/components/ui/page-header"
 import { formatTenure, todayBusinessDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { getMemberFormCatalogs, listMembersForEdit, listTeamMembers } from "@/server/queries/members"
 
 import { loadThresholds } from "../alerts-data"
@@ -21,17 +21,17 @@ export default async function TeamPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
-  const writer = canWrite(user)
-  const catalogs = await getMemberFormCatalogs(user)
+  const ctx = await requireTeamContext()
+  const writer = canWrite(ctx)
+  const catalogs = await getMemberFormCatalogs(ctx)
   const view = parseTeamView(await searchParams, catalogs.seniorities.map((s) => s.key))
 
   const rows = await listTeamMembers(
-    user,
+    ctx,
     { seniority: view.seniority ?? undefined, status: view.status, needsAttention: view.needsAttention },
     await loadThresholds(),
   )
-  const editable = writer ? await listMembersForEdit(user, rows.map((r) => r.id)) : null
+  const editable = writer ? await listMembersForEdit(ctx, rows.map((r) => r.id)) : null
 
   const today = todayBusinessDate()
   const tableRows = rows.map((r) => ({ ...r, tenure: formatTenure(r.joinedAt, today) }))

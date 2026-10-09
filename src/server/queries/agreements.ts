@@ -10,11 +10,11 @@ import { centralWhere } from "../../lib/centrals.ts"
 import { businessDaysBetween, todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
-import { memberScope, type Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
 
 /**
  * Leituras de combinados. Combinado não tem visibilidade própria (não é
- * registro privado), mas segue o escopo de organização/time do usuário.
+ * registro privado), mas segue o escopo de time (teamScope, D30).
  *
  * A central busca os combinados que passam pelos filtros (menos a aba) em UMA
  * consulta e reparte em memória: assim cada aba mostra a sua contagem sem
@@ -66,16 +66,14 @@ function compare(a: AgreementRow, b: AgreementRow): number {
 }
 
 export async function listAgreements(
-  viewer: Viewer,
+  ctx: TeamContext,
   filters: AgreementFilters,
 ): Promise<{ rows: AgreementRow[]; counts: AgreementCounts }> {
   const since = createdSince(filters.created)
   const agreements = await db.agreement.findMany({
     where: {
-      member: {
-        ...memberScope(viewer),
-        ...(filters.seniority ? { seniority: { key: filters.seniority } } : {}),
-      },
+      ...teamScope(ctx),
+      ...(filters.seniority ? { member: { seniority: { key: filters.seniority } } } : {}),
       ...(filters.memberId ? { memberId: filters.memberId } : {}),
       ...(filters.origin ? { origin: filters.origin } : {}),
       ...(filters.priority ? { priority: filters.priority } : {}),
@@ -132,9 +130,9 @@ export async function listAgreements(
 }
 
 /** Pessoas ativas para filtros e para o responsável do combinado. */
-export async function listAgreementMembers(viewer: Viewer) {
+export async function listAgreementMembers(ctx: TeamContext) {
   const members = await db.teamMember.findMany({
-    where: { ...memberScope(viewer), status: { not: "INACTIVE" } },
+    where: { ...teamScope(ctx), status: { not: "INACTIVE" } },
     orderBy: { preferredName: "asc" },
     select: { id: true, preferredName: true, seniority: { select: { key: true, label: true, order: true } } },
   })
@@ -154,9 +152,9 @@ export interface AgreementCheckinRow {
 }
 
 /** Combinado com o histórico completo de revisões, em ordem cronológica. */
-export async function getAgreementDetail(viewer: Viewer, id: string) {
+export async function getAgreementDetail(ctx: TeamContext, id: string) {
   const agreement = await db.agreement.findFirst({
-    where: { id, member: memberScope(viewer) },
+    where: { ...teamScope(ctx), id },
     include: {
       member: { select: { id: true, preferredName: true, fullName: true } },
       author: { select: { name: true } },

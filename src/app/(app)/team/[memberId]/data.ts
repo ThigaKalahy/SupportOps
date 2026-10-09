@@ -1,6 +1,6 @@
 import { cache } from "react"
 
-import { requireUser } from "@/server/access"
+import { requireTeamContext } from "@/server/scope"
 import { getMemberProfile } from "@/server/queries/profile"
 
 /**
@@ -8,7 +8,7 @@ import { getMemberProfile } from "@/server/queries/profile"
  * aba usam o mesmo resultado, sem repetir as consultas.
  */
 export const loadProfile = cache(async (memberId: string) => {
-  const user = await requireUser()
-  const profile = await getMemberProfile(user, memberId)
-  return { user, profile }
+  const ctx = await requireTeamContext()
+  const profile = await getMemberProfile(ctx, memberId)
+  return { ctx, profile }
 })

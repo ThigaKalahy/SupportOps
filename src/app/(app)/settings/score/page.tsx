@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 
 import { ScoreList } from "@/components/settings/score-list"
 import { labels } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { listScoreDefinitions } from "@/server/queries/score"
 
 export const metadata: Metadata = {
@@ -11,6 +11,6 @@ export const metadata: Metadata = {
 
 /** Definições de score e versões. Arquitetura apenas: nada é calculado (D5). */
 export default async function ScorePage() {
-  const user = await requireUser()
-  return <ScoreList definitions={await listScoreDefinitions(user)} canWrite={canWrite(user)} />
+  const ctx = await requireTeamContext()
+  return <ScoreList definitions={await listScoreDefinitions(ctx)} canWrite={canWrite(ctx)} />
 }

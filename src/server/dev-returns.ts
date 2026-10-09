@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { labels } from "../lib/labels.ts"
+import { MODULES } from "../lib/modules.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import {
   businessDateOf,
@@ -9,11 +10,11 @@ import {
   type DevReturnCatalog,
 } from "../lib/validators/dev-return.ts"
 
-import { writeAudit } from "./audit.ts"
+import { auditOf, writeAudit } from "./audit.ts"
 import { resolveCentralId } from "./centrals.ts"
 import { db } from "./db.ts"
 import { withExtractedRef } from "./priority-validations.ts"
-import { canWrite, memberScope, type Viewer } from "./visibility.ts"
+import { requireManager, requireModule, teamScope, type TeamContext } from "./scope.ts"
 
 /**
  * Escrita de devolução do desenvolvimento (núcleo de src/actions/dev-returns.ts).
@@ -27,14 +28,14 @@ import { canWrite, memberScope, type Viewer } from "./visibility.ts"
 
 export type DevReturnResult = { ok: true; id: string; ticketRef: string } | Extract<ActionResult, { ok: false }>
 
-async function catalogFor(viewer: Viewer, keepReasonId?: string) {
+async function catalogFor(ctx: TeamContext, keepReasonId?: string) {
   const [reasons, patterns] = await Promise.all([
     db.devReturnReason.findMany({
-      where: { organizationId: viewer.organizationId, OR: [{ isActive: true }, ...(keepReasonId ? [{ id: keepReasonId }] : [])] },
+      where: { ...teamScope(ctx), OR: [{ isActive: true }, ...(keepReasonId ? [{ id: keepReasonId }] : [])] },
       select: { id: true, requiresDetail: true },
     }),
     db.ticketUrlPattern.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: { order: "asc" },
       select: { id: true, regex: true, captureGroup: true },
     }),
@@ -42,10 +43,10 @@ async function catalogFor(viewer: Viewer, keepReasonId?: string) {
   return { catalog: { reasons } satisfies DevReturnCatalog, patterns }
 }
 
-/** A validação mais recente do chamado na organização (não excluída), ou null. */
-export async function latestValidationFor(organizationId: string, ticketRef: string) {
+/** A validação mais recente do chamado no time (não excluída), ou null. */
+export async function latestValidationFor(ctx: Pick<TeamContext, "teamId">, ticketRef: string) {
   return db.priorityValidation.findFirst({
-    where: { organizationId, ticketRef },
+    where: { ...teamScope(ctx), ticketRef },
     orderBy: [{ validatedAt: "desc" }, { createdAt: "desc" }],
     select: { id: true, memberId: true, centralId: true },
   })
@@ -67,31 +68,33 @@ function auditView(r: {
   return JSON.parse(JSON.stringify(r)) as Record<string, string | null>
 }
 
-async function parseInput(user: Viewer, input: unknown, keepReasonId?: string) {
-  const { catalog, patterns } = await catalogFor(user, keepReasonId)
+async function parseInput(ctx: TeamContext, input: unknown, keepReasonId?: string) {
+  const { catalog, patterns } = await catalogFor(ctx, keepReasonId)
   // ID vazio: o servidor tenta os padrões também — a mesma função da validação de prioridade.
   const raw = withExtractedRef(input, patterns)
   return devReturnSchema(catalog).safeParse(raw)
 }
 
-export async function createDevReturnRecord(user: Viewer, input: unknown): Promise<DevReturnResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
-  const parsed = await parseInput(user, input)
+export async function createDevReturnRecord(ctx: TeamContext, input: unknown): Promise<DevReturnResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.DEV_RETURNS)
+  const parsed = await parseInput(ctx, input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   const data = parsed.data
   const member = await db.teamMember.findFirst({
-    where: { id: data.memberId, ...memberScope(user), status: { in: ["ACTIVE", "OFFBOARDING", "ON_LEAVE"] } },
+    where: { id: data.memberId, ...teamScope(ctx), status: { in: ["ACTIVE", "OFFBOARDING", "ON_LEAVE"] } },
     select: { id: true },
   })
   if (!member) return { ok: false, error: labels.validation.generic, fieldErrors: { memberId: labels.validation.required } }
-  const centralId = await resolveCentralId(user.organizationId, data.centralId)
+  const centralId = await resolveCentralId(ctx, data.centralId)
   if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
-  const validation = await latestValidationFor(user.organizationId, data.ticketRef)
+  const validation = await latestValidationFor(ctx, data.ticketRef)
 
   const created = await db.$transaction(async (tx) => {
     const row = await tx.devReturn.create({
       data: {
-        organizationId: user.organizationId,
+        ...teamScope(ctx),
+        organizationId: ctx.organizationId,
         ticketUrl: data.ticketUrl,
         ticketRef: data.ticketRef,
         memberId: member.id,
@@ -102,34 +105,35 @@ export async function createDevReturnRecord(user: Viewer, input: unknown): Promi
         reasonOther: textOrNull(data.reasonOther),
         devContact: textOrNull(data.devContact),
         note: textOrNull(data.note),
-        registeredByUserId: user.id,
+        registeredByUserId: ctx.userId,
       },
     })
     await writeAudit(
       { action: "devReturn.create", entity: "DevReturn", entityId: row.id, after: auditView(row) },
-      { organizationId: user.organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
     return row
   })
   return { ok: true, id: created.id, ticketRef: created.ticketRef }
 }
 
-export async function updateDevReturnRecord(user: Viewer, input: unknown): Promise<DevReturnResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function updateDevReturnRecord(ctx: TeamContext, input: unknown): Promise<DevReturnResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const id = z.object({ id: z.string().min(1) }).safeParse(input)
   if (!id.success) return { ok: false, error: labels.validation.generic }
   const before = await db.devReturn.findFirst({
-    where: { id: id.data.id, organizationId: user.organizationId, member: memberScope(user) },
+    where: { ...teamScope(ctx), id: id.data.id },
   })
   if (!before) return { ok: false, error: labels.validation.generic }
-  const parsed = await parseInput(user, input, before.reasonId)
+  const parsed = await parseInput(ctx, input, before.reasonId)
   if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   const data = parsed.data
-  const member = await db.teamMember.findFirst({ where: { id: data.memberId, ...memberScope(user) }, select: { id: true } })
+  const member = await db.teamMember.findFirst({ where: { id: data.memberId, ...teamScope(ctx) }, select: { id: true } })
   if (!member) return { ok: false, error: labels.validation.generic }
   // A central gravada continua valendo mesmo se tiver sido desativada depois; trocar exige uma ativa.
   const centralId =
-    data.centralId && data.centralId === before.centralId ? before.centralId : await resolveCentralId(user.organizationId, data.centralId)
+    data.centralId && data.centralId === before.centralId ? before.centralId : await resolveCentralId(ctx, data.centralId)
   if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
   const returnedAt = businessDateOf(data.returnedAt)
   if (before.resolvedAt && before.resolvedAt < returnedAt) {
@@ -137,11 +141,11 @@ export async function updateDevReturnRecord(user: Viewer, input: unknown): Promi
   }
   // Chamado trocado: o vínculo com a validação acompanha o novo ID.
   const priorityValidationId =
-    data.ticketRef === before.ticketRef ? before.priorityValidationId : ((await latestValidationFor(user.organizationId, data.ticketRef))?.id ?? null)
+    data.ticketRef === before.ticketRef ? before.priorityValidationId : ((await latestValidationFor(ctx, data.ticketRef))?.id ?? null)
 
   await db.$transaction(async (tx) => {
     const after = await tx.devReturn.update({
-      where: { id: before.id },
+      where: { id: before.id, ...teamScope(ctx) },
       data: {
         ticketUrl: data.ticketUrl,
         ticketRef: data.ticketRef,
@@ -157,19 +161,20 @@ export async function updateDevReturnRecord(user: Viewer, input: unknown): Promi
     })
     await writeAudit(
       { action: "devReturn.update", entity: "DevReturn", entityId: before.id, before: auditView(before), after: auditView(after) },
-      { organizationId: user.organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
   })
   return { ok: true, id: before.id, ticketRef: data.ticketRef }
 }
 
 /** Marca como reenviado: resolvedAt (não antes da devolução) e a resolução opcional. */
-export async function resolveDevReturnRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function resolveDevReturnRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const parsed = resolveDevReturnSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   const before = await db.devReturn.findFirst({
-    where: { id: parsed.data.id, organizationId: user.organizationId, member: memberScope(user) },
+    where: { ...teamScope(ctx), id: parsed.data.id },
   })
   if (!before) return { ok: false, error: labels.validation.generic }
   const resolvedAt = businessDateOf(parsed.data.resolvedAt)
@@ -179,31 +184,32 @@ export async function resolveDevReturnRecord(user: Viewer, input: unknown): Prom
   }
   await db.$transaction(async (tx) => {
     const after = await tx.devReturn.update({
-      where: { id: before.id },
+      where: { id: before.id, ...teamScope(ctx) },
       data: { resolvedAt, resolutionNote: textOrNull(parsed.data.resolutionNote) },
     })
     await writeAudit(
       { action: "devReturn.resolve", entity: "DevReturn", entityId: before.id, before: auditView(before), after: auditView(after) },
-      { organizationId: user.organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
   })
   return { ok: true }
 }
 
 /** Exclusão lógica (deletedAt), auditada. */
-export async function deleteDevReturnRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function deleteDevReturnRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.DEV_RETURNS)
   const parsed = z.object({ id: z.string().min(1) }).safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
   const before = await db.devReturn.findFirst({
-    where: { id: parsed.data.id, organizationId: user.organizationId, member: memberScope(user) },
+    where: { ...teamScope(ctx), id: parsed.data.id },
   })
   if (!before) return { ok: false, error: labels.validation.generic }
   await db.$transaction(async (tx) => {
-    await tx.devReturn.update({ where: { id: before.id }, data: { deletedAt: new Date() } })
+    await tx.devReturn.update({ where: { id: before.id, ...teamScope(ctx) }, data: { deletedAt: new Date() } })
     await writeAudit(
       { action: "devReturn.delete", entity: "DevReturn", entityId: before.id, before: auditView(before) },
-      { organizationId: user.organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
   })
   return { ok: true }

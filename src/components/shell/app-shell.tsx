@@ -39,14 +39,17 @@ export function AppShell({
   people,
   counts,
   thresholds,
+  modules,
   children,
 }: {
   defaultCollapsed: boolean
   user: ShellUser
+  /** Módulos ligados no time ativo (D32). */
+  modules: string[]
   /** Pessoas para a criação rápida de combinado (atalho C); null para quem só lê. */
   agreementMembers: { id: string; preferredName: string }[] | null
-  /** Centrais ativas para o campo de central da criação rápida (P19). */
-  centrals: { id: string; name: string }[]
+  /** Centrais ativas para o campo de central da criação rápida (P19); null sem o módulo (D32). */
+  centrals: { id: string; name: string }[] | null
   /** Pessoas do time para a paleta de comandos (navegar; registrar só para quem escreve). */
   people: { id: string; preferredName: string }[]
   /** Contadores discretos da sidebar (mesma fonte da lista da home). */
@@ -87,7 +90,7 @@ export function AppShell({
         {labels.shell.skipToContent}
       </a>
 
-      <Sidebar pathname={pathname} collapsed={collapsed} onToggle={toggleCollapsed} user={user} counts={counts} />
+      <Sidebar pathname={pathname} collapsed={collapsed} onToggle={toggleCollapsed} user={user} counts={counts} modules={modules} />
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="left" className="w-[264px] gap-0 p-0">
@@ -97,6 +100,7 @@ export function AppShell({
           <SidebarNav
             pathname={pathname}
             counts={counts}
+            modules={modules}
             onNavigate={() => setDrawerOpen(false)}
             footer={<CurrentUser user={user} />}
           />
@@ -109,7 +113,7 @@ export function AppShell({
           crumbs={crumbsFor(pathname, segmentLabels)}
           onOpenNavigation={() => setDrawerOpen(true)}
           actionsSlotId={CONTEXT_ACTIONS_ID}
-          readOnly={user.role === "VIEWER"}
+          readOnly={user.level === "VIEWER"}
           onOpenSearch={openCommandPalette}
         />
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">
@@ -117,7 +121,7 @@ export function AppShell({
             <ThresholdsProvider value={thresholds}>
               <QuickAgreementProvider members={agreementMembers} centrals={centrals}>
                 {children}
-                <CommandPalette people={people} canWrite={user.role !== "VIEWER"} />
+                <CommandPalette people={people} canWrite={user.level === "MANAGER"} modules={modules} />
               </QuickAgreementProvider>
             </ThresholdsProvider>
           </CrumbLabelsContext>

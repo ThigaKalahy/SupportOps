@@ -96,7 +96,11 @@ export const labels = {
     readOnlyHint: "Seu acesso é de leitura. Registros privados do gestor não aparecem para você.",
   },
   access: {
-    forbidden: "Ação não permitida para o seu papel.",
+    forbidden: "Ação não permitida para o seu acesso neste time.",
+    noTeamAccess: "Você não tem acesso a este time.",
+    noTeams: "Sua conta não tem acesso a nenhum time. Fale com o administrador.",
+    selectTeam: "Escolha o time que você quer abrir.",
+    moduleDisabled: "Este módulo não está ligado neste time.",
   },
   validation: {
     required: "Campo obrigatório.",
@@ -2081,6 +2085,11 @@ export const enumLabels = {
   role: {
     OWNER: "Gestor",
     MANAGER: "Gestor de time",
+    VIEWER: "Leitura",
+  },
+  /** Nível de acesso ao time (P22, TeamAccess). */
+  teamAccessLevel: {
+    MANAGER: "Gestor",
     VIEWER: "Leitura",
   },
   visibility: {

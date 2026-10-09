@@ -1,7 +1,7 @@
 "use server"
 
 import { parseTimelineFilters } from "@/lib/timeline-filters"
-import { requireUser } from "@/server/access"
+import { requireTeamContext } from "@/server/scope"
 import { getTimelinePage, type TimelinePage } from "@/server/queries/timeline"
 
 /**
@@ -11,6 +11,6 @@ import { getTimelinePage, type TimelinePage } from "@/server/queries/timeline"
  * acionado no cliente. Sem rota de API (D8).
  */
 export async function loadTimelinePage(memberId: string, search: string, cursor: string): Promise<TimelinePage> {
-  const user = await requireUser()
-  return getTimelinePage(user, memberId, parseTimelineFilters(new URLSearchParams(search)), cursor)
+  const ctx = await requireTeamContext()
+  return getTimelinePage(ctx, memberId, parseTimelineFilters(new URLSearchParams(search)), cursor)
 }

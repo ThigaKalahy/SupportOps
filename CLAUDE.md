@@ -4,7 +4,7 @@ Instruções de projeto para sessões de Claude Code. Leia por completo antes de
 
 ## Visão do produto
 
-Prontuário é o sistema de gestão de um time de suporte com 9 analistas. A metáfora é o registro clínico e o livro-razão, não um dashboard de BI: entrada datada, calha de margem, régua temporal, escala de severidade. Serve duas pessoas — o gestor (`OWNER`) que registra, e o superior dele (`VIEWER`) que lê o que for compartilhado. Não há cliente externo, não há usuário anônimo, não há endpoint público. O produto existe para responder uma pergunta todo dia: "quem precisa da minha atenção hoje?" — respondida pelo motor de alertas em `src/server/alerts.ts`. Tudo que não serve a essa pergunta ou ao registro histórico é escopo fora do MVP.
+Prontuário é o sistema de gestão de um time de suporte com 9 analistas. A metáfora é o registro clínico e o livro-razão, não um dashboard de BI: entrada datada, calha de margem, régua temporal, escala de severidade. Serve os gestores de time de uma organização, um time por vez. Cada gestor vê e registra apenas o próprio time; o gestor acima deles tem leitura em vários times e escolhe qual está olhando. O isolamento entre times é requisito de produto, não detalhe de implementação: o que é de um setor não aparece em outro. Não há cliente externo, não há usuário anônimo, não há endpoint público. O produto existe para responder uma pergunta todo dia: "quem precisa da minha atenção hoje?" — respondida pelo motor de alertas em `src/server/alerts.ts`. Tudo que não serve a essa pergunta ou ao registro histórico é escopo fora do MVP.
 
 ## Documentos do projeto
 
@@ -63,6 +63,18 @@ Fluxo de uma escrita:
 Fluxo de uma leitura: Server Component chama uma função de `src/server/queries/`, que já aplica a regra de `visibility` conforme o papel do usuário autenticado. Nenhuma query de UI decide visibilidade por conta própria.
 
 Auth.js exige configuração dividida por causa do Edge runtime: `src/server/auth.config.ts` é leve (sem Prisma, sem bcrypt) e é o que o middleware importa; `src/server/auth.ts` é completo, roda em Node, e contém o provider Credentials. Importar Prisma no middleware quebra o build na Vercel.
+
+## Modelo de acesso
+
+Dois gates independentes, verificados em sequência, implementados em arquivos separados que nunca se chamam (D29):
+
+1. ESCOPO DE TIME — `TeamAccess (userId, teamId, level)`. Duro. Sem acesso, o dado não existe. O time ativo da sessão é revalidado contra `TeamAccess` em TODA requisição, em `requireTeamContext` de `src/server/scope.ts`. Nunca confiado do cookie ou do JWT, nunca cacheado na sessão, nunca resolvido para um padrão quando inválido (D30).
+2. MÓDULO — `TeamModule (teamId, moduleKey)`. Duro. Gating em três camadas: navegação, rota e Server Action/query. Esconder do menu não é autorização (D32).
+3. VISIBILIDADE — `PRIVATE | SHARED`. Macio. `MANAGER` no time vê os dois, `VIEWER` vê só `SHARED` (D34). Em `visibilityFilter`, arquivo separado de `teamScope`.
+
+`isPlatformAdmin` permite criar time, criar usuário, conceder acesso e ligar módulo. Não dá acesso a dado de time nenhum — até o administrador precisa de `TeamAccess`.
+
+`User.role` está OBSOLETO e não participa de nenhuma decisão de autorização. A coluna permanece por compatibilidade e será removida em limpeza futura.
 
 ## Convenções
 
@@ -144,7 +156,9 @@ pnpm db:seed             # popular dados de demonstração
 pnpm db:studio           # inspecionar dados
 pnpm user:create         # criar usuário (único meio de criar conta)
 pnpm user:password       # redefinir senha de usuário
-pnpm test                # node:test (tests/), arquivos em série; parte lê o banco com os dados do seed
+pnpm test                # node:test (tests/), em série, no banco de TESTE (.env.test) — nunca no de produção
+pnpm test:db:prepare     # migrations + seed no banco de teste (.env.test)
+pnpm db:verify-teams     # verificação do P22 (teamId nulo por tabela, TeamAccess por usuário); só leitura
 pnpm lint && pnpm typecheck
 ```
 
@@ -161,6 +175,9 @@ Nenhum componente novo sem primitivo correspondente em `/ui-lab`. Deriva visual 
 Exceção única à proibição de emoji: o gerador de texto para WhatsApp em `src/server/whatsapp.ts` (D16). Nenhum componente de UI usa emoji.
 
 A sidebar tem 8 itens: Hoje, Em observação, Equipe, Combinados, Validação de prioridade (com aba de devoluções), Dailies, Registros, Desenvolvimento, mais Configurações no rodapé. Oito é o teto — nenhum item novo entra sem outro sair ou virar aba.
+
+Quem tem acesso a mais de um time vê o nome do time ativo permanentemente na barra de contexto, nunca apenas em dropdown fechado nem apenas na sidebar — ler o registro de um time pensando que é de outro é erro gerencial real. Trocar de time redireciona para a home do time novo, nunca para a rota equivalente. Ação indisponível por nível de acesso fica AUSENTE da interface, não desabilitada.
+A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, item não existe.
 
 ## Regras de modelagem
 
@@ -190,6 +207,12 @@ A sidebar tem 8 itens: Hoje, Em observação, Equipe, Combinados, Validação de
 - Prazo de combinado (D28): combinado criado na Seção 3 de uma daily nasce com `originalDueDate` e `dueDate` iguais à DATA DA DAILY. Reagendar na daily do dia D propõe o próprio dia D. Combinado criado fora de daily nasce com prazo HOJE. `originalDueDate` continua imutável (D17).
 - Prazo igual a hoje é severidade `neutral`. O sinal de atraso começa no primeiro dia de vencimento.
 - Combinado com prazo hoje NÃO entra no alerta "Combinado vencendo" nem na home. A daily é o mecanismo de revisão dele.
+- `teamId` é denormalizado em toda entidade de dado de time, mesmo quando derivável via `TeamMember`. Denormalização deliberada: toda query filtra por `teamId` direto, sem join, e um join esquecido deixa de ser vazamento.
+- Em toda entidade de dado de time, `teamId` entra no primeiro índice composto, para que o filtro de time seja sempre coberto.
+- Nenhuma função de `src/server/queries/` ou `src/actions/` obtém o contexto por conta própria: recebe `TeamContext` como primeiro parâmetro. Isso torna o esquecimento visível na assinatura.
+- Nenhuma query `$queryRaw` sem filtro explícito de `teamId` no WHERE.
+- Toda escrita grava `teamId` explicitamente a partir do contexto, nunca derivando do registro pai.
+- `TeamAccess` revogado preenche `revokedAt` e nunca é apagado — é registro de quem pôde ver o quê.
 
 ## Métricas e score
 
@@ -207,7 +230,7 @@ A sidebar tem 8 itens: Hoje, Em observação, Equipe, Combinados, Validação de
 - 5 tentativas falhas bloqueiam a conta por 15 minutos.
 - Toda tentativa de login, sucesso ou falha, gera entrada no `AuditLog`.
 - O domínio de produção na Vercel é público no plano Hobby. A tela de login é a única barreira. Deployment Protection cobre apenas os previews.
-- Dois papéis ativos no MVP: `OWNER` (você, leitura e escrita completas) e `VIEWER` (seu gestor, leitura apenas). `MANAGER` existe no enum mas fica reservado para quando outro gestor tiver seu próprio time.
+- Acesso é por time (P22, D30, D34): `TeamAccess.level` MANAGER (lê e escreve, vê PRIVATE) ou VIEWER (só lê, só SHARED). `User.role` (OWNER/MANAGER/VIEWER) é obsoleto e não decide nada; `pnpm user:create` ainda pergunta o papel só para escolher o nível do acesso que concede.
 - `VIEWER` **nunca** lê um registro com `visibility: PRIVATE`, em nenhuma superfície — timeline, busca, command palette, exportação futura. Essa checagem vive nas queries de `src/server/queries/`, não em filtro de UI.
 - Toda escrita grava uma entrada em `AuditLog` (`action`, `entity`, `entityId`, `before`, `after`, `userId`, `at`). Sem exceção, inclusive para escritas administrativas em `/settings`.
 - Nenhum endpoint público. Sem REST, sem rota de API além de `api/auth/[...nextauth]`. Toda mutação é Server Action autenticada (D8).
@@ -216,7 +239,10 @@ A sidebar tem 8 itens: Hoje, Em observação, Equipe, Combinados, Validação de
 - A rota `/ui-lab` é bloqueada em produção via NODE_ENV. Ela expõe estados de componente e não deve existir fora de desenvolvimento.
 - `WatchItem` nasce com `visibility: PRIVATE` sem exceção, e não há configuração que mude esse padrão.
 - `src/server/whatsapp.ts` NUNCA inclui `WatchItem`, em nenhuma seção, nem quando a observação está marcada como SHARED. É proibição absoluta, não default.
-- O PDF da daily (`src/lib/daily-report.ts`) inclui TODAS as observações ativas que quem gera pode ler — para o OWNER, inclusive as PRIVATE; para o VIEWER, só as SHARED (a query aplica `visibilityFilter`). Decisão do usuário em 08/10/2026: o PDF é documento gerencial e avisa no topo quando contém observação privada. Cada exportação grava `daily.export.pdf` no AuditLog. A proibição do WhatsApp (D25) não muda.
+- O PDF da daily (`src/lib/daily-report.ts`) inclui TODAS as observações ativas que quem gera pode ler — para o MANAGER do time, inclusive as PRIVATE; para o VIEWER, só as SHARED (a query aplica `visibilityFilter`). Decisão do usuário em 08/10/2026: o PDF é documento gerencial e avisa no topo quando contém observação privada. Cada exportação grava `daily.export.pdf` no AuditLog. A proibição do WhatsApp (D25) não muda.
+- A suíte `tests/isolation.test.ts` é obrigatória e precisa passar antes de qualquer merge. Inclui o teste estrutural que varre queries e actions em busca de `where` sem `teamId`. A lista de exceções é explícita e comentada; a regra nunca é desligada.
+- Tentativa de acessar time sem permissão resulta em ERRO, nunca em lista vazia. Lista vazia esconde o bug.
+- Desligar um módulo não apaga dado: torna inacessível pela interface.
 
 ## Contrato de importação de métricas
 
@@ -262,6 +288,14 @@ Nada disto está implementado no MVP (D5, P17): não há importador, rota ou int
 | D26 | `WatchItem` escreve `TimelineEvent` apenas quando `memberId` está preenchido | Observação sobre pessoa é prontuário. Observação sobre central ou processo não tem prontuário onde entrar |
 | D27 | Resolver um `WatchItem` exige texto de resolução | Fechar sem dizer o que aconteceu desperdiça o registro — o valor da observação está no que você aprendeu |
 | D28 | O prazo padrão de combinado criado em daily é a data da própria daily, não o dia seguinte. Prazo igual a hoje é severidade neutra | O combinado é o compromisso do dia. Prazo no dia seguinte empurra tudo para frente. E se o estado normal de todo combinado novo for amarelo, amarelo deixa de significar algo |
+| D29 | Autorização tem dois gates independentes: escopo de time (duro) e visibilidade (macio), em funções e arquivos separados | Bug na visibilidade mostrava nota privada. Bug no escopo mostra o prontuário de outro setor. Não podem compartilhar código |
+| D30 | `TeamAccess` é a única fonte de verdade do escopo. O time ativo é revalidado contra ela em toda requisição, nunca confiado do cookie | Cookie com outro time vindo de quem não tem acesso tem que ser recusado. É o jeito número um de sistema multi-time vazar |
+| D31 | Tudo é escopado por time, exceto `User`, `Organization`, `Team`, `TeamAccess` e `AuditLog` — inclusive tabelas de apoio | Uma regra só, sem exceção para lembrar ao escrever query. Senioridade compartilhada quebra no primeiro time que usa outra nomenclatura |
+| D32 | Módulos são por time (`TeamModule`), com gating em navegação, rota e action/query | Esconder do menu não é autorização: a URL digitada entra |
+| D33 | Time novo nasce vazio — sem pessoa fictícia, sem competência pré-definida, sem dado de demonstração | O seed do P4 é do Suporte. Semear demonstração em time de outro gestor é sujeira que ele terá que apagar |
+| D34 | `PRIVATE` é visível a quem tem `level = MANAGER` naquele time. `VIEWER` nunca lê `PRIVATE` | Mantém o comportamento atual e já funciona quando um time tiver dois gestores |
+| D35 | Não existe visão consolidada entre times | É a tela que mais convida dado a se misturar, e não foi pedida |
+| D36 | Em tabela escopada por time, `teamId` é a única chave de escopo em query; `organizationId` nunca escopa sozinho | Duas chaves de escopo convidam a usar a errada |
 
 Qualquer sessão de Claude Code que considerar revisar uma dessas decisões deve parar e perguntar ao usuário antes de agir — não decidir sozinha, mesmo que pareça uma melhoria técnica.
 
@@ -449,6 +483,14 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - "Em observação": todas as ativas legíveis por quem gera, agrupadas por grau e com a mais esquecida primeiro. Observação ligada a um combinado ou nota desta daily ganha "em observação (grau)" na linha da pessoa e, no bloco final, só o título com "aparece acima" — sem repetir o contexto. As demais saem com o contexto (até 180 caracteres), exceto fogo baixo (só o título); estado "sem revisão há N dias" ou "fogo alto há N dias sem mudar de grau" ao lado.
 - Gerador de PDF próprio em `src/lib/pdf.ts` (sem biblioteca nova): A4, Helvetica/negrito/itálico padrão em WinAnsi (acentos do português), quebra de linha e de página, rodapé com "gerado em DD/MM/AAAA HH:mm" e "Página N de M". Emoji e caracteres fora do WinAnsi viram "?". Testes em `tests/daily-report.test.ts`.
 
+**P22 — Multi-tenancy no banco e no acesso (D29–D36)**
+- Três migrations, nesta ordem: `20261011120000_team_scope_expand` (TeamAccess, TeamModule, `User.isPlatformAdmin`, `Team.slug/isActive/createdAt/createdByUserId`, `AuditLog.teamId` e `teamId` NULLABLE em 36 tabelas; nenhuma constraint nova em tabela existente), `20261011120100_team_scope_backfill` (SQL determinístico: falha se não houver exatamente 1 time; T recebe slug `suporte`; toda linha recebe `teamId = T`; OWNER vira `isPlatformAdmin` + TeamAccess MANAGER, MANAGER → MANAGER, VIEWER → VIEWER; os três módulos ligados; falha se sobrar `teamId` nulo) e `20261011120200_team_scope_restrict` (NOT NULL, FK para Team com ON DELETE RESTRICT, `teamId` no primeiro índice composto, unicidades de catálogo passam de organização para time, `AlertThreshold` com chave `(teamId, key)`). `pnpm db:verify-teams` confere depois.
+- `src/server/scope.ts` (gate 1, duro): `TeamContext`, `requireTeamContext` (cookie `active-team` httpOnly/lax/secure em produção, SEMPRE reconfirmado contra TeamAccess não revogado e time ativo; um time só → resolve e regrava; mais de um → `TeamSelectionRequiredError` para o P23; nenhum → `NoTeamAccessError`), `requireWriteContext`, `teamContextFor`, `teamScope`, `teamSql`, `requireManager`, `canWrite`, `hasModule`, `requireModule`. `src/server/visibility.ts` (gate 2, macio) só conhece `ctx.level`; os dois não se chamam (teste garante).
+- Toda query de `src/server/queries` e todo núcleo de escrita recebem `TeamContext` como 1º parâmetro e filtram/gravam `teamId` direto (sem join); Server Actions são a fronteira que monta o contexto. SQL cru (busca, /team, resumos de validação) filtra `teamId` por tabela. Timeline e auditoria gravam o time. O motor de alertas olha um time por chamada.
+- Módulos (`src/lib/modules.ts`: PRIORITY_VALIDATION, DEV_RETURNS, CENTRALS) com gating em três camadas: navegação (`navItemsFor`, paleta, abas de triagem e de /settings), rota (`notFound`, /settings redireciona para a primeira aba existente) e query/núcleo (`requireModule`). Central desligada some dos formulários e das tabelas; os alertas de devolução somem sem o módulo.
+- Sessão/JWT não carregam mais papel; o shell mostra o nível no time ativo. `pnpm user:create` concede TeamAccess no time escolhido (slug).
+- `pnpm test` passou a usar `.env.test` (banco de teste). `tests/isolation.test.ts`: varredura estrutural (sem banco, passa) e os sete critérios com dois times reais no banco de teste (passando no banco de teste, 273/273 na suíte completa).
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:
@@ -480,6 +522,9 @@ As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora
 - P19 — Central de atendimento (D20). _(Código entregue; migration aguarda aplicação no banco de produção.)_
 - P20 — Devolução do desenvolvimento (D21, D22). _(Código entregue; migration aguarda aplicação no banco de produção, junto com a do P19.)_
 - P21 — Em observação (D24–D27). _(Código entregue; migration aguarda aplicação no banco de produção, junto com as do P19 e P20.)_
+- P22 — Multi-tenancy no banco e no acesso (D29–D36). _(Entregue e ensaiado no banco de teste; migrations aguardam aplicação em produção.)_
+- P23 — Seleção e troca de time.
+- P24 — Provisionamento de time.
 
 ## Protocolo de execução autônoma
 

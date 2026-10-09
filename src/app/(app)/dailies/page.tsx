@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageHeader } from "@/components/ui/page-header"
 import { labels, plural } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { listDailies } from "@/server/queries/dailies"
 
 import { DailyHistory } from "./_components/daily-history"
@@ -20,12 +20,12 @@ export const metadata: Metadata = {
 
 /** Histórico de dailies, da mais recente para a mais antiga. */
 export default async function DailiesPage() {
-  const user = await requireUser()
-  const dailies = await listDailies(user)
+  const ctx = await requireTeamContext()
+  const dailies = await listDailies(ctx)
 
   return (
     <div className="flex flex-col gap-6">
-      {canWrite(user) ? (
+      {canWrite(ctx) ? (
         <ContextActions>
           <Button asChild size="sm">
             <Link href="/dailies/new">

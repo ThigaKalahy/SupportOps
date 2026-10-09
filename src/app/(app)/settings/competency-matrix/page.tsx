@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 
 import { CompetencyMatrix } from "@/components/settings/competency-matrix"
 import { labels } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { getExpectationMatrix } from "@/server/queries/development"
 
 export const metadata: Metadata = {
@@ -10,6 +10,6 @@ export const metadata: Metadata = {
 }
 
 export default async function CompetencyMatrixPage() {
-  const user = await requireUser()
-  return <CompetencyMatrix matrix={await getExpectationMatrix(user)} canWrite={canWrite(user)} />
+  const ctx = await requireTeamContext()
+  return <CompetencyMatrix matrix={await getExpectationMatrix(ctx)} canWrite={canWrite(ctx)} />
 }

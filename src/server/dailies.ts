@@ -1,14 +1,15 @@
 import { parseDisplayDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
+import { MODULES } from "../lib/modules.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import { dailySchema, editDailySchema } from "../lib/validators/daily.ts"
 
-import { writeAudit } from "./audit.ts"
+import { auditOf, writeAudit } from "./audit.ts"
 import { linkPendingWatchItems } from "./watch.ts"
 import { db } from "./db.ts"
 import { teamFor } from "./queries/dailies.ts"
 import { recordTimelineEvents, replaceTimelineEvents, timelineEventFor, type TimelineEventInput } from "./timeline.ts"
-import { canWrite, memberScope, type Viewer } from "./visibility.ts"
+import { hasModule, requireManager, teamScope, type TeamContext } from "./scope.ts"
 
 /**
  * Registro de daily (núcleo da Server Action de src/actions/dailies.ts). Tudo
@@ -37,8 +38,8 @@ function date(value: string): Date {
   return parsed
 }
 
-export async function createDailyRecord(user: Viewer, input: unknown): Promise<DailyResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function createDailyRecord(ctx: TeamContext, input: unknown): Promise<DailyResult> {
+  requireManager(ctx)
   const parsed = dailySchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
@@ -46,7 +47,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
   const data = parsed.data
   const day = date(data.date)
 
-  const team = await teamFor(user)
+  const team = await teamFor(ctx)
   if (!team) return { ok: false, error: labels.validation.generic }
 
   // Tudo o que o formulário referencia precisa existir no time e no escopo de quem escreve.
@@ -55,11 +56,11 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
   const reasonIds = [...new Set(data.reviews.map((r) => r.blockerReasonId).filter(Boolean))]
   const [members, agreements, reasons] = await Promise.all([
     db.teamMember.findMany({
-      where: { id: { in: [...memberIds] }, teamId: team.id, ...memberScope(user) },
+      where: { ...teamScope(ctx), id: { in: [...memberIds] } },
       select: { id: true },
     }),
     db.agreement.findMany({
-      where: { id: { in: reviewIds }, member: { ...memberScope(user), teamId: team.id } },
+      where: { ...teamScope(ctx), id: { in: reviewIds } },
       select: {
         id: true,
         memberId: true,
@@ -72,12 +73,13 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
         createdAt: true,
       },
     }),
-    db.blockerReason.count({ where: { id: { in: reasonIds }, organizationId: user.organizationId } }),
+    db.blockerReason.count({ where: { ...teamScope(ctx), id: { in: reasonIds } } }),
   ])
-  // Central de cada combinado novo (P19): opcional, mas se vier precisa ser ativa e da organização.
+  // Central de cada combinado novo (P19): opcional, mas se vier precisa ser ativa, do time e com o módulo ligado.
   const centralIds = [...new Set(data.newAgreements.map((a) => a.centralId).filter(Boolean))]
+  if (centralIds.length && !hasModule(ctx, MODULES.CENTRALS)) return { ok: false, error: labels.validation.generic }
   const validCentrals = centralIds.length
-    ? await db.central.count({ where: { id: { in: centralIds }, organizationId: user.organizationId, isActive: true, deletedAt: null } })
+    ? await db.central.count({ where: { ...teamScope(ctx), id: { in: centralIds }, isActive: true, deletedAt: null } })
     : 0
   if (validCentrals !== centralIds.length) return { ok: false, error: labels.validation.generic }
   if (members.length !== memberIds.size || reasons !== reasonIds.length || new Set(reviewIds).size !== reviewIds.length) {
@@ -94,11 +96,11 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
       async (tx) => {
         const daily = await tx.daily.create({
           data: {
-            teamId: team.id,
+            ...teamScope(ctx),
             date: day,
             summary: textOrNull(data.summary),
             decisions: textOrNull(data.decisions),
-            authorUserId: user.id,
+            authorUserId: ctx.userId,
           },
         })
 
@@ -106,6 +108,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
           data: data.participants.map((p) => {
             const text = textOrNull(p.note)
             return {
+              ...teamScope(ctx),
               dailyId: daily.id,
               memberId: p.memberId,
               present: p.present,
@@ -127,12 +130,13 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
           reviewedBy.set(agreement.memberId, counts)
 
           // Condição de status no UPDATE: se outra tela encerrou o combinado no meio, a daily inteira volta.
-          const open = { id: agreement.id, status: { in: ["OPEN" as const, "IN_PROGRESS" as const] } }
+          const open = { ...teamScope(ctx), id: agreement.id, status: { in: ["OPEN" as const, "IN_PROGRESS" as const] } }
           const checkin = {
+            ...teamScope(ctx),
             agreementId: agreement.id,
             dailyId: daily.id,
             outcome: review.outcome,
-            authorUserId: user.id,
+            authorUserId: ctx.userId,
           }
 
           if (review.outcome === "DONE") {
@@ -140,7 +144,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
             if (done.count !== 1) throw new ClosedAgreementError()
             await tx.agreementCheckin.create({ data: checkin })
             timeline.push(
-              timelineEventFor.agreementDone({ ...agreement, completedAt: day, outcome: null, authorUserId: user.id }),
+              timelineEventFor.agreementDone({ ...agreement, completedAt: day, outcome: null, authorUserId: ctx.userId }),
             )
             continue
           }
@@ -160,6 +164,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
           const due = date(review.replacementDueDate)
           const replacement = await tx.agreement.create({
             data: {
+              ...teamScope(ctx),
               memberId: agreement.memberId,
               title: review.replacementTitle,
               origin: "DAILY",
@@ -168,7 +173,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
               originalDueDate: due,
               dueDate: due,
               replacesAgreementId: agreement.id,
-              authorUserId: user.id,
+              authorUserId: ctx.userId,
             },
           })
           await tx.agreementCheckin.create({ data: { ...checkin, ...blocker } })
@@ -180,6 +185,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
           const due = date(row.dueDate)
           const created = await tx.agreement.create({
             data: {
+              ...teamScope(ctx),
               memberId: row.memberId,
               centralId: row.centralId || null,
               title: row.title,
@@ -187,17 +193,17 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
               sourceDailyId: daily.id,
               originalDueDate: due,
               dueDate: due,
-              authorUserId: user.id,
+              authorUserId: ctx.userId,
             },
           })
           timeline.push(timelineEventFor.agreementCreated(created))
           // P21: observação marcada na linha antes de salvar passa a apontar para o combinado.
-          await linkPendingWatchItems(tx, user.organizationId, row.watchIds, { agreementId: created.id })
+          await linkPendingWatchItems(tx, ctx, row.watchIds, { agreementId: created.id })
         }
         // P21: observações marcadas nas notas e nas linhas desta daily passam a apontar para ela.
         await linkPendingWatchItems(
           tx,
-          user.organizationId,
+          ctx,
           [...data.participants.flatMap((p) => p.watchIds), ...data.newAgreements.flatMap((a) => a.watchIds)],
           { dailyId: daily.id },
         )
@@ -213,13 +219,13 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
             date: day,
             note: participant?.isBlocker ? null : text,
             blocker: participant?.isBlocker ? text : null,
-            authorUserId: user.id,
+            authorUserId: ctx.userId,
             reviewed: reviewedBy.get(memberId),
           })
           if (line) timeline.push(line)
         }
 
-        await recordTimelineEvents(tx, timeline)
+        await recordTimelineEvents(tx, ctx, timeline)
         await writeAudit(
           {
             action: "daily.create",
@@ -236,7 +242,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
               created: data.newAgreements.length,
             },
           },
-          { organizationId: user.organizationId, userId: user.id, tx },
+          auditOf(ctx, tx),
         )
         return daily.id
       },
@@ -258,17 +264,15 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
  * perdeu e não teve combinado revisado deixa de ter. Revisões e combinados
  * criados não mudam aqui.
  */
-export async function updateDailyRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
   const parsed = editDailySchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   }
   const data = parsed.data
-  const team = await teamFor(user)
-  if (!team) return { ok: false, error: labels.validation.generic }
   const daily = await db.daily.findFirst({
-    where: { id: data.id, teamId: team.id },
+    where: { ...teamScope(ctx), id: data.id },
     select: {
       id: true,
       date: true,
@@ -296,7 +300,7 @@ export async function updateDailyRecord(user: Viewer, input: unknown): Promise<A
   await db.$transaction(
     async (tx) => {
       await tx.daily.update({
-        where: { id: daily.id },
+        where: { id: daily.id, ...teamScope(ctx) },
         data: { summary: textOrNull(data.summary), decisions: textOrNull(data.decisions) },
       })
       const timeline: TimelineEventInput[] = []
@@ -305,7 +309,7 @@ export async function updateDailyRecord(user: Viewer, input: unknown): Promise<A
         const note = p.isBlocker ? null : text
         const blocker = p.isBlocker ? text : null
         await tx.dailyParticipant.update({
-          where: { dailyId_memberId: { dailyId: daily.id, memberId: p.memberId } },
+          where: { dailyId_memberId: { dailyId: daily.id, memberId: p.memberId }, ...teamScope(ctx) },
           data: { present: p.present, note, blocker },
         })
         const line = timelineEventFor.dailyParticipation({
@@ -333,7 +337,7 @@ export async function updateDailyRecord(user: Viewer, input: unknown): Promise<A
         })
         if (line) timeline.push(line)
       }
-      await replaceTimelineEvents(tx, { kind: "daily", id: daily.id }, "DAILY", timeline)
+      await replaceTimelineEvents(tx, ctx, { kind: "daily", id: daily.id }, "DAILY", timeline)
       await writeAudit(
         {
           action: "daily.update",
@@ -351,7 +355,7 @@ export async function updateDailyRecord(user: Viewer, input: unknown): Promise<A
             })),
           },
         },
-        { organizationId: user.organizationId, userId: user.id, tx },
+        auditOf(ctx, tx),
       )
     },
     { maxWait: 10_000, timeout: 30_000 },

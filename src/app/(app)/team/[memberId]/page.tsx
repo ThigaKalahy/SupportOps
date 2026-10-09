@@ -8,7 +8,8 @@ import { ProfileWatchBlock } from "@/components/watch/profile-watch-block"
 import { todayBusinessDate } from "@/lib/dates"
 import { DEV_RETURN_PARAMS } from "@/lib/dev-return-filters"
 import { toUrlDate, VALIDATION_PARAMS } from "@/lib/validation-filters"
-import { canWrite } from "@/server/access"
+import { MODULES } from "@/lib/modules"
+import { canWrite, hasModule } from "@/server/scope"
 import { getMemberAdherenceProfile } from "@/server/queries/adherence"
 import { getMemberDevReturnProfile } from "@/server/queries/dev-returns"
 import { memberValidationSummary } from "@/server/queries/priority-validations"
@@ -34,21 +35,24 @@ import { loadProfile } from "./data"
  */
 export default async function MemberOverviewPage({ params }: { params: Promise<{ memberId: string }> }) {
   const { memberId } = await params
-  const { user, profile } = await loadProfile(memberId)
+  const { ctx, profile } = await loadProfile(memberId)
   if (!profile) notFound()
 
   const today = todayBusinessDate()
+  // Módulos opcionais desligados no time (D32): o bloco não existe e a query não roda.
+  const withValidations = hasModule(ctx, MODULES.PRIORITY_VALIDATION)
+  const withDevReturns = hasModule(ctx, MODULES.DEV_RETURNS)
   const [overview, validations, adherence, thresholds, devReturns] = await Promise.all([
-    getMemberOverview(user, profile.id),
-    memberValidationSummary(user, profile.id, today),
-    getMemberAdherenceProfile(user, profile.id, today),
-    getThresholds(user),
-    getMemberDevReturnProfile(user, profile.id, today),
+    getMemberOverview(ctx, profile.id),
+    withValidations ? memberValidationSummary(ctx, profile.id, today) : null,
+    getMemberAdherenceProfile(ctx, profile.id, today),
+    getThresholds(ctx),
+    withDevReturns ? getMemberDevReturnProfile(ctx, profile.id, today) : null,
   ])
-  const watching = await memberWatchItems(user, profile.id, thresholds)
+  const watching = await memberWatchItems(ctx, profile.id, thresholds)
   const base = `/team/${profile.id}`
   const windowStart = new Date(today)
-  windowStart.setUTCDate(windowStart.getUTCDate() - (validations.days - 1))
+  windowStart.setUTCDate(windowStart.getUTCDate() - ((validations?.days ?? 1) - 1))
   const validationsHref = `/priority-validations?${new URLSearchParams({
     [VALIDATION_PARAMS.period]: "custom",
     [VALIDATION_PARAMS.from]: toUrlDate(windowStart),
@@ -56,7 +60,7 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
     [VALIDATION_PARAMS.member]: profile.id,
   })}`
   const devReturnsStart = new Date(today)
-  devReturnsStart.setUTCDate(devReturnsStart.getUTCDate() - (devReturns.days - 1))
+  devReturnsStart.setUTCDate(devReturnsStart.getUTCDate() - ((devReturns?.days ?? 1) - 1))
   const devReturnsHref = `/dev-returns?${new URLSearchParams({
     [DEV_RETURN_PARAMS.period]: "custom",
     [DEV_RETURN_PARAMS.from]: toUrlDate(devReturnsStart),
@@ -70,7 +74,7 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
         <SummaryEditor
           memberId={profile.id}
           summary={profile.managerSummary}
-          canEdit={canWrite(user) && profile.status !== "INACTIVE"}
+          canEdit={canWrite(ctx) && profile.status !== "INACTIVE"}
         />
         <RecentEvents events={overview.recentEvents} timelineHref={`${base}/timeline`} />
         <Traits overview={overview} />
@@ -86,32 +90,36 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
           days={adherence.days}
           href={`${base}/agreements`}
         />
-        <ProfileValidationBlock
-          data={{
-            days: validations.days,
-            total: validations.summary.total,
-            changed: validations.summary.changed,
-            changeRate: validations.summary.changeRate,
-            topReason: validations.topReason,
-          }}
-          member={{ id: profile.id, preferredName: profile.preferredName }}
-          canWrite={canWrite(user) && profile.status !== "INACTIVE"}
-          href={validationsHref}
-        />
-        <ProfileDevReturnBlock
-          data={{
-            days: devReturns.days,
-            total: devReturns.stats.total,
-            attributable: devReturns.stats.attributable,
-            ticketsValidated: devReturns.stats.ticketsValidated,
-            lowConfidence: devReturns.stats.lowConfidence,
-            topReason: devReturns.topReason,
-            series: devReturns.series,
-          }}
-          member={{ id: profile.id, preferredName: profile.preferredName }}
-          canWrite={canWrite(user) && profile.status !== "INACTIVE"}
-          href={devReturnsHref}
-        />
+        {validations ? (
+          <ProfileValidationBlock
+            data={{
+              days: validations.days,
+              total: validations.summary.total,
+              changed: validations.summary.changed,
+              changeRate: validations.summary.changeRate,
+              topReason: validations.topReason,
+            }}
+            member={{ id: profile.id, preferredName: profile.preferredName }}
+            canWrite={canWrite(ctx) && profile.status !== "INACTIVE"}
+            href={validationsHref}
+          />
+        ) : null}
+        {devReturns ? (
+          <ProfileDevReturnBlock
+            data={{
+              days: devReturns.days,
+              total: devReturns.stats.total,
+              attributable: devReturns.stats.attributable,
+              ticketsValidated: devReturns.stats.ticketsValidated,
+              lowConfidence: devReturns.stats.lowConfidence,
+              topReason: devReturns.topReason,
+              series: devReturns.series,
+            }}
+            member={{ id: profile.id, preferredName: profile.preferredName }}
+            canWrite={canWrite(ctx) && profile.status !== "INACTIVE"}
+            href={devReturnsHref}
+          />
+        ) : null}
         <ActivePlans plans={overview.plans} href={`${base}/development`} thresholds={thresholds} />
         <Mentorships overview={overview} />
         <Rhythm overview={overview} lastOneOnOne={profile.lastOneOnOne} seniorityKey={profile.seniorityKey} thresholds={thresholds} />

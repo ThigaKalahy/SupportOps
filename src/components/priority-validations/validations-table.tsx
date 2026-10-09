@@ -32,7 +32,10 @@ export function ValidationsTable({
   empty,
   onEdit,
   watching = {},
+  showCentral = true,
 }: {
+  /** Módulo de centrais ligado no time (D32): sem ele, a coluna não existe. */
+  showCentral?: boolean
   rows: ValidationRow[]
   /** P21: observação ativa por validação. */
   watching?: Record<string, { id: string; heat: WatchHeat }>
@@ -43,6 +46,15 @@ export function ValidationsTable({
 }) {
   const [deleting, setDeleting] = React.useState<ValidationRow | null>(null)
 
+  const centralColumn: DataTableColumn<ValidationRow> = {
+    id: "central",
+    header: labels.centrals.column,
+    cell: (r) =>
+      r.central ? <span className="truncate text-ink">{r.central.name}</span> : <span className="text-ink-secondary">{T.none}</span>,
+    title: (r) => r.central?.name ?? labels.centrals.none,
+    width: "136px",
+    hideBelow: "lg",
+  }
   const columns: DataTableColumn<ValidationRow>[] = []
   if (showDate) {
     columns.push({
@@ -84,15 +96,7 @@ export function ValidationsTable({
     },
     { id: "member",
       stackedOrder: 1, header: T.member, cell: (r) => r.member.preferredName, width: "128px" },
-    {
-      id: "central",
-      header: labels.centrals.column,
-      cell: (r) =>
-        r.central ? <span className="truncate text-ink">{r.central.name}</span> : <span className="text-ink-secondary">{T.none}</span>,
-      title: (r) => r.central?.name ?? labels.centrals.none,
-      width: "136px",
-      hideBelow: "lg",
-    },
+    ...(showCentral ? [centralColumn] : []),
     {
       id: "analyst",
       header: T.analyst,

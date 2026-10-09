@@ -3,7 +3,8 @@ import type { TimelineEventType } from "@prisma/client"
 import { isDue, isOnTime, makeRate, monthStart, type Rate } from "../../lib/adherence.ts"
 
 import { db } from "../db.ts"
-import { memberScope, visibilityFilter, type Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
+import { visibilityFilter } from "../visibility.ts"
 
 /**
  * Coluna lateral da home: composição do time, ritmo de gestão do mês,
@@ -55,8 +56,9 @@ function addDays(date: Date, days: number): Date {
   return d
 }
 
-export async function getTodayPanel(viewer: Viewer, today: Date): Promise<TodayPanel> {
-  const people = { ...memberScope(viewer), status: { not: "INACTIVE" as const } }
+export async function getTodayPanel(ctx: TeamContext, today: Date): Promise<TodayPanel> {
+  const scope = teamScope(ctx)
+  const people = { status: { not: "INACTIVE" as const } }
   const month = monthStart(today)
   const until = addDays(today, UPCOMING_DAYS)
   const member = { select: { id: true, preferredName: true } } as const
@@ -75,37 +77,38 @@ export async function getTodayPanel(viewer: Viewer, today: Date): Promise<TodayP
     actions,
     recent,
   ] = await Promise.all([
-    db.teamMember.findMany({ where: people, select: { status: true, seniorityId: true } }),
-    db.seniority.findMany({ where: { organizationId: viewer.organizationId }, orderBy: { order: "desc" } }),
-    db.daily.findFirst({ where: { team: { organizationId: viewer.organizationId } }, orderBy: { date: "desc" }, select: { date: true } }),
-    db.oneOnOne.count({ where: { member: people, ...visibilityFilter(viewer), date: { gte: month, lte: today } } }),
-    db.feedback.count({ where: { member: people, ...visibilityFilter(viewer), date: { gte: month, lte: today } } }),
+    db.teamMember.findMany({ where: { ...scope, ...people }, select: { status: true, seniorityId: true } }),
+    db.seniority.findMany({ where: scope, orderBy: { order: "desc" } }),
+    db.daily.findFirst({ where: scope, orderBy: { date: "desc" }, select: { date: true } }),
+    db.oneOnOne.count({ where: { ...scope, member: people, ...visibilityFilter(ctx), date: { gte: month, lte: today } } }),
+    db.feedback.count({ where: { ...scope, member: people, ...visibilityFilter(ctx), date: { gte: month, lte: today } } }),
     db.agreement.findMany({
-      where: { member: people, originalDueDate: { gte: month, lte: today } },
+      where: { ...scope, member: people, originalDueDate: { gte: month, lte: today } },
       select: { status: true, originalDueDate: true, completedAt: true },
     }),
     db.agreement.findMany({
       // Combinado com prazo hoje fica fora da home (D28): a daily é quem o revisa.
-      where: { member: people, status: { in: ["OPEN", "IN_PROGRESS"] }, dueDate: { gt: today, lte: until } },
+      where: { ...scope, member: people, status: { in: ["OPEN", "IN_PROGRESS"] }, dueDate: { gt: today, lte: until } },
       select: { id: true, title: true, dueDate: true, member },
     }),
     // O 1:1 mais recente de cada pessoa: só a revisão marcada nele está pendente (P13).
     db.oneOnOne.findMany({
-      where: { member: people, ...visibilityFilter(viewer) },
+      where: { ...scope, member: people, ...visibilityFilter(ctx) },
       distinct: ["memberId"],
       orderBy: [{ memberId: "asc" }, { date: "desc" }],
       select: { id: true, memberId: true, date: true, nextReviewAt: true, topics: true, member },
     }),
     db.feedback.findMany({
-      where: { member: people, ...visibilityFilter(viewer), followUpAt: { gte: today, lte: until } },
+      where: { ...scope, member: people, ...visibilityFilter(ctx), followUpAt: { gte: today, lte: until } },
       select: { id: true, followUpAt: true, behavior: true, member },
     }),
     db.developmentPlan.findMany({
-      where: { member: people, status: "ACTIVE", dueDate: { gte: today, lte: until } },
+      where: { ...scope, member: people, status: "ACTIVE", dueDate: { gte: today, lte: until } },
       select: { id: true, objective: true, dueDate: true, member },
     }),
     db.developmentAction.findMany({
       where: {
+        ...scope,
         plan: { member: people, status: "ACTIVE", deletedAt: null },
         status: { in: ["OPEN", "IN_PROGRESS"] },
         dueDate: { gte: today, lte: until },
@@ -113,7 +116,7 @@ export async function getTodayPanel(viewer: Viewer, today: Date): Promise<TodayP
       select: { id: true, description: true, dueDate: true, plan: { select: { member } } },
     }),
     db.timelineEvent.findMany({
-      where: { member: { ...memberScope(viewer), deletedAt: null }, ...visibilityFilter(viewer) },
+      where: { ...scope, member: { deletedAt: null }, ...visibilityFilter(ctx) },
       orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       take: RECENT_EVENTS,
       select: { id: true, type: true, occurredAt: true, title: true, member },

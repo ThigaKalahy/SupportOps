@@ -32,12 +32,12 @@ import {
   updateOneOnOneRecord,
 } from "../src/server/records.ts"
 import { deleteCatalogItemRecord, moveCatalogItemRecord, saveCatalogItemRecord } from "../src/server/settings.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const TEST_NAME = "Pessoa de Teste dos Complementos"
 const COMPETENCY = "Competência de Teste dos Complementos"
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const today = todayBusinessDate()
 const display = (offset: number) => {
   const d = new Date(today)
@@ -96,7 +96,7 @@ async function cleanup() {
 
 before(async () => {
   await cleanup()
-  const junior = await db.seniority.findFirstOrThrow({ where: { organizationId: owner.organizationId, key: "JUNIOR" } })
+  const junior = await db.seniority.findFirstOrThrow({ where: { teamId: ownerViewer.teamId, key: "JUNIOR" } })
   const created = await createMemberRecord(ownerViewer, {
     fullName: TEST_NAME,
     preferredName: "Teste Complementos",
@@ -192,7 +192,7 @@ describe("editar e excluir registros", () => {
     assert.equal(updated.occurredAt.getTime(), note.occurredAt.getTime())
     assert.equal((await dbIncludingDeleted.timelineEvent.findFirstOrThrow({ where: { noteId: note.id } })).summary, "Chegou 40 min depois; avisou antes")
 
-    assert.equal((await deleteRecordRecord(viewerOnly, { kind: "note", id: note.id })).ok, false)
+    await assert.rejects(deleteRecordRecord(viewerOnly, { kind: "note", id: note.id }), { name: "ForbiddenError" })
     assert.ok((await deleteRecordRecord(ownerViewer, { kind: "note", id: note.id })).ok)
     assert.equal(await db.note.count({ where: { id: note.id } }), 0, "some das leituras")
     assert.ok((await dbIncludingDeleted.note.findFirstOrThrow({ where: { id: note.id } })).deletedAt)
@@ -213,7 +213,7 @@ describe("reativar pessoa", () => {
   test("só quem está desativado; volta a ativo com evento de carreira na timeline e auditoria", async () => {
     assert.equal((await reactivateMemberRecord(ownerViewer, { id: memberId, reason: "Voltou" })).ok, false, "ativo não reativa")
     assert.ok((await deactivateMemberRecord(ownerViewer, { id: memberId, reason: "Saiu do time" })).ok)
-    assert.equal((await reactivateMemberRecord(viewerOnly, { id: memberId, reason: "Voltou" })).ok, false)
+    await assert.rejects(reactivateMemberRecord(viewerOnly, { id: memberId, reason: "Voltou" }), { name: "ForbiddenError" })
     assert.ok((await reactivateMemberRecord(ownerViewer, { id: memberId, reason: "Voltou ao time" })).ok)
     const member = await db.teamMember.findFirstOrThrow({ where: { id: memberId } })
     assert.equal(member.status, "ACTIVE")
@@ -293,7 +293,7 @@ describe("catálogo de competências", () => {
     assert.equal(item.category, "Técnica")
     assert.equal((await moveCatalogItemRecord(ownerViewer, { kind: "competency", id: item.id, direction: "up" })).ok, false)
 
-    await db.memberCompetency.create({ data: { memberId, competencyId: item.id, currentLevel: 2, assessedAt: today } })
+    await db.memberCompetency.create({ data: { teamId: ownerViewer.teamId, memberId, competencyId: item.id, currentLevel: 2, assessedAt: today } })
     const refused = await deleteCatalogItemRecord(ownerViewer, { kind: "competency", id: item.id })
     assert.equal(refused.ok, false)
     await db.memberCompetency.deleteMany({ where: { competencyId: item.id } })

@@ -18,6 +18,7 @@ import { PrismaClient, type Prisma } from "@prisma/client"
 
 import { todayBusinessDate } from "../src/lib/dates.ts"
 import { DEFAULT_DEV_RETURN_REASONS } from "../src/lib/dev-returns.ts"
+import { MODULE_KEYS } from "../src/lib/modules.ts"
 import { recordTimelineEvents, timelineEventFor, type TimelineEventInput } from "../src/server/timeline.ts"
 
 const prisma = new PrismaClient()
@@ -480,7 +481,7 @@ function buildDailies() {
         const blockers = DAILY_BLOCKERS[person.key]
         if (blockers?.length && chance(0.3)) blocker = pick(blockers)
       }
-      participants.push({ dailyId: id, memberId: memberId(person.key), present, note, blocker })
+      participants.push({ teamId: TEAM_ID, dailyId: id, memberId: memberId(person.key), present, note, blocker })
       const event = timelineEventFor.dailyParticipation({
         dailyId: id,
         memberId: memberId(person.key),
@@ -704,6 +705,7 @@ function buildOneOnOnes() {
       const id = `seed_1on1_${person.key}_${i + 1}`
       const visibility = chance(0.25) ? "SHARED" : "PRIVATE"
       rows.push({
+        teamId: TEAM_ID,
         id,
         memberId: memberId(person.key),
         date: day(offset),
@@ -826,6 +828,7 @@ function buildFeedbacks() {
       // Reconhecimento costuma ser compartilhado; o resto nasce privado.
       const visibility = category === "RECOGNITION" ? (chance(0.85) ? "SHARED" : "PRIVATE") : chance(0.15) ? "SHARED" : "PRIVATE"
       rows.push({
+        teamId: TEAM_ID,
         id,
         memberId: memberId(person.key),
         date: day(offset),
@@ -918,6 +921,7 @@ function buildAgreements(dailies: DailyRow[], oneOnOnes: Partial<Record<PersonKe
     if (!daily) throw new Error(`Sem daily em ${dailyOffset}`)
     const reason = outcome === "DONE" ? undefined : (reasonId ?? pick(BLOCKER_BIAS[personKey] ?? ALL_BLOCKERS))
     return {
+      teamId: TEAM_ID,
       id: `seed_ci_${String(++checkinSeq).padStart(3, "0")}`,
       agreementId,
       dailyId: daily.id,
@@ -950,6 +954,7 @@ function buildAgreements(dailies: DailyRow[], oneOnOnes: Partial<Record<PersonKe
       const priority = chance(0.2) ? "HIGH" : chance(0.15) ? "LOW" : "NORMAL"
 
       const row: AgreementDraft["row"] = {
+        teamId: TEAM_ID,
         id,
         memberId: memberId(person.key),
         title,
@@ -1025,6 +1030,7 @@ function buildAgreements(dailies: DailyRow[], oneOnOnes: Partial<Record<PersonKe
     const createdOffset = nearestDailyBefore(-44) ?? -44
     let due = weekday(createdOffset + 7)
     const row: AgreementDraft["row"] = {
+      teamId: TEAM_ID,
       id,
       memberId: memberId("diego"),
       title: "Validar com o fornecedor do ERP o retorno da API de notas fiscais",
@@ -1059,6 +1065,7 @@ function buildAgreements(dailies: DailyRow[], oneOnOnes: Partial<Record<PersonKe
     const createdOffset = nearestDailyBefore(spec.created) ?? spec.created
     drafts.push({
       row: {
+        teamId: TEAM_ID,
         id: `seed_ag_priscila_vencido_${i + 1}`,
         memberId: memberId("priscila"),
         title: spec.title,
@@ -1096,6 +1103,7 @@ function buildAgreements(dailies: DailyRow[], oneOnOnes: Partial<Record<PersonKe
     const newCreated = nearestDailyBefore(neu.created) ?? neu.created
     drafts.push({
       row: {
+        teamId: TEAM_ID,
         id: oldId,
         memberId: memberId(person),
         title: old.title,
@@ -1115,6 +1123,7 @@ function buildAgreements(dailies: DailyRow[], oneOnOnes: Partial<Record<PersonKe
     })
     drafts.push({
       row: {
+        teamId: TEAM_ID,
         id: `seed_ag_${person}_substituto_${i + 1}`,
         memberId: memberId(person),
         title: neu.title,
@@ -1147,7 +1156,7 @@ function buildAgreements(dailies: DailyRow[], oneOnOnes: Partial<Record<PersonKe
     ["seed_ag_otavio_2", "rafael"],
   ]
   for (const [agreementId, person] of pairs) {
-    if (drafts.some((d) => d.row.id === agreementId)) participants.push({ agreementId, memberId: memberId(person) })
+    if (drafts.some((d) => d.row.id === agreementId)) participants.push({ teamId: TEAM_ID, agreementId, memberId: memberId(person) })
   }
 
   for (const { row } of drafts) {
@@ -1535,6 +1544,7 @@ function buildValidations() {
 
     const supervisor = supervisorRank === null ? null : levelByRank(supervisorRank)
     rows.push({
+      teamId: TEAM_ID,
       id,
       organizationId: ORG_ID,
       ticketUrl: `https://helpdesk.exemplo.com.br/a/tickets/${ticket}`,
@@ -1614,51 +1624,64 @@ async function main() {
 
       const user = await tx.user.upsert({
         where: { email: owner.email },
-        create: { email: owner.email, name: owner.name, role: "OWNER", organizationId: ORG_ID },
+        create: { email: owner.email, name: owner.name, role: "OWNER", isPlatformAdmin: true, organizationId: ORG_ID },
         update: {},
       })
       ownerId = user.id
 
       await tx.team.upsert({
         where: { id: TEAM_ID },
-        create: { id: TEAM_ID, organizationId: ORG_ID, name: "Suporte N1/N2", managerUserId: ownerId },
+        create: { id: TEAM_ID, organizationId: ORG_ID, name: "Suporte N1/N2", slug: "suporte", managerUserId: ownerId },
         update: { managerUserId: ownerId },
       })
+      // P22: o escopo vem de TeamAccess (D30). O OWNER do seed gere o time; todos os módulos ligados.
+      await tx.teamAccess.upsert({
+        where: { userId_teamId: { userId: ownerId, teamId: TEAM_ID } },
+        create: { userId: ownerId, teamId: TEAM_ID, level: "MANAGER" },
+        update: { revokedAt: null, level: "MANAGER" },
+      })
+      for (const moduleKey of MODULE_KEYS) {
+        await tx.teamModule.upsert({
+          where: { teamId_moduleKey: { teamId: TEAM_ID, moduleKey } },
+          create: { teamId: TEAM_ID, moduleKey },
+          update: { isEnabled: true },
+        })
+      }
 
       for (const s of SENIORITIES) {
-        await tx.seniority.upsert({ where: { id: s.id }, create: { ...s, organizationId: ORG_ID }, update: { label: s.label, order: s.order } })
+        await tx.seniority.upsert({ where: { id: s.id }, create: { ...s, organizationId: ORG_ID, teamId: TEAM_ID }, update: { label: s.label, order: s.order } })
       }
       for (const [i, b] of BLOCKER_REASONS.entries()) {
         const data = { label: b.label, category: b.category, order: i + 1, isActive: true }
-        await tx.blockerReason.upsert({ where: { id: b.id }, create: { id: b.id, organizationId: ORG_ID, ...data }, update: data })
+        await tx.blockerReason.upsert({ where: { id: b.id }, create: { id: b.id, organizationId: ORG_ID, teamId: TEAM_ID, ...data }, update: data })
       }
       for (const p of PRIORITY_LEVELS) {
-        await tx.priorityLevel.upsert({ where: { id: p.id }, create: { ...p, organizationId: ORG_ID }, update: { label: p.label, rank: p.rank } })
+        await tx.priorityLevel.upsert({ where: { id: p.id }, create: { ...p, organizationId: ORG_ID, teamId: TEAM_ID }, update: { label: p.label, rank: p.rank } })
       }
       for (const r of RECLASSIFICATION_REASONS) {
-        await tx.reclassificationReason.upsert({ where: { id: r.id }, create: { ...r, organizationId: ORG_ID }, update: { label: r.label, order: r.order, requiresDetail: r.requiresDetail } })
+        await tx.reclassificationReason.upsert({ where: { id: r.id }, create: { ...r, organizationId: ORG_ID, teamId: TEAM_ID }, update: { label: r.label, order: r.order, requiresDetail: r.requiresDetail } })
       }
-      // Motivos de devolução do desenvolvimento (P20): só numa organização sem nenhum
-      // (a migration dev_returns já grava o catálogo nas organizações que existiam).
-      if ((await tx.devReturnReason.count({ where: { organizationId: ORG_ID } })) === 0) {
+      // Motivos de devolução do desenvolvimento (P20): só num time sem nenhum
+      // (a migration dev_returns já gravou o catálogo no time que existia).
+      if ((await tx.devReturnReason.count({ where: { teamId: TEAM_ID } })) === 0) {
         await tx.devReturnReason.createMany({
-          data: DEFAULT_DEV_RETURN_REASONS.map((r, i) => ({ id: `seed_drr_${i + 1}`, organizationId: ORG_ID, ...r, order: i + 1 })),
+          data: DEFAULT_DEV_RETURN_REASONS.map((r, i) => ({ id: `seed_drr_${i + 1}`, organizationId: ORG_ID, teamId: TEAM_ID, ...r, order: i + 1 })),
         })
       }
       for (const p of TICKET_URL_PATTERNS) {
-        await tx.ticketUrlPattern.upsert({ where: { id: p.id }, create: { ...p, organizationId: ORG_ID }, update: { label: p.label, regex: p.regex } })
+        await tx.ticketUrlPattern.upsert({ where: { id: p.id }, create: { ...p, organizationId: ORG_ID, teamId: TEAM_ID }, update: { label: p.label, regex: p.regex } })
       }
       for (const c of COMPETENCIES) {
         await tx.competency.upsert({
           where: { id: c.id },
-          create: { id: c.id, organizationId: ORG_ID, name: c.name, category: c.category },
+          create: { id: c.id, organizationId: ORG_ID, teamId: TEAM_ID, name: c.name, category: c.category },
           update: { name: c.name, category: c.category },
         })
         // A matriz de níveis esperados (CompetencyExpectation) NÃO é preenchida pelo
         // seed (P14): é decisão do gestor, em /settings.
       }
       for (const [id, name, description] of RESPONSIBILITIES) {
-        await tx.responsibility.upsert({ where: { id }, create: { id, organizationId: ORG_ID, name, description }, update: { name, description } })
+        await tx.responsibility.upsert({ where: { id }, create: { id, organizationId: ORG_ID, teamId: TEAM_ID, name, description }, update: { name, description } })
       }
       // Métricas de versões antigas do seed que saíram da lista (nunca tiveram resultado).
       await tx.metricDefinition.deleteMany({
@@ -1669,7 +1692,7 @@ async function main() {
         const { id, ...fields } = m
         await tx.metricDefinition.upsert({
           where: { id },
-          create: { ...m, organizationId: ORG_ID, sourceSystem: "helpdesk" },
+          create: { ...m, organizationId: ORG_ID, teamId: TEAM_ID, sourceSystem: "helpdesk" },
           update: { label: fields.label, unit: fields.unit, direction: fields.direction },
         })
       }
@@ -1691,6 +1714,7 @@ async function main() {
       await tx.memberResponsibility.createMany({
         data: PEOPLE.flatMap((p) =>
           MEMBER_RESPONSIBILITIES[p.key].map(([responsibilityId, isPrimary]) => ({
+            teamId: TEAM_ID,
             memberId: memberId(p.key),
             responsibilityId,
             isPrimary,
@@ -1702,6 +1726,7 @@ async function main() {
         data: PEOPLE.flatMap((p) =>
           TRAITS[p.key].map(([kind, text, offset, isActive], i) => ({
             id: `seed_tr_${p.key}_${i + 1}`,
+            teamId: TEAM_ID,
             memberId: memberId(p.key),
             kind,
             text,
@@ -1713,6 +1738,7 @@ async function main() {
       await tx.memberCompetency.createMany({
         data: PEOPLE.flatMap((p) =>
           COMPETENCIES.map((c, i) => ({
+            teamId: TEAM_ID,
             memberId: memberId(p.key),
             competencyId: c.id,
             currentLevel: at(COMPETENCY_LEVELS[p.key], i),
@@ -1723,6 +1749,7 @@ async function main() {
       await tx.mentorshipLink.createMany({
         data: MENTORSHIPS.map(([mentor, mentee, competencyId, start, end, note], i) => ({
           id: `seed_ml_${i + 1}`,
+          teamId: TEAM_ID,
           mentorMemberId: memberId(mentor),
           menteeMemberId: memberId(mentee),
           competencyId,
@@ -1734,6 +1761,7 @@ async function main() {
 
       const changes = PROMOTIONS.map(([person, from, to, offset, reason], i) => ({
         id: `seed_mc_${i + 1}`,
+        teamId: TEAM_ID,
         memberId: memberId(person),
         changeType: "SENIORITY" as const,
         fromValue: from,
@@ -1779,6 +1807,7 @@ async function main() {
         const id = `seed_pdi_${p.person}_${i + 1}`
         plans.push({
           id,
+          teamId: TEAM_ID,
           memberId: memberId(p.person),
           competencyId: p.competency,
           currentSituation: p.currentSituation,
@@ -1796,6 +1825,7 @@ async function main() {
         p.actions.forEach(([description, ownerType, mentor, due, status, completed], j) => {
           actions.push({
             id: `seed_pda_${p.person}_${i + 1}_${j + 1}`,
+            teamId: TEAM_ID,
             planId: id,
             description,
             ownerType,
@@ -1823,7 +1853,7 @@ async function main() {
       await tx.priorityValidation.createMany({ data: validations })
 
       /* ── 5. Timeline: mesma função que a aplicação usa ── */
-      await recordTimelineEvents(tx, timeline)
+      await recordTimelineEvents(tx, { teamId: TEAM_ID }, timeline)
 
       const summary = {
         dailies: dailies.length,

@@ -315,17 +315,20 @@ export function DevReturnForm({
           )}
         </FieldGroup>
 
-        <FieldGroup label={labels.centrals.field} error={errors.centralId} className="w-44 shrink-0">
-          {(control) => (
-            <CentralCombobox
-              {...control}
-              data-field="centralId"
-              options={centralOptions}
-              value={values.centralId || null}
-              onValueChange={(id) => patch({ centralId: id ?? "" })}
-            />
-          )}
-        </FieldGroup>
+        {/* Central (P19): opcional. Só com o módulo ligado no time (D32). */}
+        {data.centralsEnabled ? (
+          <FieldGroup label={labels.centrals.field} error={errors.centralId} className="w-44 shrink-0">
+            {(control) => (
+              <CentralCombobox
+                {...control}
+                data-field="centralId"
+                options={centralOptions}
+                value={values.centralId || null}
+                onValueChange={(id) => patch({ centralId: id ?? "" })}
+              />
+            )}
+          </FieldGroup>
+        ) : null}
 
         <FieldGroup label={L.returnedAt} required error={errors.returnedAt} className="w-32 shrink-0">
           <Input

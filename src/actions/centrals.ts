@@ -1,6 +1,6 @@
 "use server"
 
-import { requireOwner } from "@/server/access"
+import { requireWriteContext } from "@/server/scope"
 import { runAction } from "@/server/action-runner"
 import { ensureCentralRecord, importCentralsRecord } from "@/server/centrals"
 
@@ -17,9 +17,9 @@ const PATHS: (string | [string, "layout"])[] = [["/settings", "layout"], "/daili
  * central nova localmente; as páginas são dinâmicas e leem a lista na próxima visita.
  */
 export async function ensureCentral(input: unknown) {
-  return runAction("centrals", async () => ensureCentralRecord(await requireOwner(), input), [])
+  return runAction("centrals", async () => ensureCentralRecord(await requireWriteContext(), input), [])
 }
 
 export async function importCentrals(input: unknown) {
-  return runAction("centrals", async () => importCentralsRecord(await requireOwner(), input), PATHS)
+  return runAction("centrals", async () => importCentralsRecord(await requireWriteContext(), input), PATHS)
 }

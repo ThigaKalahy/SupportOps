@@ -18,10 +18,10 @@ import type { AlertFacts, AlertMember } from "../src/server/queries/alerts.ts"
 import { listTeamMembers } from "../src/server/queries/members.ts"
 import { getThresholds } from "../src/server/queries/thresholds.ts"
 import { setThresholdRecord } from "../src/server/settings.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 
 // Uma sexta-feira fixa: 02/10/2026.
 const today = new Date(Date.UTC(2026, 9, 2))
@@ -63,7 +63,7 @@ function facts(patch: Partial<AlertFacts> = {}): AlertFacts {
 }
 
 after(async () => {
-  await dbIncludingDeleted.alertThreshold.deleteMany({ where: { organizationId: owner.organizationId } })
+  await dbIncludingDeleted.alertThreshold.deleteMany({ where: { teamId: ownerViewer.teamId } })
   await dbIncludingDeleted.auditLog.deleteMany({ where: { action: "settings.alertThreshold.update" } })
   await db.$disconnect()
   await dbIncludingDeleted.$disconnect()
@@ -262,7 +262,7 @@ describe("limiares em /settings", () => {
   test("fora da faixa recusa; grava, audita, muda o motor; voltar ao padrão apaga a linha; VIEWER não altera", async () => {
     assert.equal((await setThresholdRecord(ownerViewer, { key: "silenceDays", value: 2 })).ok, false)
     assert.equal((await setThresholdRecord(ownerViewer, { key: "naoExiste", value: 10 })).ok, false)
-    assert.equal((await setThresholdRecord(viewerOnly, { key: "silenceDays", value: 40 })).ok, false)
+    await assert.rejects(setThresholdRecord(viewerOnly, { key: "silenceDays", value: 40 }), { name: "ForbiddenError" })
 
     assert.ok((await setThresholdRecord(ownerViewer, { key: "oneOnOneDays.JUNIOR", value: 60 })).ok)
     assert.equal((await getThresholds(ownerViewer)).oneOnOneDays.JUNIOR, 60)
@@ -275,9 +275,9 @@ describe("limiares em /settings", () => {
     assert.deepEqual(audit.after, { value: 60, custom: true })
 
     assert.ok((await setThresholdRecord(ownerViewer, { key: "oneOnOneDays.JUNIOR", value: null })).ok)
-    assert.equal(await db.alertThreshold.count({ where: { organizationId: owner.organizationId } }), 0)
+    assert.equal(await db.alertThreshold.count({ where: { teamId: ownerViewer.teamId } }), 0)
     assert.ok((await setThresholdRecord(ownerViewer, { key: "silenceDays", value: 30 })).ok, "o próprio padrão não cria linha")
-    assert.equal(await db.alertThreshold.count({ where: { organizationId: owner.organizationId } }), 0)
+    assert.equal(await db.alertThreshold.count({ where: { teamId: ownerViewer.teamId } }), 0)
   })
 
   test("/team usa os mesmos limiares (crônico em 5 tira o motivo do Diego)", async () => {

@@ -35,7 +35,10 @@ export function DevReturnsTable({
   empty,
   onEdit,
   watching = {},
+  showCentral = true,
 }: {
+  /** Módulo de centrais ligado no time (D32): sem ele, a coluna não existe. */
+  showCentral?: boolean
   rows: DevReturnRow[]
   /** P21: observação ativa por devolução. */
   watching?: Record<string, { id: string; heat: WatchHeat }>
@@ -46,6 +49,14 @@ export function DevReturnsTable({
   const [resolving, setResolving] = React.useState<DevReturnRow | null>(null)
   const [deleting, setDeleting] = React.useState<DevReturnRow | null>(null)
 
+  const centralColumn: DataTableColumn<DevReturnRow> = {
+    id: "central",
+    header: T.central,
+    cell: (r) => (r.central ? <span className="truncate">{r.central.name}</span> : <span className="text-ink-secondary">{T.none}</span>),
+    title: (r) => r.central?.name ?? labels.centrals.none,
+    width: "136px",
+    hideBelow: "xl",
+  }
   const columns: DataTableColumn<DevReturnRow>[] = [
     {
       id: "date",
@@ -87,14 +98,7 @@ export function DevReturnsTable({
       stacked: "primary",
     },
     { id: "member", header: T.member, cell: (r) => r.member.preferredName, width: "128px", stackedOrder: 1 },
-    {
-      id: "central",
-      header: T.central,
-      cell: (r) => (r.central ? <span className="truncate">{r.central.name}</span> : <span className="text-ink-secondary">{T.none}</span>),
-      title: (r) => r.central?.name ?? labels.centrals.none,
-      width: "136px",
-      hideBelow: "xl",
-    },
+    ...(showCentral ? [centralColumn] : []),
     {
       id: "reason",
       header: T.reason,

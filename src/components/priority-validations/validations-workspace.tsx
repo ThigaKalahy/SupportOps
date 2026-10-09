@@ -21,7 +21,10 @@ export function ValidationsWorkspace({
   summary,
   periodEmpty,
   watching,
+  showCentral = true,
 }: {
+  /** Módulo de centrais ligado no time (D32): sem ele, a coluna não existe. */
+  showCentral?: boolean
   form: ValidationFormData | null
   rows: ValidationRow[]
   showDate: boolean
@@ -52,6 +55,7 @@ export function ValidationsWorkspace({
           canWrite={canWrite}
           empty={empty}
           watching={watching}
+          showCentral={showCentral}
           onEdit={(row) => {
             setEditing(row)
             window.scrollTo({ top: 0 })

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react"
-import type { Role } from "@prisma/client"
+import type { TeamAccessLevel } from "@prisma/client"
 
 import { logoutAction } from "@/actions/auth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -12,7 +12,7 @@ import { enumLabel, labels } from "@/lib/labels"
 import { initials } from "@/lib/people"
 import { cn } from "@/lib/utils"
 
-import { footerNav, isActive, mainNav, type NavItem } from "./nav-config"
+import { footerNav, isActive, navItemsFor, type NavItem } from "./nav-config"
 import { NavLink } from "./nav-link"
 
 /** Identidade do produto: marca de 24px e nome, sem logo grande. */
@@ -36,7 +36,8 @@ export type NavCounts = Record<NonNullable<NavItem["counter"]>, number>
 export interface ShellUser {
   name: string
   email: string
-  role: Role
+  /** Nível no time ativo (TeamAccess, P22). */
+  level: TeamAccessLevel
 }
 
 /** Usuário atual, discreto, com o botão de sair. */
@@ -46,7 +47,7 @@ export function CurrentUser({ user, collapsed = false }: { user: ShellUser; coll
       aria-label={labels.auth.currentUser}
       className={cn("mt-2 flex items-center gap-2 border-t border-line pt-3", collapsed && "flex-col")}
     >
-      <Avatar size="sm" title={collapsed ? `${user.name} · ${enumLabel("role", user.role)}` : undefined}>
+      <Avatar size="sm" title={collapsed ? `${user.name} · ${enumLabel("teamAccessLevel", user.level)}` : undefined}>
         <AvatarFallback>{initials(user.name)}</AvatarFallback>
       </Avatar>
       {collapsed ? null : (
@@ -54,7 +55,7 @@ export function CurrentUser({ user, collapsed = false }: { user: ShellUser; coll
           <p className="truncate text-sm text-ink" title={user.email}>
             {user.name}
           </p>
-          <p className="truncate text-xs text-ink-secondary">{enumLabel("role", user.role)}</p>
+          <p className="truncate text-xs text-ink-secondary">{enumLabel("teamAccessLevel", user.level)}</p>
         </div>
       )}
       <form action={logoutAction}>
@@ -73,9 +74,12 @@ export function SidebarNav({
   onNavigate,
   footer,
   counts,
+  modules,
 }: {
   pathname: string
   counts?: NavCounts
+  /** Módulos ligados no time (D32): a navegação só mostra os itens deles. */
+  modules: readonly string[]
   collapsed?: boolean
   onNavigate?: () => void
   /** Conteúdo extra no rodapé, abaixo de Configurações (ex.: botão de recolher). */
@@ -85,7 +89,7 @@ export function SidebarNav({
     <>
       <nav aria-label={labels.shell.mainNavigation} className="flex-1 overflow-y-auto p-3">
         <ul className="flex flex-col gap-0.5">
-          {mainNav.map((item) => (
+          {navItemsFor(modules).map((item) => (
             <li key={item.href}>
               <NavLink
                 item={item}
@@ -123,12 +127,14 @@ export function Sidebar({
   onToggle,
   user,
   counts,
+  modules,
 }: {
   pathname: string
   collapsed: boolean
   onToggle: () => void
   user: ShellUser
   counts?: NavCounts
+  modules: readonly string[]
 }) {
   const ToggleIcon = collapsed ? PanelLeftOpenIcon : PanelLeftCloseIcon
   const toggleLabel = collapsed ? labels.shell.expandSidebar : labels.shell.collapseSidebar
@@ -145,6 +151,7 @@ export function Sidebar({
       <SidebarNav
         pathname={pathname}
         counts={counts}
+        modules={modules}
         collapsed={collapsed}
         footer={
           <>

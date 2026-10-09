@@ -18,11 +18,11 @@ import { db, dbIncludingDeleted } from "../src/server/db.ts"
 import { createMemberRecord } from "../src/server/members.ts"
 import { getOneOnOneContext, listRecords } from "../src/server/queries/records.ts"
 import { createFeedbackRecord, createOneOnOneRecord } from "../src/server/records.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const TEST_NAME = "Pessoa de Teste dos Registros"
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const today = todayBusinessDate()
 const day = (offset: number) => {
   const d = new Date(today)

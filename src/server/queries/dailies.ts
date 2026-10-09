@@ -2,24 +2,21 @@ import type { CheckinOutcome } from "@prisma/client"
 
 import { todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
+import { MODULES } from "../../lib/modules.ts"
 import { db } from "../db.ts"
 import { listActiveCentrals } from "./centrals.ts"
 import { activeWatchByLink } from "./watch.ts"
-import { memberScope, type Viewer } from "../visibility.ts"
+import { hasModule, teamScope, type TeamContext } from "../scope.ts"
 import type { WhatsAppDaily } from "../whatsapp.ts"
 
 /**
  * Leituras de dailies. Daily e combinado não têm visibilidade própria (não são
- * registro privado); seguem o escopo de organização/time do usuário.
+ * registro privado); seguem o escopo de time do contexto (teamScope, D30).
  */
 
-/** Time do usuário: MANAGER vê o próprio; OWNER e VIEWER, o primeiro da organização. */
-export async function teamFor(viewer: Viewer) {
-  return db.team.findFirst({
-    where: viewer.role === "MANAGER" ? { managerUserId: viewer.id } : { organizationId: viewer.organizationId },
-    orderBy: { name: "asc" },
-    select: { id: true },
-  })
+/** O time da daily é sempre o do contexto (P22): nunca "o primeiro da organização". */
+export async function teamFor(ctx: TeamContext) {
+  return db.team.findFirst({ where: { id: ctx.teamId, isActive: true }, select: { id: true } })
 }
 
 export interface ReviewItem {
@@ -43,13 +40,13 @@ export interface ReviewGroup {
  * (b) abertos com prazo até a data da daily — sem repetição e agrupados por
  * pessoa; os membros ativos; e os motivos de impeditivo.
  */
-export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDate()) {
-  const team = await teamFor(viewer)
+export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessDate()) {
+  const team = await teamFor(ctx)
   if (!team) return null
-  const scope = { ...memberScope(viewer), teamId: team.id }
+  const scope = teamScope(ctx)
 
   const previous = await db.daily.findFirst({
-    where: { teamId: team.id, date: { lt: date } },
+    where: { ...scope, date: { lt: date } },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     select: { id: true, date: true },
   })
@@ -57,8 +54,9 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
   const [agreements, members, reasons, sameDay, centrals] = await Promise.all([
     db.agreement.findMany({
       where: {
+        ...scope,
         status: { in: ["OPEN", "IN_PROGRESS"] },
-        member: { ...scope, deletedAt: null },
+        member: { deletedAt: null },
         OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: date } }],
       },
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
@@ -77,17 +75,18 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
       select: { id: true, preferredName: true },
     }),
     db.blockerReason.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...scope, isActive: true },
       orderBy: { order: "asc" },
       select: { id: true, label: true, category: true },
     }),
     // Já existe daily nesta data? A tela avisa, mas não impede (pode haver duas no dia).
     db.daily.findMany({
-      where: { teamId: team.id, date },
+      where: { ...scope, date },
       orderBy: { createdAt: "asc" },
       select: { id: true, createdAt: true },
     }),
-    listActiveCentrals(viewer),
+    // Módulo de centrais desligado (D32): a daily não oferece o campo.
+    hasModule(ctx, MODULES.CENTRALS) ? listActiveCentrals(ctx) : Promise.resolve([]),
   ])
 
   const groups = new Map<string, ReviewGroup>()
@@ -113,8 +112,9 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
     reasons,
     sameDay,
     centrals,
+    centralsEnabled: hasModule(ctx, MODULES.CENTRALS),
     // P21: observação ativa já ligada a cada combinado a revisar (o botão abre a existente).
-    watching: await activeWatchByLink(viewer, "agreementId", agreements.map((a) => a.id)),
+    watching: await activeWatchByLink(ctx, "agreementId", agreements.map((a) => a.id)),
   }
 }
 
@@ -168,9 +168,9 @@ const detailInclude = {
 
 type DailyWithDetail = NonNullable<Awaited<ReturnType<typeof findDaily>>>
 
-function findDaily(id: string, viewer: Viewer) {
+function findDaily(id: string, ctx: TeamContext) {
   return db.daily.findFirst({
-    where: { id, team: { organizationId: viewer.organizationId } },
+    where: { id, ...teamScope(ctx) },
     include: detailInclude,
   })
 }
@@ -258,17 +258,15 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
   }
 }
 
-export async function getDailyDetail(viewer: Viewer, id: string): Promise<DailyDetail | null> {
-  const daily = await findDaily(id, viewer)
+export async function getDailyDetail(ctx: TeamContext, id: string): Promise<DailyDetail | null> {
+  const daily = await findDaily(id, ctx)
   return daily ? toDetail(daily) : null
 }
 
 /** Histórico: todas as dailies do time, da mais recente para a mais antiga, já com o detalhe. */
-export async function listDailies(viewer: Viewer): Promise<DailyDetail[]> {
-  const team = await teamFor(viewer)
-  if (!team) return []
+export async function listDailies(ctx: TeamContext): Promise<DailyDetail[]> {
   const dailies = await db.daily.findMany({
-    where: { teamId: team.id },
+    where: teamScope(ctx),
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     include: detailInclude,
   })

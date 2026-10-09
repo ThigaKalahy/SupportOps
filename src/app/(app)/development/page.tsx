@@ -8,7 +8,7 @@ import { Section } from "@/components/ui/section"
 import { StatStrip } from "@/components/ui/stat-strip"
 import { formatDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { getDevelopmentOverview } from "@/server/queries/development"
 
 const D = labels.development
@@ -26,8 +26,8 @@ export const metadata: Metadata = {
  * entre pessoas.
  */
 export default async function DevelopmentPage() {
-  const user = await requireUser()
-  const overview = await getDevelopmentOverview(user)
+  const ctx = await requireTeamContext()
+  const overview = await getDevelopmentOverview(ctx)
   // Ordem da tabela: status (ativos primeiro) e nome — nunca desempenho.
   const plans = [...overview.plans].sort(
     (a, b) =>
@@ -108,7 +108,7 @@ export default async function DevelopmentPage() {
           {overview.matrixEmpty ? (
             <p className="text-sm text-ink-secondary">
               {D.readiness.matrixEmpty}{" "}
-              {canWrite(user) ? (
+              {canWrite(ctx) ? (
                 <Link href="/settings/competency-matrix" className="text-accent underline underline-offset-2">
                   {D.competencies.matrixLink}
                 </Link>

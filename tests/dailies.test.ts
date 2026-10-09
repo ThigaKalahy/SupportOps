@@ -19,11 +19,11 @@ import { getDailyDetail, getDailyForm } from "../src/server/queries/dailies.ts"
 import { createMemberRecord } from "../src/server/members.ts"
 import { createAgreementRecord } from "../src/server/agreements.ts"
 import { createDailyRecord, updateDailyRecord } from "../src/server/dailies.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const NAMES = ["Pessoa de Teste da Daily Um", "Pessoa de Teste da Daily Dois"]
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const today = todayBusinessDate()
 const display = (offset: number) => {
   const d = new Date(today)
@@ -202,7 +202,7 @@ describe("registro de daily", () => {
   })
 
   test("VIEWER não registra daily", async () => {
-    assert.ok(!(await createDailyRecord(viewerOnly, { ...base(), reviews: [] })).ok)
+    await assert.rejects(createDailyRecord(viewerOnly, { ...base(), reviews: [] }), { name: "ForbiddenError" })
   })
 
   test("parcial sem impeditivo e reagendamento para a própria data são recusados, sem gravar nada", async () => {
@@ -401,7 +401,7 @@ describe("daily retroativa, aviso de mesmo dia e edição", () => {
       ],
     }
     assert.ok(!(await updateDailyRecord(ownerViewer, input)).ok)
-    assert.ok(!(await updateDailyRecord(viewerOnly, input)).ok)
+    await assert.rejects(updateDailyRecord(viewerOnly, input), { name: "ForbiddenError" })
     assert.equal((await db.daily.findUniqueOrThrow({ where: { id: dailyId } })).summary, "Resumo corrigido")
   })
 })

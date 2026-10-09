@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache"
 import { labels } from "@/lib/labels"
 import type { ActionResult } from "@/lib/validators/fields"
 
-import { ForbiddenError } from "./access"
+import { ScopeError } from "./scope"
 
 /**
  * Casca comum das Server Actions de formulário: executa o núcleo, revalida as
@@ -28,7 +28,8 @@ export async function runAction<R extends ActionResult | { ok: true; id: string 
     }
     return result
   } catch (error) {
-    if (error instanceof ForbiddenError) return { ok: false, error: error.message }
+    // Sem acesso ao time, VIEWER escrevendo, módulo desligado: a mensagem é pt-BR e vai à tela.
+    if (error instanceof ScopeError) return { ok: false, error: error.message }
     console.error(`[${scope}] falha ao salvar`, error)
     return { ok: false, error: labels.validation.generic }
   }

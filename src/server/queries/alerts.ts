@@ -4,9 +4,11 @@ import { trendWindows } from "../../lib/adherence.ts"
 import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
 import { DEV_RETURN_ALERTS } from "../../lib/dev-returns.ts"
 import { feedbackFollowUp } from "../../lib/follow-up.ts"
+import { MODULES } from "../../lib/modules.ts"
 
 import { db } from "../db.ts"
-import { memberScope, visibilityFilter, type Viewer } from "../visibility.ts"
+import { hasModule, teamScope, type TeamContext } from "../scope.ts"
+import { visibilityFilter } from "../visibility.ts"
 
 import { getReadinessRows, type ReadinessRow } from "./development.ts"
 
@@ -110,16 +112,17 @@ function addDays(date: Date, days: number): Date {
   return d
 }
 
-export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresholds, teamId?: string): Promise<AlertFacts> {
-  const scope = { ...memberScope(viewer), ...(teamId ? { teamId } : {}) }
-  const people = { ...scope, status: { not: "INACTIVE" as const } }
+/** Fatos de UM time — o do contexto. O motor nunca olha mais de um time numa chamada. */
+export async function getAlertFacts(ctx: TeamContext, today: Date, t: AlertThresholds): Promise<AlertFacts> {
+  const scope = teamScope(ctx)
+  const people = { status: { not: "INACTIVE" as const } }
   const windows = trendWindows(today)
 
   const recurringFrom = addDays(today, -(DEV_RETURN_ALERTS.recurringWindowDays - 1))
   const [members, lastOneOnOnes, lastRecords, agreements, plans, feedbacks, conversations, adherenceRows, lastDaily, readiness, devReturns, watchItems] =
     await Promise.all([
       db.teamMember.findMany({
-        where: people,
+        where: { ...scope, ...people },
         orderBy: { preferredName: "asc" },
         select: {
           id: true,
@@ -130,10 +133,10 @@ export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresho
           seniority: { select: { key: true, label: true } },
         },
       }),
-      db.oneOnOne.groupBy({ by: ["memberId"], where: { member: people, ...visibilityFilter(viewer) }, _max: { date: true } }),
-      db.timelineEvent.groupBy({ by: ["memberId"], where: { member: people, ...visibilityFilter(viewer) }, _max: { occurredAt: true } }),
+      db.oneOnOne.groupBy({ by: ["memberId"], where: { ...scope, member: people, ...visibilityFilter(ctx) }, _max: { date: true } }),
+      db.timelineEvent.groupBy({ by: ["memberId"], where: { ...scope, member: people, ...visibilityFilter(ctx) }, _max: { occurredAt: true } }),
       db.agreement.findMany({
-        where: { member: people, status: { in: [...OPEN] } },
+        where: { ...scope, member: people, status: { in: [...OPEN] } },
         select: {
           id: true,
           memberId: true,
@@ -144,13 +147,14 @@ export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresho
         orderBy: { dueDate: "asc" },
       }),
       db.developmentPlan.findMany({
-        where: { member: people, status: "ACTIVE" },
+        where: { ...scope, member: people, status: "ACTIVE" },
         select: { id: true, memberId: true, objective: true, startedAt: true, lastReviewedAt: true },
       }),
       db.feedback.findMany({
         where: {
+          ...scope,
           member: people,
-          ...visibilityFilter(viewer),
+          ...visibilityFilter(ctx),
           followUpAt: { lt: today, gte: addDays(today, -FOLLOW_UP_HORIZON_DAYS) },
         },
         select: { id: true, memberId: true, behavior: true, followUpAt: true },
@@ -158,26 +162,27 @@ export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresho
       // Conversas que podem encerrar um follow-up (1:1 e feedback no horizonte), só as visíveis.
       Promise.all([
         db.oneOnOne.findMany({
-          where: { member: people, ...visibilityFilter(viewer), date: { gte: addDays(today, -FOLLOW_UP_HORIZON_DAYS) } },
+          where: { ...scope, member: people, ...visibilityFilter(ctx), date: { gte: addDays(today, -FOLLOW_UP_HORIZON_DAYS) } },
           select: { id: true, memberId: true, date: true },
         }),
         db.feedback.findMany({
-          where: { member: people, ...visibilityFilter(viewer), date: { gte: addDays(today, -FOLLOW_UP_HORIZON_DAYS) } },
+          where: { ...scope, member: people, ...visibilityFilter(ctx), date: { gte: addDays(today, -FOLLOW_UP_HORIZON_DAYS) } },
           select: { id: true, memberId: true, date: true },
         }),
       ]),
       db.agreement.findMany({
-        where: { member: people, originalDueDate: { gte: windows.previous.from, lte: windows.current.to } },
+        where: { ...scope, member: people, originalDueDate: { gte: windows.previous.from, lte: windows.current.to } },
         select: { memberId: true, status: true, originalDueDate: true, completedAt: true },
       }),
       db.daily.findFirst({
-        where: { team: { organizationId: viewer.organizationId, ...(teamId ? { id: teamId } : {}) } },
+        where: scope,
         orderBy: { date: "desc" },
         select: { date: true },
       }),
-      getReadinessRows(viewer),
-      db.devReturn.findMany({
-        where: { member: people, OR: [{ returnedAt: { gte: recurringFrom } }, { resolvedAt: null }] },
+      getReadinessRows(ctx),
+      // Módulo de devoluções desligado (D32): os alertas dele não existem.
+      !hasModule(ctx, MODULES.DEV_RETURNS) ? Promise.resolve([]) : db.devReturn.findMany({
+        where: { ...scope, member: people, OR: [{ returnedAt: { gte: recurringFrom } }, { resolvedAt: null }] },
         select: {
           id: true,
           memberId: true,
@@ -189,10 +194,10 @@ export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresho
       }),
       db.watchItem.findMany({
         where: {
-          organizationId: viewer.organizationId,
+          ...scope,
           status: "ACTIVE",
           OR: [{ memberId: null }, { member: people }],
-          ...visibilityFilter(viewer),
+          ...visibilityFilter(ctx),
         },
         select: { id: true, memberId: true, title: true, heat: true, createdAt: true, lastReviewedAt: true, heatChangedAt: true, reviewCount: true },
       }),

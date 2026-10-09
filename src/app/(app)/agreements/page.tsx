@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { parseAgreementFilters } from "@/lib/agreement-filters"
 import { labels, plural } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { MODULES } from "@/lib/modules"
+import { canWrite, hasModule, requireTeamContext } from "@/server/scope"
 import { listCentralsForFilter } from "@/server/queries/centrals"
 import { listAgreementMembers, listAgreements } from "@/server/queries/agreements"
 import { getMemberFormCatalogs } from "@/server/queries/members"
@@ -28,14 +29,14 @@ export default async function AgreementsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
   const raw = await searchParams
   const filters = parseAgreementFilters(raw)
   const [{ rows, counts }, members, catalogs, centrals] = await Promise.all([
-    listAgreements(user, filters),
-    listAgreementMembers(user),
-    getMemberFormCatalogs(user),
-    listCentralsForFilter(user),
+    listAgreements(ctx, filters),
+    listAgreementMembers(ctx),
+    getMemberFormCatalogs(ctx),
+    hasModule(ctx, MODULES.CENTRALS) ? listCentralsForFilter(ctx) : [],
   ])
   const search = new URLSearchParams(
     Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : [])),
@@ -49,7 +50,7 @@ export default async function AgreementsPage({
           members={members}
           seniorities={catalogs.seniorities.map((s) => ({ key: s.key, label: s.label }))}
           centrals={centrals}
-          canWrite={canWrite(user)}
+          canWrite={canWrite(ctx)}
         />
       </ContextActions>
       <PageHeader
@@ -65,12 +66,13 @@ export default async function AgreementsPage({
         }
       />
       <AgreementsView
+        showCentral={hasModule(ctx, MODULES.CENTRALS)}
         basePath="/agreements"
         search={search}
         filters={filters}
         rows={rows}
         counts={counts}
-        canWrite={canWrite(user)}
+        canWrite={canWrite(ctx)}
       />
     </div>
   )

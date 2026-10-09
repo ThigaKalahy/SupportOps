@@ -1,7 +1,7 @@
 "use server"
 
 import type { ActionResult } from "@/lib/validators/fields"
-import { requireOwner, requireUser } from "@/server/access"
+import { requireTeamContext, requireWriteContext } from "@/server/scope"
 import { memberIdOf, runAction } from "@/server/action-runner"
 import { findEditableRecord, getOneOnOneContext, type EditableKind, type OneOnOneContext } from "@/server/queries/records"
 import { formatDate } from "@/lib/dates"
@@ -18,7 +18,7 @@ import {
 } from "@/server/records"
 
 /**
- * Server Actions de 1:1, feedback e anotação: requireOwner → núcleo em
+ * Server Actions de 1:1, feedback e anotação: requireWriteContext → núcleo em
  * src/server/records.ts (zod + transação + timeline + auditoria) → revalidate.
  */
 
@@ -27,20 +27,20 @@ function paths(input: unknown): (string | [string, "layout"])[] {
 }
 
 export async function createOneOnOne(input: unknown): Promise<ActionResult> {
-  return runAction("records", async () => createOneOnOneRecord(await requireOwner(), input), paths(input))
+  return runAction("records", async () => createOneOnOneRecord(await requireWriteContext(), input), paths(input))
 }
 
 export async function createFeedback(input: unknown): Promise<ActionResult> {
-  return runAction("records", async () => createFeedbackRecord(await requireOwner(), input), paths(input))
+  return runAction("records", async () => createFeedbackRecord(await requireWriteContext(), input), paths(input))
 }
 
 export async function createNote(input: unknown): Promise<ActionResult> {
-  return runAction("records", async () => createNoteRecord(await requireOwner(), input), paths(input))
+  return runAction("records", async () => createNoteRecord(await requireWriteContext(), input), paths(input))
 }
 
 /** Alterna privado/compartilhado a partir da timeline. `memberId` só serve para revalidar o perfil. */
 export async function setRecordVisibility(input: unknown, memberId: string): Promise<ActionResult> {
-  return runAction("records", async () => setRecordVisibilityRecord(await requireOwner(), input), [
+  return runAction("records", async () => setRecordVisibilityRecord(await requireWriteContext(), input), [
     "/team",
     [`/team/${memberId}`, "layout"],
   ])
@@ -52,24 +52,24 @@ export async function setRecordVisibility(input: unknown, memberId: string): Pro
  * Action só porque o dialog é aberto no cliente. Sem rota de API (D8).
  */
 export async function loadOneOnOneContext(memberId: string): Promise<OneOnOneContext> {
-  return getOneOnOneContext(await requireUser(), memberId)
+  return getOneOnOneContext(await requireTeamContext(), memberId)
 }
 
 export async function updateOneOnOne(id: string, input: unknown): Promise<ActionResult> {
-  return runAction("records", async () => updateOneOnOneRecord(await requireOwner(), id, input), paths(input))
+  return runAction("records", async () => updateOneOnOneRecord(await requireWriteContext(), id, input), paths(input))
 }
 
 export async function updateFeedback(id: string, input: unknown): Promise<ActionResult> {
-  return runAction("records", async () => updateFeedbackRecord(await requireOwner(), id, input), paths(input))
+  return runAction("records", async () => updateFeedbackRecord(await requireWriteContext(), id, input), paths(input))
 }
 
 export async function updateNote(id: string, input: unknown): Promise<ActionResult> {
-  return runAction("records", async () => updateNoteRecord(await requireOwner(), id, input), paths(input))
+  return runAction("records", async () => updateNoteRecord(await requireWriteContext(), id, input), paths(input))
 }
 
 /** Exclusão lógica. `memberId` só serve para revalidar o perfil. */
 export async function deleteRecord(input: unknown, memberId: string): Promise<ActionResult> {
-  return runAction("records", async () => deleteRecordRecord(await requireOwner(), input), paths({ memberId }))
+  return runAction("records", async () => deleteRecordRecord(await requireWriteContext(), input), paths({ memberId }))
 }
 
 const d = (date: Date | null) => (date ? formatDate(date, "business") : "")
@@ -84,7 +84,7 @@ export type RecordForEdit =
  * query de visibilidade). Só para quem escreve.
  */
 export async function loadRecordForEdit(kind: EditableKind, id: string): Promise<RecordForEdit | null> {
-  const found = await findEditableRecord(await requireOwner(), kind, id)
+  const found = await findEditableRecord(await requireWriteContext(), kind, id)
   if (!found) return null
   const member = found.record.member
   if (found.kind === "oneOnOne") {

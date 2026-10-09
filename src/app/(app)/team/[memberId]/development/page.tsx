@@ -9,7 +9,7 @@ import { ContextActions } from "@/components/shell/context-actions"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Section } from "@/components/ui/section"
 import { fill, labels } from "@/lib/labels"
-import { canWrite } from "@/server/access"
+import { canWrite } from "@/server/scope"
 import { listAgreementMembers } from "@/server/queries/agreements"
 import { getMemberDevelopment } from "@/server/queries/development"
 
@@ -25,12 +25,12 @@ const D = labels.development
  */
 export default async function MemberDevelopmentPage({ params }: { params: Promise<{ memberId: string }> }) {
   const { memberId } = await params
-  const { user, profile } = await loadProfile(memberId)
+  const { ctx, profile } = await loadProfile(memberId)
   if (!profile) notFound()
 
-  const [dev, members] = await Promise.all([getMemberDevelopment(user, profile.id), listAgreementMembers(user)])
+  const [dev, members] = await Promise.all([getMemberDevelopment(ctx, profile.id), listAgreementMembers(ctx)])
   if (!dev) notFound()
-  const writer = canWrite(user) && profile.status !== "INACTIVE"
+  const writer = canWrite(ctx) && profile.status !== "INACTIVE"
   const active = dev.plans.filter((p) => p.status === "ACTIVE" || p.status === "PAUSED")
   const others = dev.plans.filter((p) => p.status !== "ACTIVE" && p.status !== "PAUSED")
   const mentors = members.filter((m) => m.id !== profile.id)

@@ -1,7 +1,11 @@
 /**
  * pnpm user:create — ÚNICA forma de criar usuário (não há cadastro público
- * nem convite). Pergunta e-mail, nome e papel; gera uma senha aleatória,
+ * nem convite). Pergunta e-mail, nome, papel e time; gera uma senha aleatória,
  * mostra UMA vez e grava só o hash (bcryptjs, cost 12).
+ *
+ * P22: sem TeamAccess a conta não entra em lugar nenhum (D30). O script concede o
+ * acesso ao time escolhido (gestor = MANAGER, leitura = VIEWER) na mesma transação.
+ * Provisionamento completo de times (vários times, conceder/revogar) é o P24.
  */
 import { z } from "zod"
 
@@ -13,10 +17,11 @@ import { generatePassword, hashPassword } from "../src/server/password.ts"
 import { ask, fail, printPasswordOnce } from "./cli.ts"
 
 async function main() {
-  const [rawEmail = "", name = "", rawRole = ""] = await ask([
+  const [rawEmail = "", name = "", rawRole = "", rawTeam = ""] = await ask([
     "E-mail: ",
     "Nome: ",
     "Papel (OWNER = gestor, escrita | VIEWER = leitura): ",
+    "Time (slug, Enter = suporte): ",
   ])
 
   const email = normalizeEmail(rawEmail)
@@ -34,6 +39,10 @@ async function main() {
   if (existing) fail("já existe usuário com este e-mail. Para definir ou trocar a senha, use `pnpm user:password`.")
 
   const organizationId = await defaultOrganizationId()
+  const teamSlug = rawTeam.trim().toLowerCase() || "suporte"
+  const team = await db.team.findFirst({ where: { organizationId, slug: teamSlug, isActive: true }, select: { id: true, name: true } })
+  if (!team) fail(`time "${teamSlug}" não existe ou está desativado.`)
+  const level = role === "OWNER" ? "MANAGER" : "VIEWER"
   const password = generatePassword()
   const passwordHash = await hashPassword(password)
 
@@ -41,14 +50,15 @@ async function main() {
     const created = await tx.user.create({
       data: { email, name, role, organizationId, passwordHash, passwordUpdatedAt: new Date() },
     })
+    await tx.teamAccess.create({ data: { userId: created.id, teamId: team.id, level } })
     await writeAudit(
-      { action: "user.create", entity: "User", entityId: created.id, after: { email, name, role, via: "cli" } },
-      { organizationId, userId: null, tx },
+      { action: "user.create", entity: "User", entityId: created.id, after: { email, name, role, team: teamSlug, level, via: "cli" } },
+      { organizationId, teamId: team.id, userId: null, tx },
     )
     return created
   })
 
-  console.log(`\nUsuário criado: ${user.name} (${role === "OWNER" ? "gestor" : "leitura"}).`)
+  console.log(`\nUsuário criado: ${user.name} (${level === "MANAGER" ? "gestor" : "leitura"} em ${team.name}).`)
   printPasswordOnce(email, password)
 }
 

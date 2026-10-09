@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 
 import { MetricsSettings } from "@/components/settings/catalogs"
 import { labels } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { listMetrics } from "@/server/queries/settings"
 
 export const metadata: Metadata = {
@@ -10,6 +10,6 @@ export const metadata: Metadata = {
 }
 
 export default async function MetricsPage() {
-  const user = await requireUser()
-  return <MetricsSettings items={await listMetrics(user)} canWrite={canWrite(user)} />
+  const ctx = await requireTeamContext()
+  return <MetricsSettings items={await listMetrics(ctx)} canWrite={canWrite(ctx)} />
 }

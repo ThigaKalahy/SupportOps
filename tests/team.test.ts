@@ -11,7 +11,9 @@ process.env.PRISMA_COUNT_QUERIES = "1"
 import assert from "node:assert/strict"
 import { after, before, describe, test } from "node:test"
 
+// Imports dinâmicos: o contador precisa estar ligado antes de o db.ts carregar.
 const { db, dbIncludingDeleted, queryCounter } = await import("../src/server/db.ts")
+const { seedContexts } = await import("./support/team-context.ts")
 const { listTeamMembers } = await import("../src/server/queries/members.ts")
 const { getThresholds } = await import("../src/server/queries/thresholds.ts")
 const { memberAttention } = await import("../src/server/alerts.ts")
@@ -32,8 +34,7 @@ async function cleanupTestMember() {
 }
 
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 
 after(async () => {
   await cleanupTestMember()
@@ -139,7 +140,7 @@ describe("memberAttention (regras)", () => {
 })
 
 describe("cadastro, edição e desativação", async () => {
-  const seniorities = await dbIncludingDeleted.seniority.findMany({ where: { organizationId: owner.organizationId } })
+  const seniorities = await dbIncludingDeleted.seniority.findMany({ where: { teamId: ownerViewer.teamId } })
   const junior = seniorities.find((s) => s.key === "JUNIOR")!
   const pleno = seniorities.find((s) => s.key === "PLENO")!
   const form = {
@@ -155,8 +156,7 @@ describe("cadastro, edição e desativação", async () => {
   }
 
   test("VIEWER não escreve", async () => {
-    const result = await createMemberRecord(viewerOnly, form)
-    assert.equal(result.ok, false)
+    await assert.rejects(createMemberRecord(viewerOnly, form), { name: "ForbiddenError" })
   })
 
   test("data inválida ou no futuro é recusada", async () => {

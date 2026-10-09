@@ -9,15 +9,15 @@ import { ageSeverity, deadlineSeverity, type Severity } from "../lib/severity.ts
 
 import { getAlertFacts, type AlertFacts } from "./queries/alerts.ts"
 import { getThresholds } from "./queries/thresholds.ts"
-import type { Viewer } from "./visibility.ts"
+import type { TeamContext } from "./scope.ts"
 
 /**
  * Motor de alertas — DERIVADO em query, nunca persistido (D9). Só os
  * limiares ficam no banco (AlertThreshold, editáveis em /settings).
  *
- * - `getAlerts(viewer, teamId?)`: a lista única da home ("quem precisa da
- *   minha atenção hoje?"), ordenada por urgência real, e os contadores da
- *   sidebar — a mesma fonte para os dois.
+ * - `getAlerts(ctx)`: a lista única da home ("quem precisa da minha atenção
+ *   hoje?"), ordenada por urgência real, e os contadores da sidebar — a mesma
+ *   fonte para os dois. Um time por chamada: o do contexto (P22).
  * - `deriveAlerts(facts, today, t)`: a regra, pura e testável.
  * - `memberAttention`: o resumo por pessoa da coluna de atenção de /team e do
  *   cabeçalho do perfil (fatos agregados numa consulta só, em
@@ -614,10 +614,10 @@ export function alertCounts(alerts: Alert[]): AlertsResult["counts"] {
 }
 
 /** "Quem precisa da minha atenção hoje?" — a lista e os contadores, da mesma fonte. */
-export async function getAlerts(viewer: Viewer, options: { teamId?: string; today?: Date } = {}): Promise<AlertsResult> {
+export async function getAlerts(ctx: TeamContext, options: { today?: Date } = {}): Promise<AlertsResult> {
   const today = options.today ?? todayBusinessDate()
-  const t = await getThresholds(viewer)
-  const facts = await getAlertFacts(viewer, today, t, options.teamId)
+  const t = await getThresholds(ctx)
+  const facts = await getAlertFacts(ctx, today, t)
   const alerts = deriveAlerts(facts, today, t)
   const counts = alertCounts(alerts)
   // Contador de "Em observação" na sidebar: o fogo alto ativo (mesma fonte, os fatos do motor).

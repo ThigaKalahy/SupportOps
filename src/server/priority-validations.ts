@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { labels } from "../lib/labels.ts"
+import { MODULES } from "../lib/modules.ts"
 import { computeOutcome, extractTicketRef } from "../lib/priority-validation.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import {
@@ -9,10 +10,10 @@ import {
   type ValidationCatalog,
 } from "../lib/validators/priority-validation.ts"
 
-import { writeAudit } from "./audit.ts"
+import { auditOf, writeAudit } from "./audit.ts"
 import { resolveCentralId } from "./centrals.ts"
 import { db } from "./db.ts"
-import { canWrite, memberScope, type Viewer } from "./visibility.ts"
+import { requireManager, requireModule, teamScope, type TeamContext } from "./scope.ts"
 
 /**
  * Escrita de validação de prioridade (núcleo das Server Actions de
@@ -29,21 +30,21 @@ import { canWrite, memberScope, type Viewer } from "./visibility.ts"
 export type ValidationResult = { ok: true; id: string; ticketRef: string } | Extract<ActionResult, { ok: false }>
 
 /** Catálogo da organização: níveis ativos (mais os já usados no registro editado) e motivos. */
-async function catalogFor(viewer: Viewer, keepLevelIds: string[] = [], keepReasonId?: string | null) {
+async function catalogFor(ctx: TeamContext, keepLevelIds: string[] = [], keepReasonId?: string | null) {
   const [levels, reasons, patterns] = await Promise.all([
     db.priorityLevel.findMany({
-      where: { organizationId: viewer.organizationId, OR: [{ isActive: true }, { id: { in: keepLevelIds } }] },
+      where: { ...teamScope(ctx), OR: [{ isActive: true }, { id: { in: keepLevelIds } }] },
       select: { id: true, rank: true },
     }),
     db.reclassificationReason.findMany({
       where: {
-        organizationId: viewer.organizationId,
+        ...teamScope(ctx),
         OR: [{ isActive: true }, ...(keepReasonId ? [{ id: keepReasonId }] : [])],
       },
       select: { id: true, requiresDetail: true },
     }),
     db.ticketUrlPattern.findMany({
-      where: { organizationId: viewer.organizationId, isActive: true },
+      where: { ...teamScope(ctx), isActive: true },
       orderBy: { order: "asc" },
       select: { id: true, regex: true, captureGroup: true },
     }),
@@ -68,9 +69,10 @@ function snapshot(
   }
 }
 
-export async function createValidationRecord(user: Viewer, input: unknown): Promise<ValidationResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
-  const { catalog, patterns } = await catalogFor(user)
+export async function createValidationRecord(ctx: TeamContext, input: unknown): Promise<ValidationResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
+  const { catalog, patterns } = await catalogFor(ctx)
   // ID vazio: o servidor tenta os padrões também (o cliente pode não ter extraído).
   const raw = withExtractedRef(input, patterns)
   const parsed = priorityValidationSchema(catalog).safeParse(raw)
@@ -79,11 +81,11 @@ export async function createValidationRecord(user: Viewer, input: unknown): Prom
   }
   const data = parsed.data
   const member = await db.teamMember.findFirst({
-    where: { id: data.memberId, ...memberScope(user), status: { in: ["ACTIVE", "OFFBOARDING"] } },
+    where: { id: data.memberId, ...teamScope(ctx), status: { in: ["ACTIVE", "OFFBOARDING"] } },
     select: { id: true },
   })
   if (!member) return { ok: false, error: labels.validation.generic, fieldErrors: { memberId: labels.validation.required } }
-  const centralId = await resolveCentralId(user.organizationId, data.centralId)
+  const centralId = await resolveCentralId(ctx, data.centralId)
   if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
 
   const values = snapshot(catalog, data)
@@ -93,7 +95,8 @@ export async function createValidationRecord(user: Viewer, input: unknown): Prom
   const created = await db.$transaction(async (tx) => {
     const row = await tx.priorityValidation.create({
       data: {
-        organizationId: user.organizationId,
+        ...teamScope(ctx),
+        organizationId: ctx.organizationId,
         ticketUrl: data.ticketUrl,
         ticketRef: data.ticketRef,
         memberId: member.id,
@@ -103,7 +106,7 @@ export async function createValidationRecord(user: Viewer, input: unknown): Prom
         reasonOther,
         note: textOrNull(data.note),
         validatedAt: new Date(),
-        validatedByUserId: user.id,
+        validatedByUserId: ctx.userId,
       },
     })
     await writeAudit(
@@ -121,24 +124,25 @@ export async function createValidationRecord(user: Viewer, input: unknown): Prom
           reasonId: row.reasonId,
         },
       },
-      { organizationId: user.organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
     return row
   })
   return { ok: true, id: created.id, ticketRef: created.ticketRef }
 }
 
-export async function updateValidationRecord(user: Viewer, input: unknown): Promise<ValidationResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function updateValidationRecord(ctx: TeamContext, input: unknown): Promise<ValidationResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
   const id = z.object({ id: z.string().min(1) }).safeParse(input)
   if (!id.success) return { ok: false, error: labels.validation.generic }
   const before = await db.priorityValidation.findFirst({
-    where: { id: id.data.id, organizationId: user.organizationId, member: memberScope(user) },
+    where: { ...teamScope(ctx), id: id.data.id },
   })
   if (!before) return { ok: false, error: labels.validation.generic }
 
   const keep = [before.analystPriorityId, ...(before.supervisorPriorityId ? [before.supervisorPriorityId] : [])]
-  const { catalog: current, patterns } = await catalogFor(user, keep, before.reasonId)
+  const { catalog: current, patterns } = await catalogFor(ctx, keep, before.reasonId)
   const raw = withExtractedRef(input, patterns)
   const base = z.object(priorityValidationFields).safeParse(raw)
   const samePriorities =
@@ -164,11 +168,11 @@ export async function updateValidationRecord(user: Viewer, input: unknown): Prom
     return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   }
   const data = parsed.data
-  const member = await db.teamMember.findFirst({ where: { id: data.memberId, ...memberScope(user) }, select: { id: true } })
+  const member = await db.teamMember.findFirst({ where: { id: data.memberId, ...teamScope(ctx) }, select: { id: true } })
   if (!member) return { ok: false, error: labels.validation.generic }
   // A central gravada continua valendo mesmo se tiver sido desativada depois; trocar exige uma ativa.
   const centralId =
-    data.centralId && data.centralId === before.centralId ? before.centralId : await resolveCentralId(user.organizationId, data.centralId)
+    data.centralId && data.centralId === before.centralId ? before.centralId : await resolveCentralId(ctx, data.centralId)
   if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
 
   const values = samePriorities
@@ -185,7 +189,7 @@ export async function updateValidationRecord(user: Viewer, input: unknown): Prom
 
   await db.$transaction(async (tx) => {
     const after = await tx.priorityValidation.update({
-      where: { id: before.id },
+      where: { id: before.id, ...teamScope(ctx) },
       data: {
         ticketUrl: data.ticketUrl,
         ticketRef: data.ticketRef,
@@ -205,23 +209,24 @@ export async function updateValidationRecord(user: Viewer, input: unknown): Prom
         before: auditView(before),
         after: auditView(after),
       },
-      { organizationId: user.organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
   })
   return { ok: true, id: before.id, ticketRef: data.ticketRef }
 }
 
 /** Exclusão lógica (deletedAt): a validação sai das listas e dos resumos. */
-export async function deleteValidationRecord(user: Viewer, input: unknown): Promise<ActionResult> {
-  if (!canWrite(user)) return { ok: false, error: labels.access.forbidden }
+export async function deleteValidationRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  requireModule(ctx, MODULES.PRIORITY_VALIDATION)
   const parsed = z.object({ id: z.string().min(1) }).safeParse(input)
   if (!parsed.success) return { ok: false, error: labels.validation.generic }
   const before = await db.priorityValidation.findFirst({
-    where: { id: parsed.data.id, organizationId: user.organizationId, member: memberScope(user) },
+    where: { ...teamScope(ctx), id: parsed.data.id },
   })
   if (!before) return { ok: false, error: labels.validation.generic }
   await db.$transaction(async (tx) => {
-    await tx.priorityValidation.update({ where: { id: before.id }, data: { deletedAt: new Date() } })
+    await tx.priorityValidation.update({ where: { id: before.id, ...teamScope(ctx) }, data: { deletedAt: new Date() } })
     await writeAudit(
       {
         action: "priorityValidation.delete",
@@ -229,7 +234,7 @@ export async function deleteValidationRecord(user: Viewer, input: unknown): Prom
         entityId: before.id,
         before: auditView(before),
       },
-      { organizationId: user.organizationId, userId: user.id, tx },
+      auditOf(ctx, tx),
     )
   })
   return { ok: true }

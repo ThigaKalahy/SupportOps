@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { PageHeader } from "@/components/ui/page-header"
 import { formatDate, formatTime, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
 import { fill, labels, plural } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { getDailyForm } from "@/server/queries/dailies"
 
 const L = labels.dailies
@@ -33,8 +33,8 @@ export default async function NewDailyPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
-  if (!canWrite(user)) {
+  const ctx = await requireTeamContext()
+  if (!canWrite(ctx)) {
     return (
       <div className="rounded-lg border border-line bg-surface">
         <EmptyState title={L.new} direction={L.forbidden} />
@@ -42,7 +42,7 @@ export default async function NewDailyPage({
     )
   }
   const date = dailyDate((await searchParams).date)
-  const form = await getDailyForm(user, date)
+  const form = await getDailyForm(ctx, date)
   if (!form) {
     return (
       <div className="rounded-lg border border-line bg-surface">

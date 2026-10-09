@@ -25,11 +25,11 @@ import {
 } from "../src/server/development.ts"
 import { createMemberRecord } from "../src/server/members.ts"
 import { getDevelopmentOverview, getMemberDevelopment } from "../src/server/queries/development.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const TEST_NAME = "Pessoa de Teste do Desenvolvimento"
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const today = todayBusinessDate()
 const day = (offset: number) => {
   const d = new Date(today)
@@ -39,9 +39,9 @@ const day = (offset: number) => {
 const display = (offset: number) => formatDate(day(offset), "business")
 
 let memberId = ""
-const competencies = await db.competency.findMany({ where: { organizationId: owner.organizationId }, orderBy: { name: "asc" }, take: 2 })
+const competencies = await db.competency.findMany({ where: { teamId: ownerViewer.teamId }, orderBy: { name: "asc" }, take: 2 })
 const [compA, compB] = competencies as [(typeof competencies)[number], (typeof competencies)[number]]
-const seniorities = await db.seniority.findMany({ where: { organizationId: owner.organizationId }, orderBy: { order: "asc" } })
+const seniorities = await db.seniority.findMany({ where: { teamId: ownerViewer.teamId }, orderBy: { order: "asc" } })
 
 async function cleanup() {
   const members = await dbIncludingDeleted.teamMember.findMany({ where: { fullName: TEST_NAME }, select: { id: true } })
@@ -225,8 +225,8 @@ describe("escritas", () => {
 
   test("VIEWER lê o mesmo e não escreve", async () => {
     const plan = await db.developmentPlan.findFirstOrThrow({ where: { memberId } })
-    assert.ok(!(await reviewPlanRecord(viewerOnly, { planId: plan.id, note: "Invasão" })).ok)
-    assert.ok(!(await setExpectationRecord(viewerOnly, { competencyId: compA.id, seniorityId: seniorities[0]!.id, expectedLevel: 5 })).ok)
+    await assert.rejects(reviewPlanRecord(viewerOnly, { planId: plan.id, note: "Invasão" }), { name: "ForbiddenError" })
+    await assert.rejects(setExpectationRecord(viewerOnly, { competencyId: compA.id, seniorityId: seniorities[0]!.id, expectedLevel: 5 }), { name: "ForbiddenError" })
     assert.equal((await getMemberDevelopment(viewerOnly, memberId, today))!.plans.length, 1)
   })
 })

@@ -11,14 +11,14 @@ import { CrumbLabel } from "@/components/shell/crumb-label"
 import { PageHeader } from "@/components/ui/page-header"
 import { formatDate } from "@/lib/dates"
 import { fill, labels, plural } from "@/lib/labels"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { getDailyDetail } from "@/server/queries/dailies"
 
 const H = labels.dailies.history
 
 const load = cache(async (id: string) => {
-  const user = await requireUser()
-  return { user, daily: await getDailyDetail(user, id) }
+  const ctx = await requireTeamContext()
+  return { ctx, daily: await getDailyDetail(ctx, id) }
 })
 
 export async function generateMetadata({ params }: { params: Promise<{ dailyId: string }> }): Promise<Metadata> {
@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ dailyId: 
 
 /** Daily registrada: o que foi revisado, criado, anotado — e o texto para o WhatsApp. */
 export default async function DailyPage({ params }: { params: Promise<{ dailyId: string }> }) {
-  const { user, daily } = await load((await params).dailyId)
+  const { ctx, daily } = await load((await params).dailyId)
   if (!daily) notFound()
   const date = formatDate(daily.date, "business")
   const blockers = daily.present.filter((p) => p.blocker).length
@@ -38,7 +38,7 @@ export default async function DailyPage({ params }: { params: Promise<{ dailyId:
     <div className="flex flex-col gap-8">
       <CrumbLabel segment={daily.id} label={date} />
       <ContextActions>
-        {canWrite(user) ? <EditDailyButton daily={daily} /> : null}
+        {canWrite(ctx) ? <EditDailyButton daily={daily} /> : null}
         <CopyWhatsAppButton daily={daily.whatsapp} />
         <DownloadDailyPdfButton dailyId={daily.id} />
       </ContextActions>

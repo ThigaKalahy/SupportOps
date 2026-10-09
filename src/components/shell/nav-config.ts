@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 
 import { labels } from "@/lib/labels"
+import { MODULES, type ModuleKey } from "@/lib/modules"
 
 export interface NavItem {
   href: string
@@ -23,7 +24,9 @@ export interface NavItem {
   /** Contador do motor de alertas mostrado ao lado do item. */
   counter?: "today" | "watch" | "team" | "agreements" | "validations" | "dailies" | "records" | "development"
   /** Outras rotas que são abas desta mesma seção (ex.: /dev-returns em Validação de prioridade, P20). */
-  also?: { href: string; label: string }[]
+  also?: { href: string; label: string; module?: ModuleKey }[]
+  /** Módulo opcional do time (D32): desligado, o item não existe na navegação. */
+  module?: ModuleKey
 }
 
 export const mainNav: NavItem[] = [
@@ -37,13 +40,29 @@ export const mainNav: NavItem[] = [
     label: labels.nav.priorityValidations,
     icon: ClipboardCheckIcon,
     counter: "validations",
+    module: MODULES.PRIORITY_VALIDATION,
     // Mesmo domínio (qualidade da triagem), visto do outro lado: aba, não item novo (oito é o teto).
-    also: [{ href: "/dev-returns", label: labels.devReturns.title }],
+    also: [{ href: "/dev-returns", label: labels.devReturns.title, module: MODULES.DEV_RETURNS }],
   },
   { href: "/dailies", label: labels.nav.dailies, icon: CalendarCheckIcon, counter: "dailies" },
   { href: "/records", label: labels.nav.records, icon: MessagesSquareIcon, counter: "records" },
   { href: "/development", label: labels.nav.development, icon: SproutIcon, counter: "development" },
 ]
+
+/**
+ * Itens da navegação principal com os módulos LIGADOS no time (D32): módulo
+ * desligado, item não existe. Se só as devoluções estiverem ligadas, o item da
+ * seção de triagem aponta direto para /dev-returns.
+ */
+export function navItemsFor(modules: readonly string[]): NavItem[] {
+  const on = (key?: ModuleKey) => !key || modules.includes(key)
+  return mainNav.flatMap((item) => {
+    const also = (item.also ?? []).filter((a) => on(a.module))
+    if (on(item.module)) return [{ ...item, also }]
+    const [first, ...rest] = also
+    return first ? [{ ...item, href: first.href, label: first.label, module: first.module, also: rest }] : []
+  })
+}
 
 export const footerNav: NavItem[] = [{ href: "/settings", label: labels.nav.settings, icon: SettingsIcon }]
 

@@ -7,7 +7,7 @@ import { Section } from "@/components/ui/section"
 import { SegmentedBar } from "@/components/ui/segmented-bar"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { WEIGHT_TOTAL, weightSum } from "@/lib/score-composition"
-import { requireUser } from "@/server/access"
+import { requireTeamContext } from "@/server/scope"
 import { getScoreDefinition } from "@/server/queries/score"
 
 const P = labels.settings.score.preview
@@ -27,8 +27,8 @@ const fmt = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 
  */
 export default async function ScorePreviewPage({ params }: { params: Promise<{ definitionId: string }> }) {
   const { definitionId } = await params
-  const user = await requireUser()
-  const data = await getScoreDefinition(user, definitionId)
+  const ctx = await requireTeamContext()
+  const data = await getScoreDefinition(ctx, definitionId)
   if (!data) notFound()
   const d = data.definition
   const sum = weightSum(d.components)

@@ -48,6 +48,7 @@ export function AgreementsView({
   counts,
   canWrite,
   showMember = true,
+  showCentral = true,
 }: {
   basePath: string
   /** Query atual (para as abas preservarem os filtros). */
@@ -57,6 +58,8 @@ export function AgreementsView({
   counts: AgreementCounts
   canWrite: boolean
   showMember?: boolean
+  /** Módulo de centrais ligado no time (D32): sem ele, a coluna não existe. */
+  showCentral?: boolean
 }) {
   const tabs = AGREEMENT_VIEWS.map((view) => ({
     href: viewHref(basePath, search, view),
@@ -73,6 +76,7 @@ export function AgreementsView({
         rows={rows}
         canWrite={canWrite}
         showMember={showMember}
+        showCentral={showCentral}
         empty={{
           title: EMPTY_TITLE[filters.view],
           direction: hasAgreementFilters(filters) ? A.filteredDirection : A.emptyDirection,

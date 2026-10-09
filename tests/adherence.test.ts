@@ -31,10 +31,10 @@ import {
   getTeamAdherence,
 } from "../src/server/queries/adherence.ts"
 import { listTeamMembers } from "../src/server/queries/members.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const today = todayBusinessDate()
 const day = (offset: number) => {
   const d = new Date(today)

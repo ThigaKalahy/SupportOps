@@ -6,7 +6,7 @@ import { RouteTabs } from "@/components/ui/route-tabs"
 import { WatchList } from "@/components/watch/watch-list"
 import { labels } from "@/lib/labels"
 import { hasWatchFilters, parseWatchFilters, WATCH_PARAMS, WATCH_TABS, type WatchTab } from "@/lib/watch-filters"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { getThresholds } from "@/server/queries/thresholds"
 import { listWatchItems, watchFilterOptions } from "@/server/queries/watch"
 
@@ -44,11 +44,11 @@ export default async function WatchPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
   const raw = await searchParams
   const filters = parseWatchFilters(raw)
-  const thresholds = await getThresholds(user)
-  const [{ rows, counts }, options] = await Promise.all([listWatchItems(user, filters, thresholds), watchFilterOptions(user)])
+  const thresholds = await getThresholds(ctx)
+  const [{ rows, counts }, options] = await Promise.all([listWatchItems(ctx, filters, thresholds), watchFilterOptions(ctx)])
   const search = new URLSearchParams(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && k !== WATCH_PARAMS.open && k !== WATCH_PARAMS.new ? [[k, v]] : [])))
   const tabs = WATCH_TABS.map((tab) => {
     const params = new URLSearchParams(search)
@@ -67,7 +67,7 @@ export default async function WatchPage({
           filters={filters}
           members={options.members}
           centrals={options.centrals}
-          canWrite={canWrite(user)}
+          canWrite={canWrite(ctx)}
           openNew={raw[WATCH_PARAMS.new] === "1"}
         />
       </ContextActions>
@@ -75,7 +75,7 @@ export default async function WatchPage({
       <RouteTabs label={W.tabs.label} tabs={tabs} activeHref={tabs[WATCH_TABS.indexOf(filters.tab)]?.href} />
       <WatchList
         rows={rows}
-        canWrite={canWrite(user)}
+        canWrite={canWrite(ctx)}
         grouped={filters.tab === "active" || filters.tab === "unreviewed"}
         empty={empty}
         openId={openId}

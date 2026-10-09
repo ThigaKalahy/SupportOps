@@ -21,11 +21,11 @@ import {
   createAgreementRecord,
   updateAgreementRecord,
 } from "../src/server/agreements.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const TEST_NAME = "Pessoa de Teste dos Combinados"
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const base: AgreementFilters = parseAgreementFilters({})
 const today = todayBusinessDate()
 const display = (offset: number) => {
@@ -124,7 +124,7 @@ describe("central de combinados", () => {
 
   test("filtros inválidos na URL são ignorados; padrão é Em aberto", () => {
     const parsed = parseAgreementFilters({ view: "x", origin: "nada", priority: "HIGH", created: "2anos", member: "a b" })
-    assert.deepEqual(parsed, { view: "open", memberId: null, seniority: null, origin: null, priority: "HIGH", created: "all" })
+    assert.deepEqual(parsed, { view: "open", memberId: null, seniority: null, origin: null, priority: "HIGH", created: "all", central: null })
   })
 })
 
@@ -147,7 +147,7 @@ describe("detalhe", () => {
 
   test("outra organização não abre", async () => {
     const any = await db.agreement.findFirstOrThrow()
-    assert.equal(await getAgreementDetail({ ...ownerViewer, organizationId: "outra" }, any.id), null)
+    assert.equal(await getAgreementDetail({ ...ownerViewer, teamId: "outro-time" }, any.id), null)
   })
 })
 
@@ -199,8 +199,7 @@ describe("conclusão", () => {
   })
 
   test("VIEWER não conclui", async () => {
-    const result = await completeAgreementRecord(viewerOnly, { id: agreementId, outcome: "" })
-    assert.ok(!result.ok)
+    await assert.rejects(completeAgreementRecord(viewerOnly, { id: agreementId, outcome: "" }), { name: "ForbiddenError" })
   })
 
   test("concluir grava DONE, completedAt de hoje, resultado, AGREEMENT_DONE e auditoria; prazo original intacto", async () => {
@@ -301,7 +300,7 @@ describe("editar e cancelar fora da daily", () => {
   })
 
   test("VIEWER não edita nem cancela", async () => {
-    assert.ok(!(await updateAgreementRecord(viewerOnly, { id: agreementId, title: "Invadido", description: "", priority: "LOW" })).ok)
-    assert.ok(!(await cancelAgreementRecord(viewerOnly, { id: agreementId, reason: "Invadido" })).ok)
+    await assert.rejects(updateAgreementRecord(viewerOnly, { id: agreementId, title: "Invadido", description: "", priority: "LOW" }), { name: "ForbiddenError" })
+    await assert.rejects(cancelAgreementRecord(viewerOnly, { id: agreementId, reason: "Invadido" }), { name: "ForbiddenError" })
   })
 })

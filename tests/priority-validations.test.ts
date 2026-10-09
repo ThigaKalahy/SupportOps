@@ -37,12 +37,12 @@ import {
   saveCatalogItemRecord,
   setCatalogItemActiveRecord,
 } from "../src/server/settings.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const REF = "TESTE-P11-"
 const LABEL = "Teste P11"
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 const org = owner.organizationId
 const today = todayBusinessDate()
 const originalLevels = await db.priorityLevel.findMany({ where: { organizationId: org }, select: { id: true, rank: true } })
@@ -158,6 +158,7 @@ describe("registro de validação", () => {
       db.priorityValidation.create({
         data: {
           organizationId: org,
+          teamId: ownerViewer.teamId,
           ticketUrl: "x",
           ticketRef: `${REF}banco`,
           memberId: member.id,
@@ -203,7 +204,7 @@ describe("registro de validação", () => {
   test("VIEWER não registra; responsável inativo é recusado", async () => {
     const media = await level("MEDIA")
     const body = input({ ticketUrl: "x", ticketRef: `${REF}v`, analystPriorityId: media.id, supervisorPriorityId: media.id })
-    assert.ok(!(await createValidationRecord(viewerOnly, body)).ok)
+    await assert.rejects(createValidationRecord(viewerOnly, body), { name: "ForbiddenError" })
     const inactive = await db.teamMember.findFirst({ where: { status: "INACTIVE" } })
     if (inactive) assert.ok(!(await createValidationRecord(ownerViewer, { ...body, memberId: inactive.id })).ok)
   })
@@ -303,7 +304,7 @@ describe("lista, exclusão e resumos", () => {
     assert.ok(!again.rows.some((r) => r.id === target.id))
     assert.equal((await summaryByPeriod(ownerViewer, today, today)).total, again.rows.length)
     assert.ok((await dbIncludingDeleted.priorityValidation.findUniqueOrThrow({ where: { id: target.id } })).deletedAt)
-    assert.ok(!(await deleteValidationRecord(viewerOnly, { id: mine[1]!.id })).ok)
+    await assert.rejects(deleteValidationRecord(viewerOnly, { id: mine[1]!.id }), { name: "ForbiddenError" })
   })
 
   test("resumos de 90 dias batem com a contagem direta; por pessoa em ordem de nome, com total; motivos do mais ao menos usado", async () => {
@@ -333,7 +334,7 @@ describe("lista, exclusão e resumos", () => {
     assert.ok(matrix.every((t) => (t.to === null) === (t.outcome === "RETURNED")))
   })
 
-  test("os quatro resumos filtram o período pelo índice (organizationId, validatedAt), sem mudar o schema", async () => {
+  test("os quatro resumos filtram o período pelo índice (teamId, validatedAt), sem mudar o schema", async () => {
     const from = new Date(today)
     from.setUTCDate(from.getUTCDate() - 29)
     for (const [name, build] of Object.entries(summarySql)) {
@@ -345,7 +346,7 @@ describe("lista, exclusão e resumos", () => {
         return tx.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN ${build(ownerViewer, from, today)}`)
       })
       const text = plan.map((p) => p["QUERY PLAN"]).join("\n")
-      assert.match(text, /PriorityValidation_organizationId_validatedAt_idx/, `${name}:\n${text}`)
+      assert.match(text, /PriorityValidation_teamId_validatedAt_idx/, `${name}:\n${text}`)
     }
   })
 
@@ -408,8 +409,8 @@ describe("/settings: catálogos", () => {
   })
 
   test("VIEWER não altera configurações", async () => {
-    assert.ok(!(await saveCatalogItemRecord(viewerOnly, "priorityLevel", { label: `${LABEL} intruso` })).ok)
+    await assert.rejects(saveCatalogItemRecord(viewerOnly, "priorityLevel", { label: `${LABEL} intruso` }), { name: "ForbiddenError" })
     const media = await level("MEDIA")
-    assert.ok(!(await moveCatalogItemRecord(viewerOnly, { kind: "priorityLevel", id: media.id, direction: "up" })).ok)
+    await assert.rejects(moveCatalogItemRecord(viewerOnly, { kind: "priorityLevel", id: media.id, direction: "up" }), { name: "ForbiddenError" })
   })
 })

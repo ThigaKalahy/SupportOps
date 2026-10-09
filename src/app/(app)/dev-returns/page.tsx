@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 
 import { DevReturnSummary } from "@/components/dev-returns/dev-return-summary"
 import { DevReturnsWorkspace } from "@/components/dev-returns/dev-returns-workspace"
@@ -12,7 +13,8 @@ import { formatDate, formatDayMonth } from "@/lib/dates"
 import { hasDevReturnFilters, parseDevReturnFilters } from "@/lib/dev-return-filters"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { OUTCOME_SEVERITY } from "@/lib/priority-validation"
-import { canWrite, requireUser } from "@/server/access"
+import { MODULES } from "@/lib/modules"
+import { canWrite, hasModule, requireTeamContext } from "@/server/scope"
 import { listCentralsForFilter } from "@/server/queries/centrals"
 import { getDevReturnFormData, listDevReturns } from "@/server/queries/dev-returns"
 import { activeWatchByLink } from "@/server/queries/watch"
@@ -36,12 +38,14 @@ export default async function DevReturnsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
+  // Módulo desligado no time (D32): a rota não existe, mesmo digitada.
+  if (!hasModule(ctx, MODULES.DEV_RETURNS)) notFound()
   const filters = parseDevReturnFilters(await searchParams)
-  const writer = canWrite(user)
-  const [formData, list, centrals] = await Promise.all([getDevReturnFormData(user), listDevReturns(user, filters), listCentralsForFilter(user)])
+  const writer = canWrite(ctx)
+  const [formData, list, centrals] = await Promise.all([getDevReturnFormData(ctx), listDevReturns(ctx, filters), hasModule(ctx, MODULES.CENTRALS) ? listCentralsForFilter(ctx) : []])
 
-  const watching = writer ? await activeWatchByLink(user, "devReturnId", list.rows.map((r) => r.id)) : {}
+  const watching = writer ? await activeWatchByLink(ctx, "devReturnId", list.rows.map((r) => r.id)) : {}
   const isToday = filters.period === "today"
   const subtitle = isToday
     ? fill(D.subtitle.today, { date: formatDate(list.to, "business") })
@@ -62,11 +66,12 @@ export default async function DevReturnsPage({
         <DevReturnsToolbar filters={filters} members={formData.members} reasons={formData.reasons} centrals={centrals} />
       </ContextActions>
       <PageHeader title={D.title} subtitle={subtitle} />
-      <TriageTabs />
+      <TriageTabs modules={ctx.modules} />
       {writer && formData.reasons.length === 0 ? (
         <p className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink">{D.form.noReasons}</p>
       ) : null}
       <DevReturnsWorkspace
+        showCentral={hasModule(ctx, MODULES.CENTRALS)}
         form={writer && formData.reasons.length > 0 ? formData : null}
         rows={list.rows}
         canWrite={writer}

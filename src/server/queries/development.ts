@@ -10,7 +10,7 @@ import {
   type SeniorityLevelMap,
 } from "../../lib/development.ts"
 import { db } from "../db.ts"
-import { memberScope, type Viewer } from "../visibility.ts"
+import { teamScope, type TeamContext } from "../scope.ts"
 
 import { getThresholds } from "./thresholds.ts"
 
@@ -61,9 +61,9 @@ const planInclude = {
 
 type PlanWithRelations = NonNullable<Awaited<ReturnType<typeof findPlans>>>[number]
 
-function findPlans(viewer: Viewer, memberId?: string) {
+function findPlans(ctx: TeamContext, memberId?: string) {
   return db.developmentPlan.findMany({
-    where: { member: { ...memberScope(viewer), ...(memberId ? { id: memberId } : { deletedAt: null }) } },
+    where: { ...teamScope(ctx), ...(memberId ? { memberId } : { member: { deletedAt: null } }) },
     include: planInclude,
   })
 }
@@ -103,9 +103,9 @@ function sortPlans(plans: PlanView[]): PlanView[] {
 }
 
 /** Senioridades em ordem, com a matriz de níveis esperados de cada uma. */
-async function seniorityLevels(viewer: Viewer): Promise<SeniorityLevelMap[]> {
+async function seniorityLevels(ctx: TeamContext): Promise<SeniorityLevelMap[]> {
   const seniorities = await db.seniority.findMany({
-    where: { organizationId: viewer.organizationId },
+    where: teamScope(ctx),
     orderBy: { order: "asc" },
     include: { expectations: { where: { competency: { isActive: true } } } },
   })
@@ -129,24 +129,25 @@ export interface CompetencyView {
 }
 
 /** Aba Desenvolvimento do perfil. */
-export async function getMemberDevelopment(viewer: Viewer, memberId: string, today = todayBusinessDate()) {
+export async function getMemberDevelopment(ctx: TeamContext, memberId: string, today = todayBusinessDate()) {
   const member = await db.teamMember.findFirst({
-    where: { id: memberId, ...memberScope(viewer), deletedAt: undefined },
+    where: { id: memberId, ...teamScope(ctx), deletedAt: undefined },
     select: { id: true, seniorityId: true },
   })
   if (!member) return null
   const [plans, competencies, levels, traits, seniorities, mentorships, thresholds] = await Promise.all([
-    findPlans(viewer, memberId),
-    db.competency.findMany({ where: { organizationId: viewer.organizationId, isActive: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
-    db.memberCompetency.findMany({ where: { memberId } }),
-    db.memberTrait.findMany({ where: { memberId }, orderBy: [{ observedAt: "desc" }] }),
-    seniorityLevels(viewer),
+    findPlans(ctx, memberId),
+    db.competency.findMany({ where: { ...teamScope(ctx), isActive: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    db.memberCompetency.findMany({ where: { ...teamScope(ctx), memberId } }),
+    db.memberTrait.findMany({ where: { ...teamScope(ctx), memberId }, orderBy: [{ observedAt: "desc" }] }),
+    seniorityLevels(ctx),
     db.mentorshipLink.findMany({
       where: {
+        ...teamScope(ctx),
         endedAt: null,
         OR: [{ mentorMemberId: memberId }, { menteeMemberId: memberId }],
-        mentor: { ...memberScope(viewer), deletedAt: null },
-        mentee: { ...memberScope(viewer), deletedAt: null },
+        mentor: { deletedAt: null },
+        mentee: { deletedAt: null },
       },
       orderBy: { startedAt: "asc" },
       include: {
@@ -155,7 +156,7 @@ export async function getMemberDevelopment(viewer: Viewer, memberId: string, tod
         competency: { select: { name: true } },
       },
     }),
-    getThresholds(viewer),
+    getThresholds(ctx),
   ])
   const index = seniorities.findIndex((s) => s.seniorityId === member.seniorityId)
   const current = seniorities[index]
@@ -206,14 +207,15 @@ export interface ReadinessRow {
 }
 
 /** /development: PDIs por status, parados, mapa de mentorias e prontidão. */
-export async function getDevelopmentOverview(viewer: Viewer, today = todayBusinessDate()) {
+export async function getDevelopmentOverview(ctx: TeamContext, today = todayBusinessDate()) {
   const [plans, links, ready, thresholds] = await Promise.all([
-    findPlans(viewer),
+    findPlans(ctx),
     db.mentorshipLink.findMany({
       where: {
+        ...teamScope(ctx),
         endedAt: null,
-        mentor: { ...memberScope(viewer), deletedAt: null },
-        mentee: { ...memberScope(viewer), deletedAt: null },
+        mentor: { deletedAt: null },
+        mentee: { deletedAt: null },
       },
       orderBy: { startedAt: "asc" },
       include: {
@@ -222,8 +224,8 @@ export async function getDevelopmentOverview(viewer: Viewer, today = todayBusine
         competency: { select: { name: true } },
       },
     }),
-    getReadinessRows(viewer),
-    getThresholds(viewer),
+    getReadinessRows(ctx),
+    getThresholds(ctx),
   ])
 
   const views = sortPlans(plans.map((p) => toPlanView(p, today, thresholds.stalePlanDays)))
@@ -259,15 +261,15 @@ export async function getDevelopmentOverview(viewer: Viewer, today = todayBusine
  * senioridade atual. Ordem alfabética, nunca por "quão perto". Usada por
  * /development e pelo alerta informativo do motor (P15).
  */
-export async function getReadinessRows(viewer: Viewer): Promise<{ rows: ReadinessRow[]; matrixEmpty: boolean }> {
+export async function getReadinessRows(ctx: TeamContext): Promise<{ rows: ReadinessRow[]; matrixEmpty: boolean }> {
   const [members, seniorities, levels] = await Promise.all([
     db.teamMember.findMany({
-      where: { ...memberScope(viewer), status: { not: "INACTIVE" } },
+      where: { ...teamScope(ctx), status: { not: "INACTIVE" } },
       orderBy: { preferredName: "asc" },
       select: { id: true, preferredName: true, seniorityId: true, seniority: { select: { label: true } } },
     }),
-    seniorityLevels(viewer),
-    db.memberCompetency.findMany({ where: { member: { ...memberScope(viewer), deletedAt: null } } }),
+    seniorityLevels(ctx),
+    db.memberCompetency.findMany({ where: { ...teamScope(ctx), member: { deletedAt: null } } }),
   ])
   const levelsByMember = new Map<string, Map<string, number>>()
   for (const l of levels) {
@@ -285,10 +287,10 @@ export async function getReadinessRows(viewer: Viewer): Promise<{ rows: Readines
 export type DevelopmentOverview = Awaited<ReturnType<typeof getDevelopmentOverview>>
 
 /** Matriz de níveis esperados para /settings: competências ativas × senioridades. */
-export async function getExpectationMatrix(viewer: Viewer) {
+export async function getExpectationMatrix(ctx: TeamContext) {
   const [competencies, seniorities] = await Promise.all([
-    db.competency.findMany({ where: { organizationId: viewer.organizationId, isActive: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
-    seniorityLevels(viewer),
+    db.competency.findMany({ where: { ...teamScope(ctx), isActive: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    seniorityLevels(ctx),
   ])
   return {
     competencies: competencies.map((c) => ({ id: c.id, name: c.name, category: c.category })),

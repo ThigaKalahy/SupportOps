@@ -5,7 +5,8 @@ import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
 import { todayBusinessDate } from "../../lib/dates.ts"
 import { memberAttention, type MemberAttention } from "../alerts.ts"
 import { db } from "../db.ts"
-import { visibilitySql, type Viewer } from "../visibility.ts"
+import { teamScope, teamSql, type TeamContext } from "../scope.ts"
+import { visibilitySql } from "../visibility.ts"
 
 import { getThresholds } from "./thresholds.ts"
 
@@ -72,13 +73,13 @@ interface RawRow {
  * nome — nunca por métrica de desempenho (sem ranking, D7).
  */
 export async function listTeamMembers(
-  viewer: Viewer,
+  ctx: TeamContext,
   filters: TeamListFilters = {},
   /** Limiares de /settings (os mesmos do motor da home). As páginas passam os já carregados no layout. */
   thresholds?: AlertThresholds,
 ): Promise<TeamListRow[]> {
   const today = todayBusinessDate()
-  const t = thresholds ?? (await getThresholds(viewer))
+  const t = thresholds ?? (await getThresholds(ctx))
   const dueSoonLimit = new Date(today)
   dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + t.dueSoonDays)
 
@@ -86,49 +87,45 @@ export async function listTeamMembers(
   const windows = trendWindows(today)
   const dueIn = (from: Date, to: Date, onTime: boolean) => Prisma.sql`
       (SELECT count(*)::int FROM "Agreement" a
-        WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL
+        WHERE a."memberId" = m."id" AND a."teamId" = ${ctx.teamId} AND a."deletedAt" IS NULL
           AND a."originalDueDate" BETWEEN ${from} AND ${to}
           AND NOT (a."status" IN ('OPEN', 'IN_PROGRESS') AND a."originalDueDate" >= ${today})
           ${onTime ? Prisma.sql`AND a."status" = 'DONE' AND a."completedAt" <= a."originalDueDate"` : Prisma.empty})`
 
   const inactive = filters.status === "inactive"
-  const scope =
-    viewer.role === "MANAGER" ? Prisma.sql`AND t."managerUserId" = ${viewer.id}` : Prisma.empty
 
   const rows = await db.$queryRaw<RawRow[]>`
     SELECT
       m."id", m."fullName", m."preferredName", m."position", m."email", m."status", m."joinedAt",
       s."id" AS "seniorityId", s."key" AS "seniorityKey", s."label" AS "seniorityLabel", s."order" AS "seniorityOrder",
       (SELECT max(o."date") FROM "OneOnOne" o
-        WHERE o."memberId" = m."id" AND o."deletedAt" IS NULL ${visibilitySql(viewer, "o")}) AS "lastOneOnOne",
+        WHERE o."memberId" = m."id" AND ${teamSql(ctx, "o")} AND o."deletedAt" IS NULL ${visibilitySql(ctx, "o")}) AS "lastOneOnOne",
       (SELECT count(*)::int FROM "Agreement" a
-        WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')) AS "openAgreements",
+        WHERE a."memberId" = m."id" AND a."teamId" = m."teamId" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')) AS "openAgreements",
       (SELECT count(*)::int FROM "Agreement" a
-        WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
+        WHERE a."memberId" = m."id" AND a."teamId" = m."teamId" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
           AND a."dueDate" < ${today}) AS "overdueAgreements",
       (SELECT min(a."dueDate") FROM "Agreement" a
-        WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
+        WHERE a."memberId" = m."id" AND a."teamId" = m."teamId" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
           AND a."dueDate" < ${today}) AS "oldestOverdueDue",
       (SELECT count(*)::int FROM "Agreement" a
-        WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
+        WHERE a."memberId" = m."id" AND a."teamId" = m."teamId" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
           AND a."dueDate" > ${today} AND a."dueDate" <= ${dueSoonLimit}) AS "dueSoonAgreements",
       (SELECT count(*)::int FROM "Agreement" a
-        WHERE a."memberId" = m."id" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
+        WHERE a."memberId" = m."id" AND a."teamId" = m."teamId" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
           AND (SELECT count(*) FROM "AgreementCheckin" c
                 WHERE c."agreementId" = a."id" AND c."newDueDate" IS NOT NULL) >= ${t.chronicReschedules}
       ) AS "chronicAgreements",
       (SELECT min(coalesce((p."lastReviewedAt" AT TIME ZONE 'America/Sao_Paulo')::date, p."startedAt"))
         FROM "DevelopmentPlan" p
-        WHERE p."memberId" = m."id" AND p."deletedAt" IS NULL AND p."status" = 'ACTIVE') AS "oldestPlanReview",
+        WHERE p."memberId" = m."id" AND ${teamSql(ctx, "p")} AND p."deletedAt" IS NULL AND p."status" = 'ACTIVE') AS "oldestPlanReview",
       ${dueIn(windows.current.from, windows.current.to, false)} AS "dueCurrent",
       ${dueIn(windows.current.from, windows.current.to, true)} AS "onTimeCurrent",
       ${dueIn(windows.previous.from, windows.previous.to, false)} AS "duePrevious",
       ${dueIn(windows.previous.from, windows.previous.to, true)} AS "onTimePrevious"
     FROM "TeamMember" m
-    JOIN "Team" t ON t."id" = m."teamId"
     JOIN "Seniority" s ON s."id" = m."seniorityId"
-    WHERE t."organizationId" = ${viewer.organizationId}
-      ${scope}
+    WHERE ${teamSql(ctx, "m")}
       ${
         filters.id
           ? Prisma.sql`AND m."id" = ${filters.id}`
@@ -185,11 +182,11 @@ export async function listTeamMembers(
 }
 
 /** Catálogos do formulário de cadastro (senioridades, responsabilidades, competências). */
-export async function getMemberFormCatalogs(viewer: Viewer) {
+export async function getMemberFormCatalogs(ctx: TeamContext) {
   const [seniorities, responsibilities, competencies] = await Promise.all([
-    db.seniority.findMany({ where: { organizationId: viewer.organizationId }, orderBy: { order: "desc" } }),
-    db.responsibility.findMany({ where: { organizationId: viewer.organizationId }, orderBy: { name: "asc" } }),
-    db.competency.findMany({ where: { organizationId: viewer.organizationId, isActive: true }, orderBy: { name: "asc" } }),
+    db.seniority.findMany({ where: teamScope(ctx), orderBy: { order: "desc" } }),
+    db.responsibility.findMany({ where: teamScope(ctx), orderBy: { name: "asc" } }),
+    db.competency.findMany({ where: { ...teamScope(ctx), isActive: true }, orderBy: { name: "asc" } }),
   ])
   return {
     seniorities: seniorities.map((s) => ({ id: s.id, key: s.key, label: s.label })),
@@ -201,9 +198,9 @@ export async function getMemberFormCatalogs(viewer: Viewer) {
 export type MemberFormCatalogs = Awaited<ReturnType<typeof getMemberFormCatalogs>>
 
 /** Cadastro de uma pessoa para o formulário de edição (responsabilidades vigentes e níveis). */
-export async function getMemberForEdit(viewer: Viewer, memberId: string) {
+export async function getMemberForEdit(ctx: TeamContext, memberId: string) {
   const member = await db.teamMember.findFirst({
-    where: { id: memberId, team: { organizationId: viewer.organizationId } },
+    where: { ...teamScope(ctx), id: memberId },
     include: {
       responsibilities: { where: { endedAt: null }, select: { responsibilityId: true } },
       competencies: { select: { competencyId: true, currentLevel: true } },
@@ -227,10 +224,10 @@ export async function getMemberForEdit(viewer: Viewer, memberId: string) {
 export type MemberForEdit = NonNullable<Awaited<ReturnType<typeof getMemberForEdit>>>
 
 /** Cadastros para edição de todas as pessoas listadas, numa única consulta. */
-export async function listMembersForEdit(viewer: Viewer, ids: string[]): Promise<Record<string, MemberForEdit>> {
+export async function listMembersForEdit(ctx: TeamContext, ids: string[]): Promise<Record<string, MemberForEdit>> {
   if (ids.length === 0) return {}
   const members = await db.teamMember.findMany({
-    where: { id: { in: ids }, team: { organizationId: viewer.organizationId } },
+    where: { ...teamScope(ctx), id: { in: ids } },
     include: {
       responsibilities: { where: { endedAt: null }, select: { responsibilityId: true } },
       competencies: { select: { competencyId: true, currentLevel: true } },

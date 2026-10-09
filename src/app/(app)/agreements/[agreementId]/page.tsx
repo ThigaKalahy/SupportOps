@@ -16,7 +16,7 @@ import { StatusPill } from "@/components/ui/status-pill"
 import { formatDate } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import type { Severity } from "@/lib/severity"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { getAgreementDetail, type AgreementCheckinRow } from "@/server/queries/agreements"
 import { activeWatchByLink } from "@/server/queries/watch"
 
@@ -25,8 +25,8 @@ import { AgreementActions } from "./_components/agreement-actions"
 const D = labels.agreements.detail
 
 const load = cache(async (id: string) => {
-  const user = await requireUser()
-  return { user, agreement: await getAgreementDetail(user, id) }
+  const ctx = await requireTeamContext()
+  return { ctx, agreement: await getAgreementDetail(ctx, id) }
 })
 
 export async function generateMetadata({ params }: { params: Promise<{ agreementId: string }> }): Promise<Metadata> {
@@ -57,16 +57,16 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
  * cada desfecho, cada impeditivo, cada novo prazo.
  */
 export default async function AgreementDetailPage({ params }: { params: Promise<{ agreementId: string }> }) {
-  const { user, agreement } = await load((await params).agreementId)
+  const { ctx, agreement } = await load((await params).agreementId)
   if (!agreement) notFound()
 
   const moved = agreement.dueDate.getTime() !== agreement.originalDueDate.getTime()
-  const watching = canWrite(user) ? ((await activeWatchByLink(user, "agreementId", [agreement.id]))[agreement.id] ?? null) : null
+  const watching = canWrite(ctx) ? ((await activeWatchByLink(ctx, "agreementId", [agreement.id]))[agreement.id] ?? null) : null
 
   return (
     <div className="flex flex-col gap-8">
       <CrumbLabel segment={agreement.id} label={agreement.title} />
-      {canWrite(user) ? (
+      {canWrite(ctx) ? (
         <ContextActions>
           {/* P21: observar este combinado (abre a observação existente, se houver). */}
           <WatchButton

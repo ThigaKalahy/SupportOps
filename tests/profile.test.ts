@@ -16,6 +16,7 @@ import { getMemberOverview, getMemberProfile } from "../src/server/queries/profi
 import { createMemberRecord, deactivateMemberRecord, updateManagerSummaryRecord } from "../src/server/members.ts"
 import { createFeedbackRecord, createNoteRecord, createOneOnOneRecord } from "../src/server/records.ts"
 import { createAgreementRecord } from "../src/server/agreements.ts"
+import { seedContexts } from "./support/team-context.ts"
 
 const TEST_NAME = "Pessoa de Teste do Perfil"
 
@@ -42,8 +43,7 @@ async function cleanup() {
 }
 
 const owner = await dbIncludingDeleted.user.findFirstOrThrow({ where: { role: "OWNER" } })
-const ownerViewer = { id: owner.id, role: owner.role, organizationId: owner.organizationId }
-const viewerOnly = { id: "teste-viewer", role: "VIEWER" as const, organizationId: owner.organizationId }
+const { manager: ownerViewer, viewer: viewerOnly } = await seedContexts(owner)
 
 const today = todayBusinessDate()
 const display = (offsetDays: number) => {
@@ -105,9 +105,10 @@ describe("cabeçalho do perfil", () => {
     }
   })
 
-  test("pessoa de outra organização não abre", async () => {
+  test("pessoa de outro time não abre", async () => {
     const henrique = await seedMember("Henrique")
-    const outsider = { ...ownerViewer, organizationId: "outra-organizacao" }
+    // D36: organizationId nunca escopa sozinho; quem separa é o time.
+    const outsider = { ...ownerViewer, teamId: "outro-time" }
     assert.equal(await getMemberProfile(outsider, henrique.id), null)
   })
 })
@@ -185,14 +186,10 @@ describe("registros pelo cabeçalho do perfil", () => {
   })
 
   test("VIEWER não registra nada", async () => {
-    const forbidden = [
-      await createOneOnOneRecord(viewerOnly, {}),
-      await createFeedbackRecord(viewerOnly, {}),
-      await createNoteRecord(viewerOnly, {}),
-      await createAgreementRecord(viewerOnly, {}),
-      await updateManagerSummaryRecord(viewerOnly, {}),
-    ]
-    assert.ok(forbidden.every((r) => !r.ok && r.error === "Ação não permitida para o seu papel."))
+    // P22: o núcleo lança ForbiddenError (requireManager); a Server Action converte em erro amigável.
+    for (const write of [createOneOnOneRecord, createFeedbackRecord, createNoteRecord, createAgreementRecord, updateManagerSummaryRecord]) {
+      await assert.rejects(write(viewerOnly, {}), { name: "ForbiddenError" })
+    }
   })
 
   test("1:1 nasce PRIVATE, com linha PRIVATE na timeline e auditoria", async () => {

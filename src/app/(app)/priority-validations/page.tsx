@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 
 import { TriageTabs } from "@/components/priority-validations/triage-tabs"
 import { ValidationsWorkspace } from "@/components/priority-validations/validations-workspace"
@@ -9,7 +10,8 @@ import { StatStrip } from "@/components/ui/stat-strip"
 import { formatDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { hasValidationFilters, parseValidationFilters } from "@/lib/validation-filters"
-import { canWrite, requireUser } from "@/server/access"
+import { MODULES } from "@/lib/modules"
+import { canWrite, hasModule, requireTeamContext } from "@/server/scope"
 import { listCentralsForFilter } from "@/server/queries/centrals"
 import { activeWatchByLink } from "@/server/queries/watch"
 import { getValidationFormData, listValidations, type ValidationSummary } from "@/server/queries/priority-validations"
@@ -55,16 +57,18 @@ export default async function PriorityValidationsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
+  // Módulo desligado no time (D32): a rota não existe, mesmo digitada.
+  if (!hasModule(ctx, MODULES.PRIORITY_VALIDATION)) notFound()
   const filters = parseValidationFilters(await searchParams)
-  const writer = canWrite(user)
+  const writer = canWrite(ctx)
   const [formData, list, centrals] = await Promise.all([
-    getValidationFormData(user),
-    listValidations(user, filters),
-    listCentralsForFilter(user),
+    getValidationFormData(ctx),
+    listValidations(ctx, filters),
+    hasModule(ctx, MODULES.CENTRALS) ? listCentralsForFilter(ctx) : [],
   ])
 
-  const watching = writer ? await activeWatchByLink(user, "priorityValidationId", list.rows.map((r) => r.id)) : {}
+  const watching = writer ? await activeWatchByLink(ctx, "priorityValidationId", list.rows.map((r) => r.id)) : {}
   const isToday = filters.period === "today"
   const subtitle = isToday
     ? fill(P.subtitle.today, { date: formatDate(list.to, "business") })
@@ -86,11 +90,12 @@ export default async function PriorityValidationsPage({
         <ValidationsToolbar filters={filters} members={formData.members} reasons={formData.reasons} centrals={centrals} />
       </ContextActions>
       <PageHeader title={P.title} subtitle={subtitle} />
-      <TriageTabs />
+      <TriageTabs modules={ctx.modules} />
       {writer && formData.levels.length === 0 ? (
         <p className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink">{P.form.noLevels}</p>
       ) : null}
       <ValidationsWorkspace
+        showCentral={hasModule(ctx, MODULES.CENTRALS)}
         form={writer && formData.levels.length > 0 ? formData : null}
         rows={list.rows}
         showDate={!isToday}

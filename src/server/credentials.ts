@@ -1,4 +1,3 @@
-import type { Role } from "@prisma/client"
 
 import { isAllowedEmail, normalizeEmail } from "./allowlist.ts"
 import { defaultOrganizationId, writeAudit } from "./audit.ts"
@@ -26,7 +25,6 @@ export interface AuthenticatedUser {
   id: string
   email: string
   name: string
-  role: Role
   organizationId: string
 }
 
@@ -99,5 +97,5 @@ export async function verifyCredentials(
     { action: "auth.login.success", entity: "User", entityId: user.id, after: { email } },
     { organizationId: user.organizationId, userId: user.id },
   )
-  return { id: user.id, email: user.email, name: user.name, role: user.role, organizationId: user.organizationId }
+  return { id: user.id, email: user.email, name: user.name, organizationId: user.organizationId }
 }

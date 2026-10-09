@@ -4,7 +4,8 @@ import { todayBusinessDate } from "../../lib/dates.ts"
 import { searchPeriodStart, toTsQuery, type SearchKind, type SearchPeriod } from "../../lib/search.ts"
 
 import { db } from "../db.ts"
-import { visibilitySql, type Viewer } from "../visibility.ts"
+import { teamScope, teamSql, type TeamContext } from "../scope.ts"
+import { visibilitySql } from "../visibility.ts"
 
 /**
  * Busca global (P16): Postgres full-text em português sobre as colunas
@@ -69,7 +70,7 @@ interface Row {
 const firstLine = (text: string | null) => (text ?? "").split("\n")[0]?.trim() ?? ""
 
 export async function searchAll(
-  viewer: Viewer,
+  ctx: TeamContext,
   query: string,
   options: { kinds?: SearchKind[] | null; limit?: number; period?: SearchPeriod } = {},
 ): Promise<SearchResults> {
@@ -80,8 +81,6 @@ export async function searchAll(
   if (!tsq) return { query, groups: [], ms: 0 }
 
   const want = (k: SearchKind) => !kinds || kinds.includes(k)
-  const org = viewer.organizationId
-  const scope = viewer.role === "MANAGER" ? Prisma.sql`AND t."managerUserId" = ${viewer.id}` : Prisma.empty
   const start = searchPeriodStart(options.period ?? "all", todayBusinessDate())
   const sinceDate = (column: Prisma.Sql) => (start ? Prisma.sql`AND ${column} >= ${start}` : Prisma.empty)
   const like = `%${query.trim().slice(0, 80).replace(/[\\%_]/g, (c) => `\\${c}`)}%`
@@ -91,8 +90,8 @@ export async function searchAll(
       ? db.$queryRaw<Row[]>`
           SELECT m."id", m."id" AS "memberId", m."preferredName", m."fullName" AS "title", m."position" AS "body",
                  m."joinedAt" AS "date", NULL AS "visibility", count(*) OVER ()::int AS "total"
-          FROM "TeamMember" m JOIN "Team" t ON t."id" = m."teamId"
-          WHERE t."organizationId" = ${org} ${scope}
+          FROM "TeamMember" m
+          WHERE ${teamSql(ctx, "m")}
             AND (public.immutable_unaccent(m."preferredName") ILIKE public.immutable_unaccent(${like})
               OR public.immutable_unaccent(m."fullName") ILIKE public.immutable_unaccent(${like}))
           ORDER BY m."deletedAt" NULLS FIRST, m."preferredName"
@@ -103,10 +102,10 @@ export async function searchAll(
           SELECT o."id", o."memberId", m."preferredName", o."topics" AS "title",
                  concat_ws(' · ', o."topics", o."memberPerception", o."managerPerception", o."wins", o."difficulties", o."development") AS "body",
                  o."date", o."visibility", count(*) OVER ()::int AS "total"
-          FROM "OneOnOne" o JOIN "TeamMember" m ON m."id" = o."memberId" JOIN "Team" t ON t."id" = m."teamId",
+          FROM "OneOnOne" o JOIN "TeamMember" m ON m."id" = o."memberId",
                to_tsquery('portuguese', ${tsq}) q
-          WHERE o."searchVector" @@ q AND o."deletedAt" IS NULL AND t."organizationId" = ${org} ${scope}
-            ${visibilitySql(viewer, "o")} ${sinceDate(Prisma.sql`o."date"`)}
+          WHERE o."searchVector" @@ q AND o."deletedAt" IS NULL AND ${teamSql(ctx, "o")} AND m."teamId" = o."teamId"
+            ${visibilitySql(ctx, "o")} ${sinceDate(Prisma.sql`o."date"`)}
           ORDER BY ts_rank(o."searchVector", q) DESC, o."date" DESC
           LIMIT ${limit}`
       : [],
@@ -115,10 +114,10 @@ export async function searchAll(
           SELECT f."id", f."memberId", m."preferredName", f."behavior" AS "title",
                  concat_ws(' · ', f."behavior", f."context", f."impact", f."guidance") AS "body",
                  f."date", f."visibility", count(*) OVER ()::int AS "total"
-          FROM "Feedback" f JOIN "TeamMember" m ON m."id" = f."memberId" JOIN "Team" t ON t."id" = m."teamId",
+          FROM "Feedback" f JOIN "TeamMember" m ON m."id" = f."memberId",
                to_tsquery('portuguese', ${tsq}) q
-          WHERE f."searchVector" @@ q AND f."deletedAt" IS NULL AND t."organizationId" = ${org} ${scope}
-            ${visibilitySql(viewer, "f")} ${sinceDate(Prisma.sql`f."date"`)}
+          WHERE f."searchVector" @@ q AND f."deletedAt" IS NULL AND ${teamSql(ctx, "f")} AND m."teamId" = f."teamId"
+            ${visibilitySql(ctx, "f")} ${sinceDate(Prisma.sql`f."date"`)}
           ORDER BY ts_rank(f."searchVector", q) DESC, f."date" DESC
           LIMIT ${limit}`
       : [],
@@ -126,10 +125,10 @@ export async function searchAll(
       ? db.$queryRaw<Row[]>`
           SELECT n."id", n."memberId", m."preferredName", n."title", n."body",
                  n."occurredAt" AS "date", n."visibility", count(*) OVER ()::int AS "total"
-          FROM "Note" n JOIN "TeamMember" m ON m."id" = n."memberId" JOIN "Team" t ON t."id" = m."teamId",
+          FROM "Note" n JOIN "TeamMember" m ON m."id" = n."memberId",
                to_tsquery('portuguese', ${tsq}) q
-          WHERE n."searchVector" @@ q AND n."deletedAt" IS NULL AND t."organizationId" = ${org} ${scope}
-            ${visibilitySql(viewer, "n")} ${sinceDate(Prisma.sql`n."occurredAt"`)}
+          WHERE n."searchVector" @@ q AND n."deletedAt" IS NULL AND ${teamSql(ctx, "n")} AND m."teamId" = n."teamId"
+            ${visibilitySql(ctx, "n")} ${sinceDate(Prisma.sql`n."occurredAt"`)}
           ORDER BY ts_rank(n."searchVector", q) DESC, n."occurredAt" DESC
           LIMIT ${limit}`
       : [],
@@ -138,9 +137,9 @@ export async function searchAll(
           SELECT a."id", a."memberId", m."preferredName", a."title",
                  concat_ws(' · ', a."title", a."description", a."outcome") AS "body",
                  a."dueDate" AS "date", NULL AS "visibility", count(*) OVER ()::int AS "total"
-          FROM "Agreement" a JOIN "TeamMember" m ON m."id" = a."memberId" JOIN "Team" t ON t."id" = m."teamId",
+          FROM "Agreement" a JOIN "TeamMember" m ON m."id" = a."memberId",
                to_tsquery('portuguese', ${tsq}) q
-          WHERE a."searchVector" @@ q AND a."deletedAt" IS NULL AND t."organizationId" = ${org} ${scope}
+          WHERE a."searchVector" @@ q AND a."deletedAt" IS NULL AND ${teamSql(ctx, "a")} AND m."teamId" = a."teamId"
             ${sinceDate(Prisma.sql`a."createdAt"`)}
           ORDER BY ts_rank(a."searchVector", q) DESC, a."createdAt" DESC
           LIMIT ${limit}`
@@ -149,10 +148,10 @@ export async function searchAll(
       ? db.$queryRaw<Row[]>`
           SELECT e."id", e."memberId", m."preferredName", e."title", concat_ws(' · ', e."title", e."summary") AS "body",
                  e."occurredAt" AS "date", e."visibility", e."type", e."dailyId", count(*) OVER ()::int AS "total"
-          FROM "TimelineEvent" e JOIN "TeamMember" m ON m."id" = e."memberId" JOIN "Team" t ON t."id" = m."teamId",
+          FROM "TimelineEvent" e JOIN "TeamMember" m ON m."id" = e."memberId",
                to_tsquery('portuguese', ${tsq}) q
-          WHERE e."searchVector" @@ q AND e."type"::text = ANY(${OTHER_TYPES}) AND t."organizationId" = ${org} ${scope}
-            ${visibilitySql(viewer, "e")} ${sinceDate(Prisma.sql`e."occurredAt"`)}
+          WHERE e."searchVector" @@ q AND e."type"::text = ANY(${OTHER_TYPES}) AND ${teamSql(ctx, "e")} AND m."teamId" = e."teamId"
+            ${visibilitySql(ctx, "e")} ${sinceDate(Prisma.sql`e."occurredAt"`)}
           ORDER BY ts_rank(e."searchVector", q) DESC, e."occurredAt" DESC
           LIMIT ${limit}`
       : [],
@@ -211,12 +210,9 @@ export interface RecentAgreement {
 }
 
 /** Combinados recentes para a paleta (abertos, os criados por último). Combinado não tem visibilidade própria. */
-export async function recentAgreements(viewer: Viewer, take = 5): Promise<RecentAgreement[]> {
+export async function recentAgreements(ctx: TeamContext, take = 5): Promise<RecentAgreement[]> {
   const rows = await db.agreement.findMany({
-    where: {
-      status: { in: ["OPEN", "IN_PROGRESS"] },
-      member: { team: { organizationId: viewer.organizationId, ...(viewer.role === "MANAGER" ? { managerUserId: viewer.id } : {}) } },
-    },
+    where: { ...teamScope(ctx), status: { in: ["OPEN", "IN_PROGRESS"] } },
     orderBy: { createdAt: "desc" },
     take,
     select: { id: true, title: true, dueDate: true, member: { select: { id: true, preferredName: true } } },

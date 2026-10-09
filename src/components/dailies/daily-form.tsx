@@ -525,7 +525,14 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             }
             return (
               <li key={row.key} className="flex flex-col gap-1 border-b border-line px-3 py-1.5 last:border-b-0">
-                <div className="grid grid-cols-[132px_160px_minmax(0,1fr)_112px_32px_32px] items-center gap-2 max-sm:grid-cols-[1fr_120px_32px_32px]">
+                <div
+                  className={cn(
+                    "grid items-center gap-2 max-sm:grid-cols-[1fr_120px_32px_32px]",
+                    form.centralsEnabled
+                      ? "grid-cols-[132px_160px_minmax(0,1fr)_112px_32px_32px]"
+                      : "grid-cols-[132px_minmax(0,1fr)_112px_32px_32px]",
+                  )}
+                >
                   <Select value={row.memberId} onValueChange={(v) => patchRow(row.key, { memberId: v })}>
                     <SelectTrigger
                       ref={(el) => {
@@ -546,17 +553,19 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                       ))}
                     </SelectContent>
                   </Select>
-                  {/* Central (P19): opcional; Tab passa direto para o título. */}
-                  <CentralCombobox
-                    aria-label={`${labels.centrals.field} ${i + 1}`}
-                    options={centrals}
-                    value={row.centralId || null}
-                    onValueChange={(id) => patchRow(row.key, { centralId: id ?? "" })}
-                    onCreate={addCentral}
-                    onKeyDown={onEnter}
-                    className="max-sm:col-span-3"
-                    inputClassName="h-8"
-                  />
+                  {/* Central (P19): opcional; Tab passa direto para o título. Só com o módulo ligado (D32). */}
+                  {form.centralsEnabled ? (
+                    <CentralCombobox
+                      aria-label={`${labels.centrals.field} ${i + 1}`}
+                      options={centrals}
+                      value={row.centralId || null}
+                      onValueChange={(id) => patchRow(row.key, { centralId: id ?? "" })}
+                      onCreate={addCentral}
+                      onKeyDown={onEnter}
+                      className="max-sm:col-span-3"
+                      inputClassName="h-8"
+                    />
+                  ) : null}
                   <Input
                     aria-label={`${L.newAgreements.agreementTitle} ${i + 1}`}
                     value={row.title}

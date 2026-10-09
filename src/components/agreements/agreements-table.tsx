@@ -63,12 +63,15 @@ export function AgreementsTable({
   canWrite,
   empty,
   showMember = true,
+  showCentral = true,
 }: {
   rows: AgreementRow[]
   canWrite: boolean
   empty: { title: string; direction: string }
   /** Falso na aba de combinados do perfil (a pessoa já está no cabeçalho). */
   showMember?: boolean
+  /** Módulo de centrais ligado no time (D32): sem ele, a coluna não existe. */
+  showCentral?: boolean
 }) {
   const [completing, setCompleting] = React.useState<AgreementRow | null>(null)
   const [cancelling, setCancelling] = React.useState<AgreementRow | null>(null)
@@ -108,8 +111,8 @@ export function AgreementsTable({
       width: "148px",
     })
   }
-  columns.push(
-    {
+  if (showCentral) {
+    columns.push({
       id: "central",
       header: labels.centrals.column,
       cell: (r) =>
@@ -117,7 +120,9 @@ export function AgreementsTable({
       title: (r) => r.central?.name ?? labels.centrals.none,
       width: "128px",
       hideBelow: "xl",
-    },
+    })
+  }
+  columns.push(
     { id: "origin", header: C.origin, cell: (r) => enumLabel("agreementOrigin", r.origin), width: "96px", hideBelow: "2xl" },
     {
       id: "createdAt",

@@ -6,7 +6,7 @@ import { ContextActions } from "@/components/shell/context-actions"
 import { PageHeader } from "@/components/ui/page-header"
 import { labels, plural } from "@/lib/labels"
 import { hasRecordFilters, parseRecordFilters } from "@/lib/records-filters"
-import { canWrite, requireUser } from "@/server/access"
+import { canWrite, requireTeamContext } from "@/server/scope"
 import { listAgreementMembers } from "@/server/queries/agreements"
 import { listRecords } from "@/server/queries/records"
 
@@ -22,11 +22,11 @@ export default async function RecordsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireUser()
+  const ctx = await requireTeamContext()
   const params = await searchParams
   const open = typeof params.open === "string" ? params.open : null
   const filters = parseRecordFilters(params)
-  const [rows, members] = await Promise.all([listRecords(user, filters), listAgreementMembers(user)])
+  const [rows, members] = await Promise.all([listRecords(ctx, filters), listAgreementMembers(ctx)])
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,7 +37,7 @@ export default async function RecordsPage({
       <RecordsTable
         rows={rows}
         initialOpen={open}
-        canWrite={canWrite(user)}
+        canWrite={canWrite(ctx)}
         empty={{ title: R.emptyTitle, direction: hasRecordFilters(filters) ? R.filteredDirection : R.emptyDirection }}
       />
     </div>

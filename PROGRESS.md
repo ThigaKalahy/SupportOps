@@ -25,6 +25,7 @@
 | P19 Central de atendimento     | código pronto — migration aguarda autorização para rodar no banco de produção | | 08/10/2026 |
 | P20 Devolução do desenvolvimento | código pronto — migration aguarda autorização (junto com a do P19) | | 09/10/2026 |
 | P21 Em observação             | código pronto — migration aguarda autorização (junto com as do P19 e P20) | | 10/10/2026 |
+| P22 Multi-tenancy (banco e acesso) | concluída — ensaiada no branch de teste; migrations aguardam aplicação em produção | | 11/10/2026 |
 
 ## Notas de handoff
 
@@ -393,4 +394,22 @@
 - **Ficou de fora:** PDF do formulário ainda não salvo (só da daily registrada); o PDF não tem link clicável para o chamado ou o registro; nenhuma verificação no navegador do download real (o arquivo foi gerado e conferido pelo teste e por leitura do PDF de exemplo).
 - **Decisões tomadas (revise):** observação já presente na daily entra no bloco final só com o título e "aparece acima"; fogo baixo sai sem contexto; contexto cortado em 180 caracteres; quem esteve presente sem nenhum registro aparece numa linha só ("Sem anotação nesta daily"); título "Daily do Suporte — DD/MM/AAAA".
 - **Verificado:** typecheck, lint, build; `tests/daily-report.test.ts` (6) e `tests/watch.test.ts`.
+
+### P22 — Multi-tenancy no banco e no acesso (branch `fase/22-multi-team`)
+
+- **Ficou de fora / depende de você:**
+  - **migrations não aplicadas em produção.** Ensaio em 09/10/2026 no branch Neon `migracao-multi-time` (cópia dos dados reais): as três aplicaram, `db:verify-teams` sem nenhum `teamId` nulo, 1 time com os 3 módulos, o OWNER com MANAGER + `isPlatformAdmin`. Depois o branch foi limpo dos dados reais e virou o banco de teste (só o seed): `pnpm test` 273/273, inclusive `tests/isolation.test.ts` inteira.
+  - O ensaio achou e corrigiu: `catalogUsage` ecoava id de outro time com contagem 0 (agora só devolve ids com uso no time); o gate de módulo do catálogo rodava depois da validação do zod (agora antes). Os testes antigos de VIEWER passaram a esperar `ForbiddenError` do núcleo.
+  - tela de seleção e troca de time (P23), criação de times e concessão de acesso pela interface (P24), visão consolidada (proibida, D35), remoção de `User.role`.
+  - com um único time, o comportamento deve ser o de antes; isso não foi conferido no navegador.
+- **Decisões tomadas sem perguntar (revise):**
+  - `AlertThreshold` também ganhou `teamId` (chave `(teamId, key)`): é tabela de apoio e D31 não deixa exceção, mas o prompt não a listava.
+  - Unicidades de catálogo (senioridade, central, competência, nível de prioridade, responsabilidade, métrica, score) passaram de organização para time na migration C — sem isso o segundo time não conseguiria ter "Pleno" nem a própria central.
+  - `grantedByUserId`, `changedByUserId` e `createdByUserId` são opcionais: nulo = feito pela migration (não inventar autor). `Team.createdAt` do time existente fica com o instante da migration. `AuditLog.teamId` histórico fica nulo (login não tem time).
+  - Server Actions montam o contexto (`requireWriteContext`/`requireTeamContext`); queries e núcleos o recebem. Os núcleos também chamam `requireManager` (defesa em profundidade e o que o teste exercita, já que Server Action exige requisição do Next).
+  - Cookie de time sem acesso com o usuário tendo um único time: resolve para o time dele (seção 7 do prompt), em vez de lançar (seção 4). Com mais de um time, lança.
+  - Rota de módulo desligado responde 404 (`notFound`), não erro 500; query e núcleo lançam `ModuleDisabledError`.
+  - Sessão/JWT deixaram de carregar `role`. `pnpm user:create` concede TeamAccess (gestor = MANAGER, leitura = VIEWER) para a conta nova entrar; o provisionamento completo é o P24.
+  - `pnpm test` passou a usar `.env.test`: os testes com banco nunca mais apontam para produção.
+- **Verificado:** typecheck, lint e build; parte estrutural de `tests/isolation.test.ts` (7 testes). Migrations A e C geradas por `prisma migrate diff`; B escrita à mão (bloco DO com as falhas explícitas). Produção conferida só com leitura antes de escrever a B: 1 organização, 1 time, 1 usuário OWNER, migrations do P19–P21 aplicadas.
 

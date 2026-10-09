@@ -48,6 +48,17 @@ Onde consigo:
 5. No plano Hobby, a região `gru1` pode exigir ajuste em Settings → Functions se o `vercel.json` não for aceito — me diga o que a Vercel mostrar.
 Enquanto isso: o produto roda localmente e todo o código do P18 está comitado; só o deploy e a proteção dos previews dependem de você. Nenhuma fase fica bloqueada (o P18 é a última).
 
+## [x] Banco de teste para o P22 (migrations e suíte de isolamento)
+Resolvido em 09/10/2026: `.env.test` aponta para o branch Neon `migracao-multi-time` (só o seed); ensaio das migrations e suíte completa passando.
+Fase: P22
+Preciso de: um banco Postgres descartável, separado de produção, num arquivo `.env.test` na raiz. Sem ele as três migrations do P22 não foram ensaiadas e a parte de banco de `tests/isolation.test.ts` (o critério de aceite da fase) não rodou. `.env.test` já está no `.gitignore`.
+Onde consigo:
+1. console.neon.tech → projeto do Prontuário → Branches → criar o branch `dev` a partir do `main` (ou reaproveitar, se existir). Criar a partir do `main` também ensaia as migrations com os dados reais, sem tocar em produção.
+2. Copie o `.env.local` para `.env.test` e troque SÓ `DATABASE_URL` (com pooling) e `DIRECT_URL` (sem pooling) pelas do branch `dev`. As outras variáveis (ALLOWED_EMAILS, DEFAULT_ORG_SLUG, AUTH_SECRET) ficam iguais. Não precisa me mostrar os valores.
+3. Me avise. Eu rodo: `pnpm test:db:prepare` (migrations + seed no branch de teste), `pnpm test:db:verify-teams` e `pnpm test` (inclui a suíte de isolamento).
+4. Só depois disso, com a suíte passando, aplicar em produção (`pnpm db:migrate:deploy` ou o push para o master, que roda o mesmo comando na Vercel) e conferir com `pnpm db:verify-teams`.
+Enquanto isso: o código do P22 está pronto e compila, mas a fase não está aceita. NÃO faça push para o master: o build da Vercel aplicaria as migrations em produção sem o ensaio.
+
 <!--
 FORMATO — o Claude Code adiciona blocos assim e PARA (sem o recuo, que só existe
 aqui para o exemplo não ser lido como bloqueio real pelo phase-gate):

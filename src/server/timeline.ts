@@ -17,7 +17,8 @@ import { fill, labels, plural } from "../lib/labels.ts"
  * TimelineEvent é índice denormalizado: cada linha espelha um registro
  * concreto e é escrita na MESMA transação que ele. Server Actions e o seed
  * montam a linha com os construtores `timelineEventFor.*` e gravam com
- * `recordTimelineEvents(tx, ...)` — nunca com `tx.timelineEvent` direto.
+ * `recordTimelineEvents(tx, ctx, ...)` — nunca com `tx.timelineEvent` direto.
+ * Toda função recebe o escopo de time (P22): grava e filtra por `teamId`.
  *
  * Visibilidade: a linha SEMPRE espelha a do registro de origem. Registros sem
  * campo de visibilidade (combinado, daily, PDI, mudança de carreira) não são
@@ -84,8 +85,15 @@ function clip(text: string): string {
   return firstLine.length > TITLE_MAX ? `${firstLine.slice(0, TITLE_MAX - 1)}…` : firstLine
 }
 
-function toRow(input: TimelineEventInput): Prisma.TimelineEventCreateManyInput {
+/**
+ * Escopo de time das escritas (P22): o `TeamContext` de quem escreve (ou, no seed,
+ * o time semeado). `teamId` vem SEMPRE daqui, nunca do registro de origem.
+ */
+export type TimelineScope = { teamId: string }
+
+function toRow(scope: TimelineScope, input: TimelineEventInput): Prisma.TimelineEventCreateManyInput {
   return {
+    teamId: scope.teamId,
     memberId: input.memberId,
     occurredAt: input.occurredAt,
     type: input.type,
@@ -99,15 +107,15 @@ function toRow(input: TimelineEventInput): Prisma.TimelineEventCreateManyInput {
 }
 
 /** Grava linhas da timeline. Chamar dentro da transação que grava a origem. */
-export async function recordTimelineEvents(tx: Tx, inputs: TimelineEventInput[]): Promise<void> {
+export async function recordTimelineEvents(tx: Tx, scope: TimelineScope, inputs: TimelineEventInput[]): Promise<void> {
   if (inputs.length === 0) return
-  await tx.timelineEvent.createMany({ data: inputs.map(toRow) })
+  await tx.timelineEvent.createMany({ data: inputs.map((input) => toRow(scope, input)) })
 }
 
 /** Propaga a visibilidade do registro de origem para todas as linhas dele. */
-export async function syncTimelineVisibility(tx: Tx, source: TimelineSource, visibility: Visibility): Promise<void> {
+export async function syncTimelineVisibility(tx: Tx, scope: TimelineScope, source: TimelineSource, visibility: Visibility): Promise<void> {
   await tx.timelineEvent.updateMany({
-    where: { [SOURCE_COLUMN[source.kind]]: source.id },
+    where: { teamId: scope.teamId, [SOURCE_COLUMN[source.kind]]: source.id },
     data: { visibility },
   })
 }
@@ -118,35 +126,36 @@ export async function syncTimelineVisibility(tx: Tx, source: TimelineSource, vis
  */
 export async function replaceTimelineEvents(
   tx: Tx,
+  scope: TimelineScope,
   source: TimelineSource,
   type: TimelineEventType,
   inputs: TimelineEventInput[],
 ): Promise<void> {
-  await tx.timelineEvent.deleteMany({ where: { [SOURCE_COLUMN[source.kind]]: source.id, type } })
-  await recordTimelineEvents(tx, inputs)
+  await tx.timelineEvent.deleteMany({ where: { teamId: scope.teamId, [SOURCE_COLUMN[source.kind]]: source.id, type } })
+  await recordTimelineEvents(tx, scope, inputs)
 }
 
 /**
  * Edição de um registro de linha única (1:1, feedback, anotação): refaz todas
  * as linhas daquela origem — data, título, tipo e visibilidade podem mudar.
  */
-export async function rebuildTimelineEvents(tx: Tx, source: TimelineSource, inputs: TimelineEventInput[]): Promise<void> {
-  await tx.timelineEvent.deleteMany({ where: { [SOURCE_COLUMN[source.kind]]: source.id } })
-  await recordTimelineEvents(tx, inputs)
+export async function rebuildTimelineEvents(tx: Tx, scope: TimelineScope, source: TimelineSource, inputs: TimelineEventInput[]): Promise<void> {
+  await tx.timelineEvent.deleteMany({ where: { teamId: scope.teamId, [SOURCE_COLUMN[source.kind]]: source.id } })
+  await recordTimelineEvents(tx, scope, inputs)
 }
 
 /** Registro excluído (soft delete): as linhas-espelho saem da timeline. */
-export async function removeTimelineEvents(tx: Tx, source: TimelineSource): Promise<void> {
-  await tx.timelineEvent.deleteMany({ where: { [SOURCE_COLUMN[source.kind]]: source.id } })
+export async function removeTimelineEvents(tx: Tx, scope: TimelineScope, source: TimelineSource): Promise<void> {
+  await tx.timelineEvent.deleteMany({ where: { teamId: scope.teamId, [SOURCE_COLUMN[source.kind]]: source.id } })
 }
 
 /**
  * Edição de um PDI: só a linha de criação (sem tag) acompanha o texto novo —
  * acompanhamentos e conclusão registraram o objetivo como era naquele dia.
  */
-export async function syncPlanCreatedEvent(tx: Tx, planId: string, content: { title: string; summary: string }): Promise<void> {
+export async function syncPlanCreatedEvent(tx: Tx, scope: TimelineScope, planId: string, content: { title: string; summary: string }): Promise<void> {
   await tx.timelineEvent.updateMany({
-    where: { developmentPlanId: planId, type: "DEVELOPMENT", tags: { isEmpty: true } },
+    where: { teamId: scope.teamId, developmentPlanId: planId, type: "DEVELOPMENT", tags: { isEmpty: true } },
     data: { title: clip(content.title), summary: content.summary },
   })
 }
@@ -154,12 +163,13 @@ export async function syncPlanCreatedEvent(tx: Tx, planId: string, content: { ti
 /** Edição do texto de um registro: título e resumo de todas as linhas dele. */
 export async function syncTimelineContent(
   tx: Tx,
+  scope: TimelineScope,
   source: TimelineSource,
   content: { title: string; summary?: string | null },
   type?: TimelineEventType,
 ): Promise<void> {
   await tx.timelineEvent.updateMany({
-    where: { [SOURCE_COLUMN[source.kind]]: source.id, ...(type ? { type } : {}) },
+    where: { teamId: scope.teamId, [SOURCE_COLUMN[source.kind]]: source.id, ...(type ? { type } : {}) },
     data: { title: clip(content.title), ...(content.summary === undefined ? {} : { summary: content.summary }) },
   })
 }
