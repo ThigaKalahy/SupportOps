@@ -26,6 +26,8 @@ export const priorityValidationFields = {
   ticketUrl: z.string().trim().min(1, v.required).max(2000, v.tooLong),
   ticketRef: z.string().trim().min(1, P.ticketRefRequired).max(64, v.tooLong),
   memberId: z.string().min(1, v.required),
+  /** Central (P19): opcional, "" = sem. */
+  centralId: z.string().max(40).default(""),
   analystPriorityId: z.string().min(1, v.required),
   supervisorPriorityId: z.string(),
   returned: z.boolean(),

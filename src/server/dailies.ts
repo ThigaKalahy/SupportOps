@@ -4,6 +4,7 @@ import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/
 import { dailySchema, editDailySchema } from "../lib/validators/daily.ts"
 
 import { writeAudit } from "./audit.ts"
+import { linkPendingWatchItems } from "./watch.ts"
 import { db } from "./db.ts"
 import { teamFor } from "./queries/dailies.ts"
 import { recordTimelineEvents, replaceTimelineEvents, timelineEventFor, type TimelineEventInput } from "./timeline.ts"
@@ -73,6 +74,12 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
     }),
     db.blockerReason.count({ where: { id: { in: reasonIds }, organizationId: user.organizationId } }),
   ])
+  // Central de cada combinado novo (P19): opcional, mas se vier precisa ser ativa e da organização.
+  const centralIds = [...new Set(data.newAgreements.map((a) => a.centralId).filter(Boolean))]
+  const validCentrals = centralIds.length
+    ? await db.central.count({ where: { id: { in: centralIds }, organizationId: user.organizationId, isActive: true, deletedAt: null } })
+    : 0
+  if (validCentrals !== centralIds.length) return { ok: false, error: labels.validation.generic }
   if (members.length !== memberIds.size || reasons !== reasonIds.length || new Set(reviewIds).size !== reviewIds.length) {
     return { ok: false, error: labels.validation.generic }
   }
@@ -174,6 +181,7 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
           const created = await tx.agreement.create({
             data: {
               memberId: row.memberId,
+              centralId: row.centralId || null,
               title: row.title,
               origin: "DAILY",
               sourceDailyId: daily.id,
@@ -183,7 +191,16 @@ export async function createDailyRecord(user: Viewer, input: unknown): Promise<D
             },
           })
           timeline.push(timelineEventFor.agreementCreated(created))
+          // P21: observação marcada na linha antes de salvar passa a apontar para o combinado.
+          await linkPendingWatchItems(tx, user.organizationId, row.watchIds, { agreementId: created.id })
         }
+        // P21: observações marcadas nas notas e nas linhas desta daily passam a apontar para ela.
+        await linkPendingWatchItems(
+          tx,
+          user.organizationId,
+          [...data.participants.flatMap((p) => p.watchIds), ...data.newAgreements.flatMap((a) => a.watchIds)],
+          { dailyId: daily.id },
+        )
 
         // Uma linha DAILY por pessoa com nota, bloqueio ou combinado revisado.
         const people = new Set([...data.participants.map((p) => p.memberId), ...reviewedBy.keys()])

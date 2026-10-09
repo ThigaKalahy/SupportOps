@@ -10,6 +10,7 @@ import { FilterSelect } from "@/components/ui/filter-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AGREEMENT_PARAMS, CREATED_PERIODS, hasAgreementFilters, type AgreementFilters } from "@/lib/agreement-filters"
 import { enumLabel, labels } from "@/lib/labels"
+import { centralFilterOptions } from "@/lib/centrals"
 import { AGREEMENT_ORIGINS, AGREEMENT_PRIORITIES } from "@/lib/validators/agreement"
 
 const F = labels.agreements.filters
@@ -23,11 +24,14 @@ export function AgreementsToolbar({
   filters,
   members,
   seniorities,
+  centrals,
   canWrite,
 }: {
   filters: AgreementFilters
   members: { id: string; preferredName: string }[]
   seniorities: { key: string; label: string }[]
+  /** Todas as centrais, inclusive desativadas (P19). */
+  centrals: { id: string; name: string; isActive: boolean }[]
   canWrite: boolean
 }) {
   const router = useRouter()
@@ -51,7 +55,7 @@ export function AgreementsToolbar({
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
   }
 
-  const active = [filters.memberId, filters.seniority, filters.origin, filters.priority, filters.created !== "all"].filter(
+  const active = [filters.memberId, filters.seniority, filters.origin, filters.priority, filters.created !== "all", filters.central].filter(
     Boolean,
   ).length
 
@@ -100,6 +104,13 @@ export function AgreementsToolbar({
             allLabel={F.allTime}
             options={CREATED_PERIODS.filter((p) => p !== "all").map((p) => ({ value: p, label: labels.agreements.created[p] }))}
             onChange={(v) => update(AGREEMENT_PARAMS.created, v)}
+          />
+          <FilterSelect
+            label={labels.centrals.filter}
+            value={filters.central}
+            allLabel={labels.centrals.filterAll}
+            options={centralFilterOptions(centrals)}
+            onChange={(v) => update(AGREEMENT_PARAMS.central, v)}
           />
           {hasAgreementFilters(filters) ? (
             <Button variant="link" size="sm" className="self-start" onClick={clear}>

@@ -148,6 +148,8 @@ enum TimelineEventType {
   SENIORITY_CHANGE
   DEVELOPMENT
   NOTE
+  /// Em observação (P21): criação e resolução, só quando há pessoa (D26).
+  WATCH
 }
 
 // ═══════════════════════ TENANCY E ACESSO ═══════════════════════
@@ -173,6 +175,10 @@ model Organization {
   metricDefinitions       MetricDefinition[]
   scoreDefinitions        ScoreDefinition[]
   alertThresholds         AlertThreshold[]
+  centrals                Central[]
+  devReturnReasons        DevReturnReason[]
+  devReturns              DevReturn[]
+  watchItems              WatchItem[]
 }
 
 /// Quem autentica: o gestor (OWNER) e o superior dele (VIEWER). Os analistas
@@ -209,7 +215,11 @@ model User {
   feedbacks           Feedback[]
   notes               Note[]
   priorityValidations PriorityValidation[]
+  devReturns          DevReturn[]
   timelineEvents      TimelineEvent[]
+
+  watchItems   WatchItem[]
+  watchReviews WatchReview[]
 
   @@index([organizationId])
 }
@@ -323,12 +333,15 @@ model TeamMember {
   feedbacks              Feedback[]
   notes                  Note[]
   priorityValidations    PriorityValidation[]
+  devReturns             DevReturn[]
   competencies           MemberCompetency[]
   developmentPlans       DevelopmentPlan[]
   ownedActions           DevelopmentAction[]
   metricResults          MetricResult[]
   scoreResults           ScoreResult[]
   timelineEvents         TimelineEvent[]
+
+  watchItems WatchItem[]
 
   @@index([teamId, status])
   @@index([seniorityId])
@@ -435,6 +448,8 @@ model Daily {
   checkins          AgreementCheckin[]
   timelineEvents    TimelineEvent[]
 
+  watchItems WatchItem[]
+
   @@index([teamId, date(sort: Desc)])
 }
 
@@ -483,6 +498,8 @@ model Agreement {
   outcome             String?
   managerNote         String?
   replacesAgreementId String?                  @unique
+  /// Central de atendimento do combinado (P19). Opcional: registros anteriores ficam sem (D23).
+  centralId           String?
   authorUserId        String
   updatedAt           DateTime                 @updatedAt @db.Timestamptz
   deletedAt           DateTime?                @db.Timestamptz
@@ -494,6 +511,7 @@ model Agreement {
   sourceDaily    Daily?     @relation(fields: [sourceDailyId], references: [id])
   sourceOneOnOne OneOnOne?  @relation(fields: [sourceOneOnOneId], references: [id])
   sourceFeedback Feedback?  @relation(fields: [sourceFeedbackId], references: [id])
+  central        Central?   @relation(fields: [centralId], references: [id])
 
   /// Combinado que este substituiu (o antigo, agora CANCELLED).
   replaces   Agreement? @relation("AgreementReplacement", fields: [replacesAgreementId], references: [id])
@@ -504,9 +522,12 @@ model Agreement {
   checkins       AgreementCheckin[]
   timelineEvents TimelineEvent[]
 
+  watchItems WatchItem[]
+
   @@index([memberId, originalDueDate])
   @@index([status, dueDate])
   @@index([sourceDailyId])
+  @@index([centralId, createdAt])
   @@index([searchVector], type: Gin, map: "Agreement_searchVector_idx")
 }
 
@@ -589,6 +610,8 @@ model OneOnOne {
   sourcedAgreements Agreement[]
   timelineEvents    TimelineEvent[]
 
+  watchItems WatchItem[]
+
   @@index([memberId, date(sort: Desc)])
   @@index([searchVector], type: Gin, map: "OneOnOne_searchVector_idx")
 }
@@ -618,6 +641,8 @@ model Feedback {
 
   sourcedAgreements Agreement[]
   timelineEvents    TimelineEvent[]
+
+  watchItems WatchItem[]
 
   @@index([memberId, date(sort: Desc)])
   @@index([followUpAt])
@@ -723,6 +748,8 @@ model PriorityValidation {
   /// ID do chamado extraído da URL (ou digitado, se nenhum padrão casou).
   ticketRef              String
   memberId               String
+  /// Central de atendimento do chamado (P19). Opcional: registros anteriores ficam sem (D23).
+  centralId              String?
   analystPriorityId      String
   supervisorPriorityId   String?
   analystRankSnapshot    Int
@@ -743,12 +770,45 @@ model PriorityValidation {
   supervisorPriority PriorityLevel?          @relation("SupervisorPriority", fields: [supervisorPriorityId], references: [id])
   reason             ReclassificationReason? @relation(fields: [reasonId], references: [id])
   validatedBy        User                    @relation(fields: [validatedByUserId], references: [id])
+  central            Central?                @relation(fields: [centralId], references: [id])
+  devReturns         DevReturn[]
+
+  watchItems WatchItem[]
 
   @@index([organizationId, validatedAt])
   @@index([memberId, validatedAt])
   @@index([reasonId])
   @@index([outcome, validatedAt])
   @@index([ticketRef])
+  @@index([centralId, validatedAt])
+}
+
+/// Central de atendimento (P19, D20). `slug` é derivado do nome (minúsculas, sem
+/// acento, hífens) e é a chave de deduplicação: "Central Alfa" e "central alfa " são
+/// a mesma central. Desativar preenche `deletedAt` e tira dos comboboxes; os
+/// registros históricos continuam apontando para ela. `externalId` é reservado para
+/// a sincronização futura com a plataforma de rastreamento — nenhuma integração existe.
+model Central {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  externalId     String?
+  isActive       Boolean   @default(true)
+  note           String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @db.Timestamptz
+  deletedAt      DateTime? @db.Timestamptz
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  agreements          Agreement[]
+  priorityValidations PriorityValidation[]
+  devReturns          DevReturn[]
+
+  watchItems WatchItem[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
 }
 
 // ═══════════════════════ DESENVOLVIMENTO ═══════════════════════
@@ -991,6 +1051,7 @@ model TimelineEvent {
   noteId            String?
   developmentPlanId String?
   memberChangeId    String?
+  watchItemId       String?
   createdAt         DateTime                 @default(now()) @db.Timestamptz
   /// Busca em português (P16): coluna GERADA pelo banco (migration full_text_search), nunca escrita pelo app.
   searchVector      Unsupported("tsvector")? @default(dbgenerated())
@@ -1004,6 +1065,7 @@ model TimelineEvent {
   note            Note?            @relation(fields: [noteId], references: [id], onDelete: Cascade)
   developmentPlan DevelopmentPlan? @relation(fields: [developmentPlanId], references: [id], onDelete: Cascade)
   memberChange    MemberChange?    @relation(fields: [memberChangeId], references: [id], onDelete: Cascade)
+  watchItem       WatchItem?       @relation(fields: [watchItemId], references: [id], onDelete: Cascade)
 
   @@index([memberId, occurredAt(sort: Desc)])
   @@index([type])
@@ -1011,6 +1073,170 @@ model TimelineEvent {
   @@index([oneOnOneId])
   @@index([feedbackId])
   @@index([noteId])
+  @@index([watchItemId])
   @@index([tags], type: Gin, map: "TimelineEvent_tags_idx")
   @@index([searchVector], type: Gin, map: "TimelineEvent_searchVector_idx")
+}
+
+/// D22: separa devolução treinável (ANALYST) de atrito entre áreas (PROCESS).
+/// Mesma lógica da D18: devolução de processo não pesa como falha do analista.
+enum DevReturnCategory {
+  ANALYST
+  PROCESS
+}
+
+/// Motivo de devolução do desenvolvimento (P20). Catálogo editável em /settings.
+model DevReturnReason {
+  id             String            @id @default(cuid())
+  organizationId String
+  label          String
+  category       DevReturnCategory
+  isActive       Boolean           @default(true)
+  order          Int
+  /// Motivo genérico ("Outro"): a devolução exige o texto em reasonOther.
+  /// Conferido no zod e por trigger no banco.
+  requiresDetail Boolean           @default(false)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  devReturns   DevReturn[]
+
+  @@index([organizationId, order])
+}
+
+/// Devolução de um chamado pelo desenvolvimento ao analista (P20, D21). Evento
+/// separado da validação de prioridade: outro ator, outro momento, outra
+/// taxonomia; pode ocorrer sem validação e repetir no mesmo chamado. Não
+/// escreve TimelineEvent (mesma razão da D15). `priorityValidationId` é ligado
+/// pelo servidor pelo `ticketRef` (a validação mais recente do chamado); nulo é normal.
+model DevReturn {
+  id                   String    @id @default(cuid())
+  organizationId       String
+  ticketUrl            String
+  ticketRef            String
+  memberId             String
+  centralId            String?
+  priorityValidationId String?
+  /// Data de negócio da devolução (padrão: hoje; pode ser retroativa).
+  returnedAt           DateTime  @db.Date
+  reasonId             String
+  reasonOther          String?
+  note                 String?
+  /// Quem devolveu (nome ou time do desenvolvimento), texto livre.
+  devContact           String?
+  /// Quando o analista reenviou o chamado corrigido.
+  resolvedAt           DateTime? @db.Date
+  resolutionNote       String?
+  registeredByUserId   String
+  createdAt            DateTime  @default(now()) @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @db.Timestamptz
+  deletedAt            DateTime? @db.Timestamptz
+
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  member             TeamMember          @relation(fields: [memberId], references: [id])
+  central            Central?            @relation(fields: [centralId], references: [id])
+  priorityValidation PriorityValidation? @relation(fields: [priorityValidationId], references: [id])
+  reason             DevReturnReason     @relation(fields: [reasonId], references: [id])
+  registeredBy       User                @relation(fields: [registeredByUserId], references: [id])
+
+  watchItems WatchItem[]
+
+  @@index([organizationId, returnedAt])
+  @@index([memberId, returnedAt])
+  @@index([reasonId])
+  @@index([ticketRef])
+  @@index([centralId, returnedAt])
+}
+
+/// Grau de calor de uma observação (P21).
+enum WatchHeat {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum WatchStatus {
+  ACTIVE
+  RESOLVED
+  ARCHIVED
+}
+
+enum WatchOrigin {
+  DAILY
+  AGREEMENT
+  PRIORITY_VALIDATION
+  DEV_RETURN
+  ONE_ON_ONE
+  FEEDBACK
+  MANUAL
+}
+
+/// Em observação (P21, D24–D27): o que o gestor acompanha de perto, com grau de
+/// calor e cadência de revisão. Nasce PRIVATE, sempre (D25) e nunca entra no
+/// texto do WhatsApp. Escreve TimelineEvent só com `memberId` (D26), na criação e
+/// na resolução — revisão não. Resolver exige texto (D27). "Sem revisão" e "fogo
+/// alto frio" são derivados de `lastReviewedAt`/`heatChangedAt` (D9).
+model WatchItem {
+  id                   String      @id @default(cuid())
+  organizationId       String
+  title                String
+  context              String?
+  heat                 WatchHeat
+  status               WatchStatus @default(ACTIVE)
+  origin               WatchOrigin
+  visibility           Visibility  @default(PRIVATE)
+  memberId             String?
+  centralId            String?
+  agreementId          String?
+  dailyId              String?
+  priorityValidationId String?
+  devReturnId          String?
+  oneOnOneId           String?
+  feedbackId           String?
+  createdAt            DateTime    @default(now()) @db.Timestamptz
+  createdByUserId      String
+  /// Preenchido na criação com a data de criação.
+  lastReviewedAt       DateTime    @db.Timestamptz
+  reviewCount          Int         @default(0)
+  /// Preenchido na criação; muda quando o grau muda.
+  heatChangedAt        DateTime    @db.Timestamptz
+  resolvedAt           DateTime?   @db.Timestamptz
+  resolutionNote       String?
+  updatedAt            DateTime    @updatedAt @db.Timestamptz
+  deletedAt            DateTime?   @db.Timestamptz
+
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  createdBy          User                @relation(fields: [createdByUserId], references: [id])
+  member             TeamMember?         @relation(fields: [memberId], references: [id])
+  central            Central?            @relation(fields: [centralId], references: [id], onDelete: SetNull)
+  agreement          Agreement?          @relation(fields: [agreementId], references: [id], onDelete: SetNull)
+  daily              Daily?              @relation(fields: [dailyId], references: [id], onDelete: SetNull)
+  priorityValidation PriorityValidation? @relation(fields: [priorityValidationId], references: [id], onDelete: SetNull)
+  devReturn          DevReturn?          @relation(fields: [devReturnId], references: [id], onDelete: SetNull)
+  oneOnOne           OneOnOne?           @relation(fields: [oneOnOneId], references: [id], onDelete: SetNull)
+  feedback           Feedback?           @relation(fields: [feedbackId], references: [id], onDelete: SetNull)
+
+  reviews        WatchReview[]
+  timelineEvents TimelineEvent[]
+
+  @@index([organizationId, status, heat])
+  @@index([memberId, status])
+  @@index([centralId, status])
+  @@index([status, lastReviewedAt])
+}
+
+/// Uma linha por revisão de observação (P21): mostra se o item está sendo
+/// trabalhado ou só acumulando dias. Nota opcional. Não escreve na timeline.
+model WatchReview {
+  id           String    @id @default(cuid())
+  watchItemId  String
+  reviewedAt   DateTime  @default(now()) @db.Timestamptz
+  note         String?
+  heatBefore   WatchHeat
+  heatAfter    WatchHeat
+  authorUserId String
+
+  watchItem WatchItem @relation(fields: [watchItemId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorUserId], references: [id])
+
+  @@index([watchItemId, reviewedAt])
 }

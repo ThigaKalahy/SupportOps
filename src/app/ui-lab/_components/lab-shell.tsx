@@ -9,7 +9,7 @@ import { NavLink } from "@/components/shell/nav-link"
 import { CurrentUser, ProductIdentity, SidebarNav, type NavCounts } from "@/components/shell/sidebar"
 
 /** Contadores do motor de alertas (P15), como o seed os produz. */
-const LAB_COUNTS: NavCounts = { today: 11, team: 6, agreements: 6, dailies: 0, records: 4, development: 1 }
+const LAB_COUNTS: NavCounts = { today: 11, watch: 3, team: 6, agreements: 6, validations: 2, dailies: 0, records: 4, development: 1 }
 import { Button } from "@/components/ui/button"
 import { labels } from "@/lib/labels"
 

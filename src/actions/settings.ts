@@ -20,6 +20,7 @@ import {
 const PATHS: (string | [string, "layout"])[] = [
   ["/settings", "layout"],
   "/priority-validations",
+  "/dev-returns",
   "/dailies/new",
   "/development",
   ["/team", "layout"],

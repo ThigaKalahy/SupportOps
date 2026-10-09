@@ -37,6 +37,9 @@ import { LabPriorityValidation } from "./_components/lab-priority-validation"
 import { LabTimeline } from "./_components/lab-timeline"
 import { LabToday } from "./_components/lab-today"
 import { LabCalendar, LabOverlays } from "./_components/lab-overlays"
+import { LabCentral } from "./_components/lab-central"
+import { LabDevReturns } from "./_components/lab-dev-returns"
+import { LabWatch } from "./_components/lab-watch"
 import { LabShell } from "./_components/lab-shell"
 import { LabSection, Specimen } from "./_components/specimen"
 import { addDays, buildAgreements, demo, notes, people, sectionCopy, seniorities } from "./_fixtures"
@@ -569,6 +572,21 @@ export default function UiLabPage() {
         description={sectionCopy.priorityValidation.description}
       >
         <LabPriorityValidation />
+      </LabSection>
+
+      {/* Em observação (P21) */}
+      <LabSection id="watch" title={sectionCopy.watch.title} description={sectionCopy.watch.description}>
+        <LabWatch />
+      </LabSection>
+
+      {/* Devolução do desenvolvimento (P20) */}
+      <LabSection id="dev-returns" title={sectionCopy.devReturns.title} description={sectionCopy.devReturns.description}>
+        <LabDevReturns />
+      </LabSection>
+
+      {/* Central de atendimento (P19) */}
+      <LabSection id="central" title={sectionCopy.central.title} description={sectionCopy.central.description}>
+        <LabCentral />
       </LabSection>
 
       {/* RouteTabs */}

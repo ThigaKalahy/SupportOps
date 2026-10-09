@@ -46,10 +46,13 @@ function shortcutBlocked(event: KeyboardEvent): boolean {
  */
 export function QuickAgreementProvider({
   members,
+  centrals,
   children,
 }: {
   /** Pessoas ativas; null para quem só lê. */
   members: { id: string; preferredName: string }[] | null
+  /** Centrais ativas (P19). */
+  centrals: { id: string; name: string }[]
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -77,6 +80,7 @@ export function QuickAgreementProvider({
         onOpenChange={(open) => !open && setOptions(null)}
         member={options?.member}
         members={members}
+        centrals={centrals}
         origin={options?.origin ?? originFor(pathname)}
       />
     </QuickAgreementContext>

@@ -17,6 +17,7 @@
 import { PrismaClient, type Prisma } from "@prisma/client"
 
 import { todayBusinessDate } from "../src/lib/dates.ts"
+import { DEFAULT_DEV_RETURN_REASONS } from "../src/lib/dev-returns.ts"
 import { recordTimelineEvents, timelineEventFor, type TimelineEventInput } from "../src/server/timeline.ts"
 
 const prisma = new PrismaClient()
@@ -1585,6 +1586,8 @@ async function main() {
       const seedId = { startsWith: "seed_" }
       await tx.agreementCheckin.deleteMany({ where: { id: seedId } })
       await tx.agreementParticipant.deleteMany({ where: { agreementId: seedId } })
+      // Devolução registrada para pessoa de demonstração (P20) sai junto, senão a pessoa não sai.
+      await tx.devReturn.deleteMany({ where: { memberId: seedId } })
       await tx.priorityValidation.deleteMany({ where: { id: seedId } })
       // Substituto aponta para o substituído: solta o vínculo antes de apagar.
       await tx.agreement.updateMany({ where: { id: seedId }, data: { replacesAgreementId: null } })
@@ -1634,6 +1637,13 @@ async function main() {
       }
       for (const r of RECLASSIFICATION_REASONS) {
         await tx.reclassificationReason.upsert({ where: { id: r.id }, create: { ...r, organizationId: ORG_ID }, update: { label: r.label, order: r.order, requiresDetail: r.requiresDetail } })
+      }
+      // Motivos de devolução do desenvolvimento (P20): só numa organização sem nenhum
+      // (a migration dev_returns já grava o catálogo nas organizações que existiam).
+      if ((await tx.devReturnReason.count({ where: { organizationId: ORG_ID } })) === 0) {
+        await tx.devReturnReason.createMany({
+          data: DEFAULT_DEV_RETURN_REASONS.map((r, i) => ({ id: `seed_drr_${i + 1}`, organizationId: ORG_ID, ...r, order: i + 1 })),
+        })
       }
       for (const p of TICKET_URL_PATTERNS) {
         await tx.ticketUrlPattern.upsert({ where: { id: p.id }, create: { ...p, organizationId: ORG_ID }, update: { label: p.label, regex: p.regex } })

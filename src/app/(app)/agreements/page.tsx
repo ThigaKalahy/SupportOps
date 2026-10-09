@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { parseAgreementFilters } from "@/lib/agreement-filters"
 import { labels, plural } from "@/lib/labels"
 import { canWrite, requireUser } from "@/server/access"
+import { listCentralsForFilter } from "@/server/queries/centrals"
 import { listAgreementMembers, listAgreements } from "@/server/queries/agreements"
 import { getMemberFormCatalogs } from "@/server/queries/members"
 
@@ -30,10 +31,11 @@ export default async function AgreementsPage({
   const user = await requireUser()
   const raw = await searchParams
   const filters = parseAgreementFilters(raw)
-  const [{ rows, counts }, members, catalogs] = await Promise.all([
+  const [{ rows, counts }, members, catalogs, centrals] = await Promise.all([
     listAgreements(user, filters),
     listAgreementMembers(user),
     getMemberFormCatalogs(user),
+    listCentralsForFilter(user),
   ])
   const search = new URLSearchParams(
     Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : [])),
@@ -46,6 +48,7 @@ export default async function AgreementsPage({
           filters={filters}
           members={members}
           seniorities={catalogs.seniorities.map((s) => ({ key: s.key, label: s.label }))}
+          centrals={centrals}
           canWrite={canWrite(user)}
         />
       </ContextActions>

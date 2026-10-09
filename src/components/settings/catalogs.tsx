@@ -9,10 +9,12 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { extractTicketRef, matchPattern } from "@/lib/priority-validation"
+import { DEV_RETURN_CATEGORIES } from "@/lib/dev-returns"
 import { BLOCKER_CATEGORIES, catalogSchemas, METRIC_DIRECTIONS, type CatalogInput } from "@/lib/validators/settings"
 import type {
   BlockerReasonItem,
   CompetencyItem,
+  DevReturnReasonItem,
   MetricItem,
   PriorityLevelItem,
   ReclassificationReasonItem,
@@ -466,6 +468,79 @@ export function MetricsSettings({ items, canWrite }: { items: MetricItem[]; canW
                 onChange={(e) => set({ sourceSystem: e.target.value })}
               />
             </FieldGroup>
+          </div>
+        </>
+      )}
+    />
+  )
+}
+
+/**
+ * Motivos de devolução do desenvolvimento (P20, D22), em ordem: a categoria
+ * separa o que é treinável no analista (Analista) do atrito entre áreas
+ * (Processo). Motivo genérico ("Outro") pode exigir o texto.
+ */
+export function DevReturnReasonsSettings({ items, canWrite }: { items: DevReturnReasonItem[]; canWrite: boolean }) {
+  const T = S.devReturnReasons
+  return (
+    <CatalogSettings<DevReturnReasonItem, CatalogInput<"devReturnReason">>
+      kind="devReturnReason"
+      items={items}
+      canWrite={canWrite}
+      texts={T}
+      schema={catalogSchemas.devReturnReason}
+      emptyValues={{ label: "", category: "ANALYST", requiresDetail: false }}
+      toValues={(item) => ({ id: item.id, label: item.label, category: item.category, requiresDetail: item.requiresDetail })}
+      columns={[
+        {
+          id: "category",
+          header: S.columns.category,
+          cell: (item) => <span className="text-ink-secondary">{enumLabel("devReturnCategory", item.category)}</span>,
+          width: "120px",
+        },
+        {
+          id: "requiresDetail",
+          header: S.columns.requiresDetail,
+          cell: (item) => <span className={item.requiresDetail ? "text-ink" : "text-ink-secondary"}>{item.requiresDetail ? S.yes : S.no}</span>,
+          width: "104px",
+          hideBelow: "lg",
+        },
+      ]}
+      renderFields={({ values, set, errors }) => (
+        <>
+          <FieldGroup label={T.label} required error={errors.label}>
+            <Input value={values.label} maxLength={120} autoComplete="off" placeholder={T.labelPlaceholder} onChange={(e) => set({ label: e.target.value })} />
+          </FieldGroup>
+          <FieldGroup label={T.category} required error={errors.category}>
+            {(control) => (
+              <Select value={values.category} onValueChange={(v) => set({ category: v as (typeof DEV_RETURN_CATEGORIES)[number] })}>
+                <SelectTrigger {...control} className="w-full sm:w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEV_RETURN_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {enumLabel("devReturnCategory", c)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </FieldGroup>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="dev-return-reason-requires-detail"
+              checked={values.requiresDetail}
+              onCheckedChange={(c) => set({ requiresDetail: c === true })}
+              aria-describedby="dev-return-reason-requires-detail-help"
+              className="mt-0.5"
+            />
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="dev-return-reason-requires-detail">{T.requiresDetail}</Label>
+              <p id="dev-return-reason-requires-detail-help" className="text-xs text-ink-secondary">
+                {T.requiresDetailHelp}
+              </p>
+            </div>
           </div>
         </>
       )}

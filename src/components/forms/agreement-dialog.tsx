@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form"
 
 import { createAgreement } from "@/actions/agreements"
 import { Button } from "@/components/ui/button"
+import { WatchButton } from "@/components/watch/watch-button"
+import { CentralCombobox, type CentralOption } from "@/components/ui/CentralCombobox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
@@ -23,7 +25,7 @@ import { applyFieldErrors, DisclosureToggle, FormError, zodResolver } from "./fo
 import type { RecordTarget } from "./note-dialog"
 
 const L = labels.forms.agreement
-const FIELDS = ["memberId", "title", "dueDate", "description", "priority", "origin"] as const
+const FIELDS = ["memberId", "title", "dueDate", "description", "priority", "origin", "centralId"] as const
 
 /**
  * Criação rápida de combinado. Obrigatórios: título, responsável e prazo.
@@ -31,7 +33,7 @@ const FIELDS = ["memberId", "title", "dueDate", "description", "priority", "orig
  * (atalho C, /agreements), escolhe-se no select — que aceita digitar a
  * inicial do nome. Enter salva; Ctrl/⌘+Enter salva e reabre em branco, para
  * lançar vários seguidos. Origem pré-preenchida pelo contexto.
- * Ordem do teclado: título → responsável → prazo → Enter. O prazo nasce com
+ * Ordem do teclado: título → responsável → central (opcional) → prazo → Enter. O prazo nasce com
  * hoje (D28) e continua editável e obrigatório.
  */
 export function AgreementDialog({
@@ -39,6 +41,7 @@ export function AgreementDialog({
   onOpenChange,
   member,
   members = [],
+  centrals = [],
   origin = "MANAGER",
 }: {
   open: boolean
@@ -46,6 +49,8 @@ export function AgreementDialog({
   /** Responsável fixo (perfil). Sem ele, o dialog oferece `members`. */
   member?: RecordTarget
   members?: { id: string; preferredName: string }[]
+  /** Centrais ativas (P19). */
+  centrals?: CentralOption[]
   origin?: CreateAgreementInput["origin"]
 }) {
   const defaults = React.useCallback(
@@ -57,6 +62,7 @@ export function AgreementDialog({
       description: "",
       priority: "NORMAL",
       origin,
+      centralId: "",
     }),
     [member?.id, origin],
   )
@@ -66,10 +72,13 @@ export function AgreementDialog({
   const [savedNotice, setSavedNotice] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
   const another = React.useRef(false)
+  // P21: observação marcada antes de salvar (ligada ao combinado ao salvar).
+  const [watchIds, setWatchIds] = React.useState<string[]>([])
 
   React.useEffect(() => {
     if (!open) return
     form.reset(defaults())
+    setWatchIds([])
     setShowDetails(false)
     setFormError(null)
     setSavedNotice(false)
@@ -80,7 +89,7 @@ export function AgreementDialog({
     const keepOpen = another.current
     another.current = false
     startTransition(async () => {
-      const result = await createAgreement(values)
+      const result = await createAgreement({ ...values, watchIds })
       if (result.ok) {
         if (!keepOpen) return onOpenChange(false)
         form.reset(defaults())
@@ -122,10 +131,10 @@ export function AgreementDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} onKeyDown={onKeyDown} className="flex flex-col gap-4" noValidate>
-          <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
-            <FieldGroup label={L.agreementTitle} error={err.title?.message} required className={member ? undefined : "sm:col-span-2"}>
-              <Input autoComplete="off" {...form.register("title", { onChange: () => setSavedNotice(false) })} />
-            </FieldGroup>
+          <FieldGroup label={L.agreementTitle} error={err.title?.message} required>
+            <Input autoComplete="off" {...form.register("title", { onChange: () => setSavedNotice(false) })} />
+          </FieldGroup>
+          <div className={member ? "grid gap-4 sm:grid-cols-[1fr_140px]" : "grid gap-4 sm:grid-cols-[1fr_1fr_140px]"}>
             {member ? null : (
               <FieldGroup label={L.member} error={err.memberId?.message} required>
                 {(control) => (
@@ -147,6 +156,17 @@ export function AgreementDialog({
                 )}
               </FieldGroup>
             )}
+            {/* Central (P19): triagem, visível de cara e opcional. */}
+            <FieldGroup label={labels.centrals.field} error={err.centralId?.message}>
+              {(control) => (
+                <CentralCombobox
+                  {...control}
+                  options={centrals}
+                  value={form.watch("centralId") || null}
+                  onValueChange={(id) => form.setValue("centralId", id ?? "")}
+                />
+              )}
+            </FieldGroup>
             <FieldGroup label={L.dueDate} error={err.dueDate?.message} required>
               <Input
                 inputMode="numeric"
@@ -214,6 +234,14 @@ export function AgreementDialog({
           ) : null}
           <FormError message={formError} />
           <DialogFooter className="items-center sm:justify-between">
+            <WatchButton
+              className="mr-auto"
+              origin="AGREEMENT"
+              defaults={{ title: form.watch("title"), heat: "MEDIUM" }}
+              link={member ? { memberId: member.id } : form.watch("memberId") ? { memberId: form.watch("memberId") } : {}}
+              pendingHint={labels.watch.button.pendingRecord}
+              onCreated={(id) => setWatchIds((ids) => [...ids, id])}
+            />
             <p className="font-mono text-2xs text-ink-secondary max-sm:hidden">{L.shortcut}</p>
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>

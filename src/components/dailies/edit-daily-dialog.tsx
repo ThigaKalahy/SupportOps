@@ -21,7 +21,7 @@ import type { DailyDetail } from "@/server/queries/dailies"
 const L = labels.dailies
 const E = L.edit
 
-type Participant = EditDailyInput["participants"][number] & { name: string }
+type Participant = Omit<EditDailyInput["participants"][number], "watchIds"> & { name: string }
 
 function initial(daily: DailyDetail): { summary: string; decisions: string; participants: Participant[] } {
   const present = daily.present.map((p) => ({
@@ -67,7 +67,7 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
       id: daily.id,
       summary: state.summary,
       decisions: state.decisions,
-      participants: state.participants.map(({ memberId, present, note, isBlocker }) => ({ memberId, present, note, isBlocker })),
+      participants: state.participants.map(({ memberId, present, note, isBlocker }) => ({ memberId, present, note, isBlocker, watchIds: [] })),
     }
     const parsed = editDailySchema.safeParse(input)
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? labels.validation.generic)

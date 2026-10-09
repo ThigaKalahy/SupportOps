@@ -31,7 +31,7 @@ const member: AlertMember = {
 }
 
 function facts(agreements: AlertFacts["agreements"]): AlertFacts {
-  return { members: [member], agreements, plans: [], followUps: [], adherence: new Map(), lastDaily: today, readiness: [] }
+  return { members: [member], agreements, plans: [], followUps: [], adherence: new Map(), lastDaily: today, readiness: [], devReturns: [], watchItems: [] }
 }
 
 describe("C1 — prazo padrão do combinado (D28)", () => {

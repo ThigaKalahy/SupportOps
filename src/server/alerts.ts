@@ -1,6 +1,8 @@
 import { makeRate, makeTrend, percent, type Rate, type Trend } from "../lib/adherence.ts"
 import { DEFAULT_THRESHOLDS, oneOnOneLimit, type AlertThresholds } from "../lib/alert-thresholds.ts"
-import { businessDaysBetween, isBusinessDay, todayBusinessDate, toSaoPaulo } from "../lib/dates.ts"
+import { businessDaysBetween, isBusinessDay, todayBusinessDate, toSaoPaulo, toUrlDate } from "../lib/dates.ts"
+import { DEV_RETURN_ALERTS } from "../lib/dev-returns.ts"
+import { coldHighDays, reviewState as watchReviewState, showsOnHome, stalledDays } from "../lib/watch.ts"
 import { PLAN_REVIEW_THRESHOLDS } from "../lib/development.ts"
 import { fill, labels, plural } from "../lib/labels.ts"
 import { ageSeverity, deadlineSeverity, type Severity } from "../lib/severity.ts"
@@ -195,9 +197,14 @@ export type AlertKind =
   | "dailyMissing"
   | "adherenceDrop"
   | "readiness"
+  | "devReturnsRecurring"
+  | "devReturnUnresolved"
+  | "watchUnreviewed"
+  | "watchColdHigh"
+  | "watchStalled"
 
 /** Item da navegação onde o alerta é resolvido (contador da sidebar). */
-export type AlertNav = "agreements" | "records" | "development" | "dailies"
+export type AlertNav = "watch" | "agreements" | "validations" | "records" | "development" | "dailies"
 
 /** Ação direta da linha. "oneOnOne"/"feedback" abrem o formulário; o resto é link. */
 export type AlertAction =
@@ -228,6 +235,8 @@ export interface AlertsResult {
   alerts: Alert[]
   /** Contadores da sidebar: o que pede ação (sem "vencendo" nem informativos). */
   counts: { today: number; team: number } & Record<AlertNav, number>
+  /** Em observação ativas e quantas em fogo alto (ritmo de gestão da home). */
+  watch?: { active: number; high: number }
 }
 
 const L = labels.today.alerts
@@ -255,8 +264,26 @@ export function missedBusinessDays(lastDaily: Date, today: Date): number {
   return missed
 }
 
+/** Link para /dev-returns com os filtros na URL (mesmos parâmetros de src/lib/dev-return-filters.ts). */
+function devReturnsHref(filters: { member: string; reason?: string; from?: Date; to?: Date; open?: boolean }): string {
+  const params = new URLSearchParams({ member: filters.member })
+  if (filters.reason) params.set("reason", filters.reason)
+  if (filters.from && filters.to) {
+    params.set("period", "custom")
+    params.set("from", toUrlDate(filters.from))
+    params.set("to", toUrlDate(filters.to))
+  }
+  if (filters.open) {
+    params.set("period", "custom")
+    params.set("from", "01-01-2000")
+    params.set("to", toUrlDate(todayBusinessDate()))
+    params.set("open", "1")
+  }
+  return `/dev-returns?${params}`
+}
+
 /** Regra do motor, pura: fatos + limiares → lista ordenada por urgência real. */
-export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds): Alert[] {
+export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds, now: Date = new Date()): Alert[] {
   const alerts: Alert[] = []
   const memberById = new Map(facts.members.map((m) => [m.id, m]))
   const who = (id: string) => {
@@ -457,6 +484,97 @@ export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds)
     })
   }
 
+  // Devoluções do desenvolvimento (P20). Recorrentes: 3+ ANALYST pelo mesmo motivo em 60 dias —
+  // padrão, não acidente, e a coisa mais treinável que o sistema detecta. PROCESS não conta (D22).
+  const recurringFrom = new Date(today)
+  recurringFrom.setUTCDate(recurringFrom.getUTCDate() - (DEV_RETURN_ALERTS.recurringWindowDays - 1))
+  const recurring = new Map<string, { memberId: string; reasonId: string; reasonLabel: string; count: number; last: Date }>()
+  for (const r of facts.devReturns) {
+    if (r.category !== "ANALYST" || r.returnedAt < recurringFrom || r.returnedAt > today) continue
+    const key = `${r.memberId}|${r.reasonId}`
+    const row = recurring.get(key) ?? { memberId: r.memberId, reasonId: r.reasonId, reasonLabel: r.reasonLabel, count: 0, last: r.returnedAt }
+    row.count++
+    if (r.returnedAt > row.last) row.last = r.returnedAt
+    recurring.set(key, row)
+  }
+  for (const row of recurring.values()) {
+    if (row.count < DEV_RETURN_ALERTS.recurringCount) continue
+    const member = who(row.memberId)
+    if (!member) continue
+    const days = businessDaysBetween(row.last, today)
+    alerts.push({
+      id: `devReturnsRecurring:${row.memberId}:${row.reasonId}`,
+      kind: "devReturnsRecurring",
+      severity: "attention",
+      strong: true,
+      member,
+      text: fill(L.devReturnsRecurring, { count: row.count, days: DEV_RETURN_ALERTS.recurringWindowDays, reason: row.reasonLabel }),
+      age: ago(days),
+      ageDays: days,
+      action: {
+        kind: "link",
+        label: L.actions.seeDevReturns,
+        href: devReturnsHref({ member: row.memberId, reason: row.reasonId, from: recurringFrom, to: today }),
+      },
+      nav: "validations",
+      informative: false,
+    })
+  }
+  // Sem reenvio há mais de 7 dias: âmbar; mais de 14, laranja; mais de 30, vermelho.
+  for (const r of facts.devReturns) {
+    if (r.resolvedAt) continue
+    const days = businessDaysBetween(r.returnedAt, today)
+    if (days <= DEV_RETURN_ALERTS.unresolvedDays) continue
+    const member = who(r.memberId)
+    if (!member) continue
+    alerts.push({
+      id: `devReturnUnresolved:${r.id}`,
+      kind: "devReturnUnresolved",
+      severity: days > 30 ? "overdue" : "attention",
+      strong: days > 14 && days <= 30,
+      member,
+      text: fill(L.devReturnUnresolved, { ref: r.ticketRef }),
+      age: ago(days),
+      ageDays: days,
+      action: { kind: "link", label: L.actions.seeDevReturns, href: devReturnsHref({ member: r.memberId, open: true }) },
+      nav: "validations",
+      informative: false,
+    })
+  }
+
+  // Em observação (P21): no máximo um alerta por item, o mais forte. "Fogo alto frio" (overdue,
+  // com a frase "fogo alto há N dias sem mudar de grau") > "sem revisão" (alto: overdue; médio:
+  // atenção; baixo só passado o dobro da cadência — D28) > "parada" (nunca revisada há 14+ dias).
+  for (const w of facts.watchItems) {
+    const member = w.memberId ? who(w.memberId) : null
+    if (w.memberId && !member) continue
+    const href = `/watch?open=${w.id}`
+    const base = { member, nav: "watch" as const, informative: false, action: { kind: "link" as const, label: L.actions.openWatch, href } }
+    const cold = coldHighDays({ ...w, status: "ACTIVE" }, now, t)
+    if (cold !== null) {
+      alerts.push({ ...base, id: `watchColdHigh:${w.id}`, kind: "watchColdHigh", severity: "overdue", strong: false, text: fill(L.watchColdHigh, { title: w.title, days: cold }), age: ago(cold), ageDays: cold })
+      continue
+    }
+    const state = watchReviewState(w, now, t)
+    if (showsOnHome(w.heat, state)) {
+      alerts.push({
+        ...base,
+        id: `watchUnreviewed:${w.id}`,
+        kind: "watchUnreviewed",
+        severity: w.heat === "HIGH" ? "overdue" : "attention",
+        strong: w.heat === "MEDIUM" && state.status === "late",
+        text: fill(L.watchUnreviewed, { title: w.title, heat: labels.watch.heat[w.heat].toLowerCase(), cadence: state.cadence }),
+        age: ago(state.daysSinceReview),
+        ageDays: state.daysSinceReview,
+      })
+      continue
+    }
+    const stalled = stalledDays({ ...w, status: "ACTIVE" }, now)
+    if (stalled !== null) {
+      alerts.push({ ...base, id: `watchStalled:${w.id}`, kind: "watchStalled", severity: "attention", strong: true, text: fill(L.watchStalled, { title: w.title }), age: ago(stalled), ageDays: stalled })
+    }
+  }
+
   // Prontidão: informativo — só quem já atende a TODAS as competências esperadas da próxima senioridade.
   for (const r of facts.readiness) {
     if (r.readiness.total === 0 || r.readiness.met < r.readiness.total) continue
@@ -489,7 +607,7 @@ export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds)
 /** Contadores da sidebar, da mesma lista: o que pede ação hoje. */
 export function alertCounts(alerts: Alert[]): AlertsResult["counts"] {
   const actionable = alerts.filter((a) => !a.informative && a.kind !== "dueSoon")
-  const counts: AlertsResult["counts"] = { today: actionable.length, team: 0, agreements: 0, records: 0, development: 0, dailies: 0 }
+  const counts: AlertsResult["counts"] = { today: actionable.length, team: 0, watch: 0, agreements: 0, validations: 0, records: 0, development: 0, dailies: 0 }
   for (const a of actionable) counts[a.nav]++
   counts.team = new Set(actionable.flatMap((a) => (a.member ? [a.member.id] : []))).size
   return counts
@@ -501,5 +619,8 @@ export async function getAlerts(viewer: Viewer, options: { teamId?: string; toda
   const t = await getThresholds(viewer)
   const facts = await getAlertFacts(viewer, today, t, options.teamId)
   const alerts = deriveAlerts(facts, today, t)
-  return { alerts, counts: alertCounts(alerts) }
+  const counts = alertCounts(alerts)
+  // Contador de "Em observação" na sidebar: o fogo alto ativo (mesma fonte, os fatos do motor).
+  counts.watch = facts.watchItems.filter((w) => w.heat === "HIGH").length
+  return { alerts, counts, watch: { active: facts.watchItems.length, high: counts.watch } }
 }

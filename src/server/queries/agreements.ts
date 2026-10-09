@@ -6,6 +6,7 @@ import {
   type AgreementFilters,
   type AgreementView,
 } from "../../lib/agreement-filters.ts"
+import { centralWhere } from "../../lib/centrals.ts"
 import { businessDaysBetween, todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
@@ -31,6 +32,8 @@ export interface AgreementRow {
   priority: AgreementPriority
   status: AgreementStatus
   completedAt: Date | null
+  /** Central de atendimento (P19); null = sem central informada. */
+  central: { id: string; name: string } | null
   /** Quantas vezes o prazo foi movido (checkins com novo prazo). */
   reschedules: number
   open: boolean
@@ -76,6 +79,7 @@ export async function listAgreements(
       ...(filters.memberId ? { memberId: filters.memberId } : {}),
       ...(filters.origin ? { origin: filters.origin } : {}),
       ...(filters.priority ? { priority: filters.priority } : {}),
+      ...centralWhere(filters.central),
       ...(since ? { createdAt: { gte: since } } : {}),
     },
     select: {
@@ -88,6 +92,7 @@ export async function listAgreements(
       priority: true,
       status: true,
       completedAt: true,
+      central: { select: { id: true, name: true } },
       member: { select: { id: true, preferredName: true, fullName: true, seniority: { select: { label: true } } } },
       _count: { select: { checkins: { where: { newDueDate: { not: null } } } } },
     },
@@ -112,6 +117,7 @@ export async function listAgreements(
       priority: a.priority,
       status: a.status,
       completedAt: a.completedAt,
+      central: a.central,
       reschedules: a._count.checkins,
       open,
       deadline: deadlineSeverity(a.dueDate, { resolved: !open, today }),

@@ -1,4 +1,4 @@
-import type { BlockerCategory } from "@prisma/client"
+import type { BlockerCategory, DevReturnCategory } from "@prisma/client"
 
 import type { CatalogKind } from "../../lib/validators/settings.ts"
 import { db } from "../db.ts"
@@ -66,6 +66,17 @@ export async function catalogUsage(kind: CatalogKind, ids: string[]): Promise<Ma
       db.scoreComponent.groupBy({ by: ["metricDefinitionId"], where: { metricDefinitionId: { in: ids } }, _count: { _all: true } }),
     ])
     for (const row of [...results, ...components]) add(row.metricDefinitionId, row._count._all)
+  } else if (kind === "devReturnReason") {
+    // Devoluções (inclusive excluídas) apontam para o motivo.
+    const rows = await db.devReturn.groupBy({ by: ["reasonId"], where: { reasonId: { in: ids }, deletedAt: undefined }, _count: { _all: true } })
+    for (const row of rows) add(row.reasonId, row._count._all)
+  } else if (kind === "central") {
+    // Combinados e validações (inclusive excluídos) apontam para a central.
+    const [agreements, validations] = await Promise.all([
+      db.agreement.groupBy({ by: ["centralId"], where: { centralId: { in: ids }, deletedAt: undefined }, _count: { _all: true } }),
+      db.priorityValidation.groupBy({ by: ["centralId"], where: { centralId: { in: ids }, deletedAt: undefined }, _count: { _all: true } }),
+    ])
+    for (const row of [...agreements, ...validations]) add(row.centralId, row._count._all)
   }
   return usage
 }
@@ -187,4 +198,45 @@ export async function listMetrics(viewer: Viewer): Promise<MetricItem[]> {
   })
   const usage = await catalogUsage("metric", rows.map((r) => r.id))
   return rows.map(({ _count, ...r }) => ({ ...r, usage: usage.get(r.id) ?? 0, results: _count.results }))
+}
+
+export interface CentralItem {
+  id: string
+  label: string
+  note: string | null
+  externalId: string | null
+  isActive: boolean
+  /** Combinados + validações que apontam para a central. */
+  usage: number
+}
+
+/** Centrais por nome, inclusive as desativadas (P19). */
+export async function listCentralSettings(viewer: Viewer): Promise<CentralItem[]> {
+  const rows = await db.central.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, note: true, externalId: true, isActive: true },
+  })
+  const usage = await catalogUsage("central", rows.map((r) => r.id))
+  return rows.map(({ name, ...r }) => ({ ...r, label: name, usage: usage.get(r.id) ?? 0 }))
+}
+
+export interface DevReturnReasonItem {
+  id: string
+  label: string
+  category: DevReturnCategory
+  requiresDetail: boolean
+  isActive: boolean
+  usage: number
+}
+
+/** Motivos de devolução na ordem do catálogo (P20). */
+export async function listDevReturnReasons(viewer: Viewer): Promise<DevReturnReasonItem[]> {
+  const rows = await db.devReturnReason.findMany({
+    where: { organizationId: viewer.organizationId },
+    orderBy: [{ order: "asc" }, { label: "asc" }],
+    select: { id: true, label: true, category: true, requiresDetail: true, isActive: true },
+  })
+  const usage = await catalogUsage("devReturnReason", rows.map((r) => r.id))
+  return rows.map((r) => ({ ...r, usage: usage.get(r.id) ?? 0 }))
 }

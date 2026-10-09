@@ -14,6 +14,7 @@ export const TIMELINE_TYPES = [
   "AGREEMENT_DONE",
   "DAILY",
   "NOTE",
+  "WATCH",
   "INCIDENT",
   "DEVELOPMENT",
   "SENIORITY_CHANGE",

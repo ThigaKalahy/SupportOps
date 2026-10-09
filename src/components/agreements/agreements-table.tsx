@@ -109,6 +109,15 @@ export function AgreementsTable({
     })
   }
   columns.push(
+    {
+      id: "central",
+      header: labels.centrals.column,
+      cell: (r) =>
+        r.central ? <span className="truncate">{r.central.name}</span> : <span className="text-ink-secondary">{labels.priorityValidations.table.none}</span>,
+      title: (r) => r.central?.name ?? labels.centrals.none,
+      width: "128px",
+      hideBelow: "xl",
+    },
     { id: "origin", header: C.origin, cell: (r) => enumLabel("agreementOrigin", r.origin), width: "96px", hideBelow: "2xl" },
     {
       id: "createdAt",

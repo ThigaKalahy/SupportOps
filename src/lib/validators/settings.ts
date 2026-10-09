@@ -1,6 +1,8 @@
 import { z } from "zod"
 
 import { labels } from "../labels.ts"
+import { CENTRAL_NAME_MAX, centralSlug } from "../centrals.ts"
+import { DEV_RETURN_CATEGORIES } from "../dev-returns.ts"
 import { compilePattern } from "../priority-validation.ts"
 
 /**
@@ -12,11 +14,11 @@ import { compilePattern } from "../priority-validation.ts"
 const v = labels.validation
 const S = labels.settings
 
-export const CATALOG_KINDS = ["priorityLevel", "reclassificationReason", "blockerReason", "ticketPattern", "competency", "metric"] as const
+export const CATALOG_KINDS = ["priorityLevel", "reclassificationReason", "blockerReason", "ticketPattern", "competency", "metric", "central", "devReturnReason"] as const
 export type CatalogKind = (typeof CATALOG_KINDS)[number]
 
 /** Catálogos sem posição própria (a competência segue categoria e nome). */
-export const UNORDERED_KINDS: readonly CatalogKind[] = ["competency", "metric"]
+export const UNORDERED_KINDS: readonly CatalogKind[] = ["competency", "metric", "central"]
 
 export const BLOCKER_CATEGORIES = ["EXTERNAL", "INTERNAL", "CAPACITY"] as const
 export const METRIC_DIRECTIONS = ["HIGHER_IS_BETTER", "LOWER_IS_BETTER"] as const
@@ -69,6 +71,19 @@ export const catalogSchemas = {
     direction: z.enum(METRIC_DIRECTIONS),
     sourceSystem: z.string().trim().max(40, v.tooLong),
   }),
+  /** Central (P19, D20): o slug sai do nome no servidor e é a chave de deduplicação. */
+  central: z.object({
+    id,
+    label: z
+      .string()
+      .trim()
+      .min(1, S.validation.labelRequired)
+      .max(CENTRAL_NAME_MAX, v.tooLong)
+      .refine((value) => centralSlug(value) !== "", S.validation.labelRequired),
+    note: z.string().trim().max(300, v.tooLong),
+  }),
+  /** Motivo de devolução do desenvolvimento (P20, D22): categoria separa analista de processo. */
+  devReturnReason: z.object({ id, label: z.string().trim().min(2, S.validation.labelRequired).max(120, v.tooLong), category: z.enum(DEV_RETURN_CATEGORIES), requiresDetail: z.boolean() }),
 } satisfies Record<CatalogKind, z.ZodType>
 
 export type CatalogInput<K extends CatalogKind> = z.infer<(typeof catalogSchemas)[K]>

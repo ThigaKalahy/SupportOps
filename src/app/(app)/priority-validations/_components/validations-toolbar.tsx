@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { FilterSelect } from "@/components/ui/filter-select"
 import { PeriodPicker } from "@/components/ui/period-picker"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { centralFilterOptions } from "@/lib/centrals"
 import { enumLabel, labels } from "@/lib/labels"
 import { VALIDATION_OUTCOMES } from "@/lib/priority-validation"
 import {
@@ -27,10 +28,13 @@ export function ValidationsToolbar({
   filters,
   members,
   reasons,
+  centrals,
 }: {
   filters: ValidationFilters
   members: { id: string; preferredName: string }[]
   reasons: { id: string; label: string }[]
+  /** Todas as centrais, inclusive desativadas (o histórico aponta para elas). */
+  centrals: { id: string; name: string; isActive: boolean }[]
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -46,7 +50,7 @@ export function ValidationsToolbar({
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
   }
 
-  const active = [filters.memberId, filters.outcome, filters.reasonId].filter(Boolean).length
+  const active = [filters.memberId, filters.outcome, filters.reasonId, filters.central].filter(Boolean).length
 
   return (
     <>
@@ -89,13 +93,25 @@ export function ValidationsToolbar({
             options={reasons.map((r) => ({ value: r.id, label: r.label }))}
             onChange={(v) => replace({ [VALIDATION_PARAMS.reason]: v })}
           />
+          <FilterSelect
+            label={labels.centrals.filter}
+            value={filters.central}
+            allLabel={labels.centrals.filterAll}
+            options={centralFilterOptions(centrals)}
+            onChange={(v) => replace({ [VALIDATION_PARAMS.central]: v })}
+          />
           {hasValidationFilters(filters) ? (
             <Button
               variant="link"
               size="sm"
               className="self-start"
               onClick={() =>
-                replace({ [VALIDATION_PARAMS.member]: null, [VALIDATION_PARAMS.outcome]: null, [VALIDATION_PARAMS.reason]: null })
+                replace({
+                  [VALIDATION_PARAMS.member]: null,
+                  [VALIDATION_PARAMS.outcome]: null,
+                  [VALIDATION_PARAMS.reason]: null,
+                  [VALIDATION_PARAMS.central]: null,
+                })
               }
             >
               {F.clear}

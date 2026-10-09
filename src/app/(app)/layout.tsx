@@ -4,6 +4,7 @@ import { AppShell } from "@/components/shell/app-shell"
 import { SIDEBAR_COLLAPSED_VALUE, SIDEBAR_COOKIE } from "@/components/shell/constants"
 import { canWrite, requireUser } from "@/server/access"
 import { listAgreementMembers } from "@/server/queries/agreements"
+import { listActiveCentrals } from "@/server/queries/centrals"
 
 import { loadAlerts, loadThresholds } from "./alerts-data"
 
@@ -16,10 +17,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser()
   const cookieStore = await cookies()
   const collapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === SIDEBAR_COLLAPSED_VALUE
-  const [members, alerts, thresholds] = await Promise.all([
+  const [members, alerts, thresholds, centrals] = await Promise.all([
     listAgreementMembers(user),
     loadAlerts(),
     loadThresholds(),
+    canWrite(user) ? listActiveCentrals(user) : [],
   ])
   const people = members.map((m) => ({ id: m.id, preferredName: m.preferredName }))
   const agreementMembers = canWrite(user) ? people : null
@@ -29,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       defaultCollapsed={collapsed}
       user={{ name: user.name, email: user.email, role: user.role }}
       agreementMembers={agreementMembers}
+      centrals={centrals}
       people={people}
       counts={alerts.counts}
       thresholds={thresholds}

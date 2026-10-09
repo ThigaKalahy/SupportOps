@@ -3,6 +3,8 @@ import type { CheckinOutcome } from "@prisma/client"
 import { todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
+import { listActiveCentrals } from "./centrals.ts"
+import { activeWatchByLink } from "./watch.ts"
 import { memberScope, type Viewer } from "../visibility.ts"
 import type { WhatsAppDaily } from "../whatsapp.ts"
 
@@ -52,7 +54,7 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
     select: { id: true, date: true },
   })
 
-  const [agreements, members, reasons, sameDay] = await Promise.all([
+  const [agreements, members, reasons, sameDay, centrals] = await Promise.all([
     db.agreement.findMany({
       where: {
         status: { in: ["OPEN", "IN_PROGRESS"] },
@@ -85,6 +87,7 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
       orderBy: { createdAt: "asc" },
       select: { id: true, createdAt: true },
     }),
+    listActiveCentrals(viewer),
   ])
 
   const groups = new Map<string, ReviewGroup>()
@@ -109,6 +112,9 @@ export async function getDailyForm(viewer: Viewer, date: Date = todayBusinessDat
     members,
     reasons,
     sameDay,
+    centrals,
+    // P21: observação ativa já ligada a cada combinado a revisar (o botão abre a existente).
+    watching: await activeWatchByLink(viewer, "agreementId", agreements.map((a) => a.id)),
   }
 }
 
@@ -153,6 +159,7 @@ const detailInclude = {
       status: true,
       replacesAgreementId: true,
       member: { select: { preferredName: true } },
+      central: { select: { name: true } },
     },
   },
 }
@@ -185,7 +192,7 @@ export interface DailyDetail {
     newDueDate: Date | null
     replacement: { id: string; title: string; dueDate: Date } | null
   }[]
-  created: { id: string; title: string; name: string; dueDate: Date; isReplacement: boolean }[]
+  created: { id: string; title: string; name: string; dueDate: Date; central: string | null; isReplacement: boolean }[]
   whatsapp: WhatsAppDaily
 }
 
@@ -215,6 +222,7 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
     title: a.title,
     name: a.member.preferredName,
     dueDate: a.dueDate,
+    central: a.central?.name ?? null,
     isReplacement: a.replacesAgreementId !== null,
   }))
   return {
@@ -237,7 +245,9 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
         newDueDate: r.newDueDate,
         replacement: r.replacement,
       })),
-      created: created.filter((c) => !c.isReplacement).map((c) => ({ name: c.name, title: c.title, dueDate: c.dueDate })),
+      created: created
+        .filter((c) => !c.isReplacement)
+        .map((c) => ({ name: c.name, central: c.central, title: c.title, dueDate: c.dueDate })),
       blockers: present.flatMap((p) => (p.blocker ? [{ name: p.name, text: p.blocker }] : [])),
     },
   }

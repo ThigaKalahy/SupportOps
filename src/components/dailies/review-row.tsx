@@ -63,6 +63,7 @@ export function ReviewRow({
   errors,
   groupRef,
   onDone,
+  watch,
 }: {
   item: ReviewItem
   state: ReviewState
@@ -74,6 +75,8 @@ export function ReviewRow({
   groupRef: (el: HTMLDivElement | null) => void
   /** Chamado depois de "Feito", para o foco seguir para a próxima linha. */
   onDone: () => void
+  /** P21: "Colocar em observação", mostrado só em Parcial / Não feito (o momento de maior valor). */
+  watch?: (blockerText: string) => React.ReactNode
 }) {
   const blockerRef = React.useRef<HTMLInputElement>(null)
   const [focusIndex, setFocusIndex] = React.useState(0)
@@ -122,7 +125,10 @@ export function ReviewRow({
     <li className={cn("flex flex-col gap-3 border-b border-line px-3 py-3 last:border-b-0", open && "bg-surface-sunken/60")}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-sm font-medium text-ink">{item.title}</span>
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="text-sm font-medium text-ink">{item.title}</span>
+            {open && watch ? watch(state.blockerText) : null}
+          </span>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <DueCell row={{ dueDate: item.dueDate, open: true, deadline: item.deadline }} />
             {/* Arrasto visível na linha, sem depender de hover: 3+ vira selo vermelho "arrastado Nx". */}

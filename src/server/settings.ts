@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client"
 
+import { centralSlug, cleanCentralName } from "../lib/centrals.ts"
 import { fill, labels } from "../lib/labels.ts"
 import { fieldErrorsOf, type ActionResult } from "../lib/validators/fields.ts"
 import {
@@ -60,6 +61,8 @@ const ENTITY: Record<CatalogKind, string> = {
   ticketPattern: "TicketUrlPattern",
   competency: "Competency",
   metric: "MetricDefinition",
+  central: "Central",
+  devReturnReason: "DevReturnReason",
 }
 
 /** Ids na ordem de exibição. */
@@ -76,7 +79,11 @@ async function orderedIds(tx: Tx, kind: CatalogKind, organizationId: string): Pr
             ? await tx.ticketUrlPattern.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
             : kind === "metric"
               ? await tx.metricDefinition.findMany({ where, orderBy: { label: "asc" }, select: { id: true } })
-              : await tx.competency.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }], select: { id: true } })
+              : kind === "central"
+                ? await tx.central.findMany({ where, orderBy: { name: "asc" }, select: { id: true } })
+                : kind === "devReturnReason"
+                  ? await tx.devReturnReason.findMany({ where, orderBy: [{ order: "asc" }, { label: "asc" }], select: { id: true } })
+                : await tx.competency.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }], select: { id: true } })
   return rows.map((r) => r.id)
 }
 
@@ -87,6 +94,7 @@ async function renumber(tx: Tx, kind: CatalogKind, ids: string[]): Promise<void>
     if (kind === "priorityLevel") await tx.priorityLevel.update({ where: { id }, data: { rank: ids.length - i } })
     else if (kind === "reclassificationReason") await tx.reclassificationReason.update({ where: { id }, data: { order: i + 1 } })
     else if (kind === "blockerReason") await tx.blockerReason.update({ where: { id }, data: { order: i + 1 } })
+    else if (kind === "devReturnReason") await tx.devReturnReason.update({ where: { id }, data: { order: i + 1 } })
     else await tx.ticketUrlPattern.update({ where: { id }, data: { order: i + 1 } })
   }
 }
@@ -106,11 +114,20 @@ async function findItem(kind: CatalogKind, id: string, organizationId: string) {
       return db.competency.findFirst({ where })
     case "metric":
       return db.metricDefinition.findFirst({ where })
+    case "central":
+      return db.central.findFirst({ where })
+    case "devReturnReason":
+      return db.devReturnReason.findFirst({ where })
   }
 }
 
 /** Nomes já usados no catálogo (comparação sem caixa nem acento), exceto o próprio item. */
 async function labelTaken(kind: CatalogKind, organizationId: string, label: string, exceptId?: string): Promise<boolean> {
+  if (kind === "central") {
+    // Central: a chave é o slug (D20), inclusive contra as desativadas.
+    const slug = centralSlug(label)
+    return Boolean(await db.central.findFirst({ where: { organizationId, slug, ...(exceptId ? { id: { not: exceptId } } : {}) } }))
+  }
   const norm = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase()
   const where = { organizationId, ...(exceptId ? { id: { not: exceptId } } : {}) }
   const select = { label: true } as const
@@ -125,6 +142,8 @@ async function labelTaken(kind: CatalogKind, organizationId: string, label: stri
             ? await db.ticketUrlPattern.findMany({ where, select })
             : kind === "metric"
               ? await db.metricDefinition.findMany({ where, select })
+            : kind === "devReturnReason"
+              ? await db.devReturnReason.findMany({ where, select })
             : (await db.competency.findMany({ where, select: { name: true } })).map((r) => ({ label: r.name }))
   return rows.some((r) => norm(r.label) === norm(label))
 }
@@ -193,6 +212,19 @@ export async function saveCatalogItemRecord(user: Viewer, kind: unknown, input: 
       after = before
         ? await tx.metricDefinition.update({ where: { id: before.id }, data: fields })
         : await tx.metricDefinition.create({ data: { organizationId: org, key: d.key, ...fields } })
+    } else if (k === "devReturnReason") {
+      const d = data as { label: string; category: "ANALYST" | "PROCESS"; requiresDetail: boolean }
+      const fields = { label: d.label, category: d.category, requiresDetail: d.requiresDetail }
+      after = before
+        ? await tx.devReturnReason.update({ where: { id: before.id }, data: fields })
+        : await tx.devReturnReason.create({ data: { organizationId: org, ...fields, order: 0 } })
+    } else if (k === "central") {
+      const d = data as { label: string; note: string }
+      const name = cleanCentralName(d.label)
+      const fields = { name, slug: centralSlug(name), note: d.note || null }
+      after = before
+        ? await tx.central.update({ where: { id: before.id }, data: fields })
+        : await tx.central.create({ data: { organizationId: org, ...fields } })
     } else if (k === "competency") {
       const d = data as { label: string; category: string; description: string }
       const fields = { name: d.label, category: d.category || null, description: d.description || null }
@@ -258,6 +290,9 @@ export async function setCatalogItemActiveRecord(user: Viewer, input: unknown): 
     else if (kind === "blockerReason") await tx.blockerReason.update({ where: { id }, data })
     else if (kind === "competency") await tx.competency.update({ where: { id }, data })
     else if (kind === "metric") await tx.metricDefinition.update({ where: { id }, data })
+    else if (kind === "devReturnReason") await tx.devReturnReason.update({ where: { id }, data })
+    // Central desativada ganha deletedAt e some dos comboboxes; o histórico continua apontando para ela.
+    else if (kind === "central") await tx.central.update({ where: { id }, data: { ...data, deletedAt: active ? null : new Date() } })
     else await tx.ticketUrlPattern.update({ where: { id }, data })
     const a = audit(user, kind, active ? "activate" : "deactivate", id, { isActive: before.isActive }, { isActive: active })
     await writeAudit(a.entry, { ...a.context, tx })
@@ -282,6 +317,8 @@ export async function deleteCatalogItemRecord(user: Viewer, input: unknown): Pro
     else if (kind === "blockerReason") await tx.blockerReason.delete({ where: { id } })
     else if (kind === "competency") await tx.competency.delete({ where: { id } })
     else if (kind === "metric") await tx.metricDefinition.delete({ where: { id } })
+    else if (kind === "central") await tx.central.delete({ where: { id } })
+    else if (kind === "devReturnReason") await tx.devReturnReason.delete({ where: { id } })
     else await tx.ticketUrlPattern.delete({ where: { id } })
     await renumber(tx, kind, await orderedIds(tx, kind, org))
     const a = audit(user, kind, "delete", id, before)

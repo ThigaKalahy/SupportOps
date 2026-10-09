@@ -20,6 +20,8 @@ const SOFT_DELETE_MODELS: ReadonlySet<Prisma.ModelName> = new Set<Prisma.ModelNa
   "Note",
   "PriorityValidation",
   "DevelopmentPlan",
+  "DevReturn",
+  "WatchItem",
 ])
 
 const READ_OPERATIONS: ReadonlySet<string> = new Set([

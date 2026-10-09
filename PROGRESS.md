@@ -21,6 +21,10 @@
 | P16 Busca global               | concluída | 42f8738 | 03/10/2026 |
 | P17 Arquitetura de score       | concluída | 00866f3 | 03/10/2026 |
 | P18 Mobile, a11y e deploy      | concluída — deploy aguarda a conta Vercel (BLOCKERS.md) | 754591e | 03/10/2026 |
+| C1  Prazo padrão do combinado  | concluída | 0caa973 | 08/10/2026 |
+| P19 Central de atendimento     | código pronto — migration aguarda autorização para rodar no banco de produção | | 08/10/2026 |
+| P20 Devolução do desenvolvimento | código pronto — migration aguarda autorização (junto com a do P19) | | 09/10/2026 |
+| P21 Em observação             | código pronto — migration aguarda autorização (junto com as do P19 e P20) | | 10/10/2026 |
 
 ## Notas de handoff
 
@@ -325,4 +329,62 @@
   - **Testes:** 209 no total, 28 novos em `tests/a11y.test.ts` (20 pares de contraste AA, terciário só onde é isento, reduced-motion, 44px em ponteiro grosso, foco nunca removido sem substituto, manifest sem service worker, manifest/ícones fora do login, /ui-lab 404 em produção, `lang="pt-BR"`).
   - **Lighthouse, acessibilidade (mobile):** 100 em Hoje, Equipe, perfil, timeline, combinados, nova daily, validação, registros, desenvolvimento (time e pessoa), busca, limiares, métricas, score e login; VIEWER: Hoje e timeline 100.
   - **Servidor de produção, contas temporárias (apagadas):** 14 telas em 360px, equipe e combinados em 768px, equipe e limiares em 390px, manifest/ícones respondendo sem login, `/ui-lab` 404 autenticado.
+
+### C1 — Prazo padrão do combinado (branch `fase/c1-prazo-combinado`)
+
+- Combinado da daily nasce com a data da daily (Seção 3 e reagendar/substituir na Seção 1); criação rápida nasce com hoje. Prazo hoje é neutro e fica fora do alerta "vencendo" e dos próximos acompanhamentos da home; WhatsApp omite o prazo igual à data da daily. Nenhum dado alterado.
+- Testes que leem o banco não rodaram (o banco é o de produção, com o beta); `tests/due-default.test.ts` cobre as regras sem banco.
+
+### P19 — Central de atendimento (branch `fase/19-centrals`)
+
+- **Ficou de fora / depende de você:**
+  - **a migration `20261008120000_centrals` NÃO foi aplicada**: o único banco configurado é o de produção (beta em uso). Ela é aditiva (tabela nova, duas colunas nulas, índices, sem backfill) e roda com `pnpm db:migrate:deploy` ou no build da Vercel — precisa da sua autorização. Sem ela, as telas que leem central falham;
+  - **nenhuma verificação no navegador**: sem a migration aplicada e sem banco de teste, não abri as telas. O critério de aceite ("central alfa" com "Central Alfa" cadastrada não duplica) está coberto pela regra pura (slug) e pelo servidor (busca por `organizationId_slug` antes de criar + unique no banco), não por clique;
+  - a central não aparece no detalhe do combinado, na timeline, na busca nem na paleta (não pedido);
+  - editar combinado não troca a central (a edição continua só título, detalhes e prioridade).
+- **Decisões tomadas sem perguntar (revise):**
+  - **CRUD pelo catálogo genérico** de /settings (kind `central`): editar, desativar (isActive = false + deletedAt), reativar e excluir só sem uso. Renomear recalcula o slug e recusa se colidir com outra central (inclusive desativada).
+  - **Central desativada digitada no formulário**: o combobox não reativa; avisa "A central X está desativada. Reative em Configurações → Centrais".
+  - **Texto digitado sem escolher**: ao sair do campo, se o nome normalizado for o de uma central ativa, ela é escolhida (com o aviso "usando a central já cadastrada"); se não, o texto fica com o aviso "Central não gravada" — não cria sozinho.
+  - **Filtro de central** em /agreements e /priority-validations com "Sem central informada" e as desativadas marcadas; em /priority-validations o filtro de central também recorta o resumo (como a pessoa).
+  - **Arquivo** `src/components/ui/CentralCombobox.tsx` em PascalCase, como pedido, embora os demais primitivos sejam kebab-case.
+  - **Importação**: cabeçalho "nome"/"central" na primeira linha é ignorado; nome repetido dentro da própria colagem conta como "já existe"; até 2.000 linhas por vez.
+- **Verificado:** typecheck, lint e build; 42 testes sem banco (`tests/centrals.test.ts`, `tests/due-default.test.ts`, `tests/a11y.test.ts`). Os testes que leem o banco não rodaram.
+
+### P20 — Devolução do desenvolvimento (branch `fase/20-dev-returns`, a partir do P19 não comitado)
+
+- **Ficou de fora / depende de você:**
+  - **as migrations do P19 e do P20 NÃO foram aplicadas** (o único banco é o de produção, com o beta). As duas são aditivas; rodam com `pnpm db:migrate:deploy` ou no build da Vercel. Sem elas, o app não sobe neste computador (o cliente do Prisma já tem as tabelas novas);
+  - **nenhuma verificação no navegador e nenhum teste com banco**; o critério de aceite (colar a URL de um chamado validado traz o contexto e grava `priorityValidationId`) está implementado (`getTicketContext` + `latestValidationFor`) mas não foi exercitado;
+  - `getTeamDevReturns` existe sem tela (como os resumos do P11);
+  - os limiares dos dois alertas ficam no código (`DEV_RETURN_ALERTS`), não em /settings/thresholds.
+- **Decisões tomadas sem perguntar (revise):**
+  - **`requiresDetail` em `DevReturnReason`** (campo além da lista do prompt): marca o "Outro" sem depender do texto do rótulo, como em `ReclassificationReason`; trigger no banco igual ao do P11.
+  - **Catálogo inicial pela migration**, em cada organização existente — o banco de produção não roda seed.
+  - **Período padrão 30 dias** em /dev-returns (devolução chega dias depois; "hoje" quase sempre viria vazio).
+  - **Resumo recortado por período, analista e central**; motivo, categoria e "apenas em aberto" recortam só a tabela (filtrar por Processo faria o resumo dizer sempre 0 atribuíveis).
+  - **Categoria na tabela como selo**: Analista em âmbar, Processo neutro. É sinal de "treinável", não de gravidade — revise se o âmbar pesa demais.
+  - **Seção "Prioridade alterada e devolvido"** abaixo da tabela de /dev-returns (a query `getReturnOverlap` pedia uma superfície; não havia uma definida).
+  - **Analista pré-selecionado** só se ainda estiver vazio e se a pessoa da validação estiver ativa; central só se ativa.
+  - **Afastado (ON_LEAVE)** pode receber devolução registrada (chamado devolvido depois do afastamento); o select do formulário mostra só ativos e em desligamento, como na validação.
+- **Verificado:** typecheck, lint e build; testes sem banco: `tests/dev-returns.test.ts` (10), `tests/centrals.test.ts`, `tests/due-default.test.ts`, `tests/a11y.test.ts`. Os testes com banco não rodaram (`tests/alerts.test.ts` e `tests/priority-validations.test.ts` foram ajustados aos tipos novos).
+
+### P21 — Em observação (branch `fase/21-watch`, a partir do P20 não comitado)
+
+- **Ficou de fora / depende de você:**
+  - **as migrations do P19, P20 e P21 NÃO foram aplicadas**; o app neste computador não sobe até elas rodarem (`pnpm db:migrate:deploy`);
+  - **nenhuma verificação no navegador e nenhum teste com banco**: os critérios de aceite estão cobertos por regra pura e leitura de código (`tests/watch.test.ts`), não por clique;
+  - o alternador de visibilidade fica no painel de /watch; na timeline, a linha WATCH mostra o cadeado como as outras, sem o botão de alternar;
+  - o vínculo de validação e devolução leva à lista (sem âncora para a linha);
+  - nas linhas da Seção 1 e 3 da daily o ícone fica fora do Tab, sem atalho de teclado (só a nota tem Alt+O).
+- **Decisões tomadas sem perguntar (revise):**
+  - **Cadências na tabela `AlertThreshold`** (chave/valor que já existia), editadas em /settings/thresholds — não há tabela "Settings" única.
+  - **Formulário ainda não salvo**: a observação é criada na hora (um clique, sem sair) com a pessoa e ganha o vínculo (dailyId, agreementId, oneOnOneId, feedbackId) quando o formulário é salvo; se o formulário nunca for salvo, a observação fica só com a pessoa.
+  - **Revisão da Seção 1** liga ao combinado (agreementId), não à daily.
+  - **Grau inicial**: fogo alto na nota e na revisão Parcial/Não feito da daily; médio no resto.
+  - **Esfriar/Esquentar conta como revisão** (atualiza `lastReviewedAt` e `reviewCount`, além de `heatChangedAt`).
+  - **Um alerta por observação na home**, o mais forte: fogo alto frio > sem revisão > parada.
+  - **Contador da sidebar** = observações em fogo alto ativas (não os alertas).
+  - **Observação sem pessoa** aparece na home como alerta do time (como a daily).
+- **Verificado:** typecheck, lint e build; testes sem banco: `tests/watch.test.ts` (14), `tests/dev-returns.test.ts`, `tests/centrals.test.ts`, `tests/due-default.test.ts`, `tests/a11y.test.ts` — 66 no total. `tests/visibility.test.ts` (estático + banco) passou a cobrir WatchItem, mas não rodou (lê o banco).
 

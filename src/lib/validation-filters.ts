@@ -4,7 +4,7 @@ import { VALIDATION_OUTCOMES, type ValidationOutcome } from "./priority-validati
 /**
  * Filtros de /priority-validations, na URL:
  *   ?period=today|7d|30d|month|custom&from=DD-MM-AAAA&to=DD-MM-AAAA
- *   &member=<id>&outcome=RAISED&reason=<id>
+ *   &member=<id>&outcome=RAISED&reason=<id>&central=<id>|none
  * Período padrão: hoje. Datas na URL no formato brasileiro, com hífen.
  */
 
@@ -18,6 +18,7 @@ export const VALIDATION_PARAMS = {
   member: "member",
   outcome: "outcome",
   reason: "reason",
+  central: "central",
 } as const
 
 export interface ValidationFilters {
@@ -28,6 +29,8 @@ export interface ValidationFilters {
   memberId: string | null
   outcome: ValidationOutcome | null
   reasonId: string | null
+  /** Central (P19): id, "none" (sem central informada) ou null. */
+  central: string | null
 }
 
 type Params = Record<string, string | string[] | undefined>
@@ -58,6 +61,7 @@ export function parseValidationFilters(params: Params): ValidationFilters {
     memberId: one(params, VALIDATION_PARAMS.member),
     outcome: VALIDATION_OUTCOMES.includes(rawOutcome as ValidationOutcome) ? (rawOutcome as ValidationOutcome) : null,
     reasonId: one(params, VALIDATION_PARAMS.reason),
+    central: one(params, VALIDATION_PARAMS.central),
   }
 }
 
@@ -83,5 +87,5 @@ export function periodRange(filters: Pick<ValidationFilters, "period" | "from" |
 }
 
 export function hasValidationFilters(filters: ValidationFilters): boolean {
-  return Boolean(filters.memberId || filters.outcome || filters.reasonId)
+  return Boolean(filters.memberId || filters.outcome || filters.reasonId || filters.central)
 }

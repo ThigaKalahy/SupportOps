@@ -1,5 +1,6 @@
 import {
   CalendarCheckIcon,
+  FlameIcon,
   ClipboardCheckIcon,
   HouseIcon,
   ListChecksIcon,
@@ -20,14 +21,25 @@ export interface NavItem {
   /** Só "/" exige correspondência exata; o resto ativa também nas sub-rotas. */
   exact?: boolean
   /** Contador do motor de alertas mostrado ao lado do item. */
-  counter?: "today" | "team" | "agreements" | "dailies" | "records" | "development"
+  counter?: "today" | "watch" | "team" | "agreements" | "validations" | "dailies" | "records" | "development"
+  /** Outras rotas que são abas desta mesma seção (ex.: /dev-returns em Validação de prioridade, P20). */
+  also?: { href: string; label: string }[]
 }
 
 export const mainNav: NavItem[] = [
   { href: "/", label: labels.nav.today, icon: HouseIcon, exact: true, counter: "today" },
+  // P21: destino diário próprio, logo depois de Hoje; o contador é o fogo alto ativo.
+  { href: "/watch", label: labels.nav.watch, icon: FlameIcon, counter: "watch" },
   { href: "/team", label: labels.nav.team, icon: UsersIcon, counter: "team" },
   { href: "/agreements", label: labels.nav.agreements, icon: ListChecksIcon, counter: "agreements" },
-  { href: "/priority-validations", label: labels.nav.priorityValidations, icon: ClipboardCheckIcon },
+  {
+    href: "/priority-validations",
+    label: labels.nav.priorityValidations,
+    icon: ClipboardCheckIcon,
+    counter: "validations",
+    // Mesmo domínio (qualidade da triagem), visto do outro lado: aba, não item novo (oito é o teto).
+    also: [{ href: "/dev-returns", label: labels.devReturns.title }],
+  },
   { href: "/dailies", label: labels.nav.dailies, icon: CalendarCheckIcon, counter: "dailies" },
   { href: "/records", label: labels.nav.records, icon: MessagesSquareIcon, counter: "records" },
   { href: "/development", label: labels.nav.development, icon: SproutIcon, counter: "development" },
@@ -35,9 +47,11 @@ export const mainNav: NavItem[] = [
 
 export const footerNav: NavItem[] = [{ href: "/settings", label: labels.nav.settings, icon: SettingsIcon }]
 
+const under = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`)
+
 export function isActive(item: NavItem, pathname: string): boolean {
   if (item.exact) return pathname === item.href
-  return pathname === item.href || pathname.startsWith(`${item.href}/`)
+  return under(pathname, item.href) || (item.also ?? []).some((a) => under(pathname, a.href))
 }
 
 /**
@@ -53,6 +67,8 @@ const subrouteLabels: Record<string, string> = {
   adherence: labels.adherence.title,
   "reclassification-reasons": labels.settings.tabs.reclassificationReasons,
   "blocker-reasons": labels.settings.tabs.blockerReasons,
+  "dev-return-reasons": labels.settings.tabs.devReturnReasons,
+  centrals: labels.settings.tabs.centrals,
   "ticket-patterns": labels.settings.tabs.ticketPatterns,
   "competency-matrix": labels.settings.tabs.competencyMatrix,
   competencies: labels.settings.tabs.competencies,
@@ -78,8 +94,12 @@ export function crumbsFor(pathname: string, segmentLabels: Record<string, string
   const crumbs: Crumb[] = [{ label: section.label, href: section.href }]
   if (section.exact) return crumbs
 
-  const rest = pathname.slice(section.href.length).split("/").filter(Boolean)
-  let href = section.href
+  // Rota-aba da seção (ex.: /dev-returns): a seção, depois a aba.
+  const tab = (section.also ?? []).find((a) => under(pathname, a.href))
+  if (tab) crumbs.push({ label: tab.label, href: tab.href })
+  const base = tab?.href ?? section.href
+  const rest = pathname.slice(base.length).split("/").filter(Boolean)
+  let href = base
   for (const segment of rest) {
     href = `${href}/${segment}`
     const label = segmentLabels[segment] ?? subrouteLabels[segment]

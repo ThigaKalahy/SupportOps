@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form"
 
 import { createOneOnOne, updateOneOnOne } from "@/actions/records"
 import { Button } from "@/components/ui/button"
+import { WatchButton } from "@/components/watch/watch-button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
@@ -82,6 +83,8 @@ export function OneOnOneDialog({
     [member.id, editing],
   )
   const form = useForm<OneOnOneInput>({ resolver: zodResolver(oneOnOneSchema), defaultValues: defaults() })
+  // P21: observações marcadas neste formulário antes de salvar (ligadas ao registro ao salvar).
+  const [watchIds, setWatchIds] = React.useState<string[]>([])
   const [openGroups, setOpenGroups] = React.useState<Set<Group>>(new Set())
   const [showContext, setShowContext] = React.useState(true)
   const [formError, setFormError] = React.useState<string | null>(null)
@@ -90,6 +93,7 @@ export function OneOnOneDialog({
   React.useEffect(() => {
     if (!open) return
     form.reset(defaults())
+    setWatchIds([])
     setOpenGroups(new Set())
     setShowContext(!editing)
     setFormError(null)
@@ -118,7 +122,7 @@ export function OneOnOneDialog({
     (values) => {
       setFormError(null)
       startTransition(async () => {
-        const result = editing ? await updateOneOnOne(editing.id, values) : await createOneOnOne(values)
+        const result = editing ? await updateOneOnOne(editing.id, values) : await createOneOnOne({ ...values, watchIds })
         if (result.ok) {
           toast.show(editing ? labels.toast.recordUpdated : labels.toast.oneOnOneCreated)
           onSaved?.()
@@ -246,6 +250,15 @@ export function OneOnOneDialog({
           <VisibilityField value={form.watch("visibility")} onChange={(v) => form.setValue("visibility", v)} />
           <FormError message={formError} />
           <DialogFooter>
+            {/* P21: observar sem sair do formulário; no registro novo, o vínculo se completa ao salvar. */}
+            <WatchButton
+              className="mr-auto"
+              origin="ONE_ON_ONE"
+              defaults={{ title: "", heat: "MEDIUM" }}
+              link={editing ? { oneOnOneId: editing.id } : { memberId: member.id }}
+              pendingHint={editing ? undefined : labels.watch.button.pendingRecord}
+              onCreated={(id) => !editing && setWatchIds((ids) => [...ids, id])}
+            />
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>
               {labels.common.cancel}
             </Button>

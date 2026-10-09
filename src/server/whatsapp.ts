@@ -31,7 +31,8 @@ export interface WhatsAppDaily {
   /** Data de negócio da daily. */
   date: Date
   reviewed: WhatsAppReview[]
-  created: { name: string; title: string; dueDate: Date }[]
+  /** `central`: nome da central (P19), quando informada — entra entre a pessoa e o título. */
+  created: { name: string; central?: string | null; title: string; dueDate: Date }[]
   blockers: { name: string; text: string }[]
 }
 
@@ -57,7 +58,7 @@ function clean(text: string): string {
  */
 function createdLine(dailyDate: Date) {
   return (c: WhatsAppDaily["created"][number]) => {
-    const line = `- ${clean(c.name)} — ${clean(c.title)}`
+    const line = `- ${clean(c.name)}${c.central ? ` — ${clean(c.central)}` : ""} — ${clean(c.title)}`
     return c.dueDate.getTime() === dailyDate.getTime() ? line : `${line} — ${dayMonth(c.dueDate)}`
   }
 }

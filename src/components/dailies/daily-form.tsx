@@ -7,6 +7,9 @@ import { XIcon } from "lucide-react"
 import { createDaily } from "@/actions/dailies"
 import { DisclosureToggle, FormError } from "@/components/forms/form-kit"
 import { Button } from "@/components/ui/button"
+import { WatchButton } from "@/components/watch/watch-button"
+import type { WatchHeat } from "@/lib/watch"
+import { CentralCombobox, type CentralOption } from "@/components/ui/CentralCombobox"
 import { Checkbox } from "@/components/ui/checkbox"
 import { EmptyState } from "@/components/ui/empty-state"
 import { FieldGroup } from "@/components/ui/field-group"
@@ -35,11 +38,19 @@ interface ParticipantState {
   present: boolean
   note: string
   isBlocker: boolean
+  /** P21: observações criadas nesta nota (ligadas à daily ao salvar) e o grau da última. */
+  watchIds?: string[]
+  watchHeat?: WatchHeat
 }
 
 interface NewRow {
   key: string
   memberId: string
+  /** Central (P19): opcional, "" = sem. */
+  centralId: string
+  /** P21: observações criadas nesta linha (ligadas ao combinado ao salvar) e o grau da última. */
+  watchIds?: string[]
+  watchHeat?: WatchHeat
   title: string
   dueDate: string
 }
@@ -59,7 +70,7 @@ interface Draft extends FormState {
 }
 
 let rowSeq = 0
-const newRow = (dueDate: string): NewRow => ({ key: `row-${++rowSeq}`, memberId: "", title: "", dueDate })
+const newRow = (dueDate: string): NewRow => ({ key: `row-${++rowSeq}`, memberId: "", centralId: "", title: "", dueDate })
 const rowIsEmpty = (row: NewRow) => !row.memberId && !row.title.trim()
 
 /** Prazos nascem com a data da própria daily, também na retroativa (D28): o combinado é o compromisso do dia. */
@@ -93,7 +104,7 @@ function restore(base: FormState, draft: Draft): FormState {
   return {
     reviews,
     participants,
-    rows: rows.length ? rows.map((r) => ({ ...r, key: `row-${++rowSeq}` })) : base.rows,
+    rows: rows.length ? rows.map((r) => ({ ...r, centralId: r.centralId ?? "", key: `row-${++rowSeq}` })) : base.rows,
     summary: draft.summary ?? "",
     decisions: draft.decisions ?? "",
   }
@@ -151,6 +162,15 @@ export function DailyForm({ form }: { form: DailyFormData }) {
 
   const reviewOrder = React.useMemo(() => form.review.flatMap((g) => g.items.map((i) => i.id)), [form.review])
   const memberName = React.useMemo(() => new Map(form.members.map((m) => [m.id, m.preferredName])), [form.members])
+  // Centrais ativas + as criadas nesta daily (o combobox de uma linha cria; as outras linhas já enxergam).
+  const [centrals, setCentrals] = React.useState<CentralOption[]>(form.centrals)
+  // P21: Alt+O na nota abre o "Colocar em observação" daquela pessoa.
+  const [watchSignal, setWatchSignal] = React.useState<Record<string, number>>({})
+  const centralName = React.useMemo(() => new Map(centrals.map((c) => [c.id, c.name])), [centrals])
+  const addCentral = React.useCallback(
+    (option: CentralOption) => setCentrals((list) => (list.some((c) => c.id === option.id) ? list : [...list, option])),
+    [],
+  )
   const reviewOwner = React.useMemo(() => {
     const map = new Map<string, { name: string; title: string }>()
     for (const g of form.review) for (const i of g.items) map.set(i.id, { name: g.member.preferredName, title: i.title })
@@ -227,8 +247,8 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             replacementDueDate: r.replacementDueDate,
           }
         }),
-        participants: form.members.map((m) => ({ memberId: m.id, ...current.participants[m.id]! })),
-        newAgreements: rows.map((r) => ({ memberId: r.memberId, title: r.title, dueDate: r.dueDate })),
+        participants: form.members.map((m) => ({ memberId: m.id, ...current.participants[m.id]!, watchIds: current.participants[m.id]!.watchIds ?? [] })),
+        newAgreements: rows.map((r) => ({ memberId: r.memberId, centralId: r.centralId, watchIds: r.watchIds ?? [], title: r.title, dueDate: r.dueDate })),
       },
     }
   }
@@ -298,7 +318,9 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       })),
       created: input.newAgreements.flatMap((a) => {
         const due = parseDisplayDate(a.dueDate)
-        return a.memberId && a.title.trim() && due ? [{ name: memberName.get(a.memberId) ?? "", title: a.title, dueDate: due }] : []
+        return a.memberId && a.title.trim() && due
+          ? [{ name: memberName.get(a.memberId) ?? "", central: centralName.get(a.centralId) ?? null, title: a.title, dueDate: due }]
+          : []
       }),
       blockers: input.participants.flatMap((p) =>
         p.isBlocker && p.note.trim() ? [{ name: memberName.get(p.memberId) ?? "", text: p.note }] : [],
@@ -362,6 +384,15 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                         state={state.reviews[item.id]!}
                         reasons={form.reasons}
                         onChange={(patch) => patchReview(item.id, patch)}
+                        watch={(blockerText) => (
+                          <WatchButton
+                            origin="AGREEMENT"
+                            defaults={{ title: item.title, context: blockerText, heat: "HIGH" }}
+                            link={{ agreementId: item.id }}
+                            existing={form.watching[item.id] ?? null}
+                            skipTab
+                          />
+                        )}
                         errors={{
                           blockerText: errors[`review:${item.id}:blockerText`],
                           newDueDate: errors[`review:${item.id}:newDueDate`],
@@ -443,7 +474,23 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                       e.preventDefault()
                       patchParticipant(member.id, { isBlocker: !p.isBlocker })
                     }
+                    if (e.key.toLowerCase() === "o") {
+                      e.preventDefault()
+                      setWatchSignal((s) => ({ ...s, [member.id]: (s[member.id] ?? 0) + 1 }))
+                    }
                   }}
+                />
+                {/* P21: a pessoa fala, você já marca — sem sair da daily. Alt+O abre pelo teclado. */}
+                <WatchButton
+                  origin="DAILY"
+                  defaults={{ title: p.note.split("\n")[0] ?? "", heat: "HIGH" }}
+                  link={{ memberId: member.id }}
+                  existing={p.watchIds?.length ? { id: p.watchIds.at(-1)!, heat: p.watchHeat ?? "HIGH" } : null}
+                  pendingHint={labels.watch.button.pending}
+                  onCreated={(id, heat) => patchParticipant(member.id, { watchIds: [...(p.watchIds ?? []), id], watchHeat: heat })}
+                  skipTab
+                  openSignal={watchSignal[member.id] ?? 0}
+                  className="shrink-0"
                 />
                 <Button
                   type="button"
@@ -478,7 +525,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             }
             return (
               <li key={row.key} className="flex flex-col gap-1 border-b border-line px-3 py-1.5 last:border-b-0">
-                <div className="grid grid-cols-[132px_minmax(0,1fr)_112px_32px] items-center gap-2 max-sm:grid-cols-[1fr_120px_32px]">
+                <div className="grid grid-cols-[132px_160px_minmax(0,1fr)_112px_32px_32px] items-center gap-2 max-sm:grid-cols-[1fr_120px_32px_32px]">
                   <Select value={row.memberId} onValueChange={(v) => patchRow(row.key, { memberId: v })}>
                     <SelectTrigger
                       ref={(el) => {
@@ -499,6 +546,17 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* Central (P19): opcional; Tab passa direto para o título. */}
+                  <CentralCombobox
+                    aria-label={`${labels.centrals.field} ${i + 1}`}
+                    options={centrals}
+                    value={row.centralId || null}
+                    onValueChange={(id) => patchRow(row.key, { centralId: id ?? "" })}
+                    onCreate={addCentral}
+                    onKeyDown={onEnter}
+                    className="max-sm:col-span-3"
+                    inputClassName="h-8"
+                  />
                   <Input
                     aria-label={`${L.newAgreements.agreementTitle} ${i + 1}`}
                     value={row.title}
@@ -520,6 +578,15 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                     aria-invalid={Boolean(err("dueDate"))}
                     onChange={(e) => patchRow(row.key, { dueDate: maskDateInput(e.target.value) })}
                     onKeyDown={onEnter}
+                  />
+                  <WatchButton
+                    origin="AGREEMENT"
+                    defaults={{ title: row.title, heat: "MEDIUM" }}
+                    link={row.memberId ? { memberId: row.memberId } : {}}
+                    existing={row.watchIds?.length ? { id: row.watchIds.at(-1)!, heat: row.watchHeat ?? "MEDIUM" } : null}
+                    pendingHint={labels.watch.button.pending}
+                    onCreated={(id, heat) => patchRow(row.key, { watchIds: [...(row.watchIds ?? []), id], watchHeat: heat })}
+                    skipTab
                   />
                   <Button
                     type="button"

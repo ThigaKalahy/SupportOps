@@ -6,6 +6,7 @@ import {
   CalendarPlusIcon,
   ClipboardCheckIcon,
   CornerDownLeftIcon,
+  FlameIcon,
   ListChecksIcon,
   MessageSquareIcon,
   NotebookPenIcon,
@@ -184,6 +185,13 @@ export function CommandPalette({ people, canWrite }: { people: Person[]; canWrit
         { id: "oneOnOne", label: C.actions.oneOnOne, icon: <UsersIcon />, run: () => startPick("oneOnOne") },
         { id: "feedback", label: C.actions.feedback, icon: <MessageSquareIcon />, run: () => startPick("feedback") },
         { id: "note", label: C.actions.note, icon: <NotebookPenIcon />, run: () => startPick("note") },
+        // P21: manual, sem vínculo obrigatório; com uma pessoa no contexto, ela já vem filtrada.
+        {
+          id: "watch",
+          label: C.actions.watch,
+          icon: <FlameIcon />,
+          run: () => go(contextPerson ? `/watch?new=1&member=${contextPerson.id}` : "/watch?new=1"),
+        },
       ]
     : []
   const pages = [...mainNav, ...footerNav]

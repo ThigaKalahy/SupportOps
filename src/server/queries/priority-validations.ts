@@ -3,7 +3,9 @@ import { Prisma, type ValidationOutcome } from "@prisma/client"
 import { businessRangeInstants, todayBusinessDate } from "../../lib/dates.ts"
 import { isChanged, rate } from "../../lib/priority-validation.ts"
 import { periodRange, type ValidationFilters } from "../../lib/validation-filters.ts"
+import { centralWhere } from "../../lib/centrals.ts"
 import { db } from "../db.ts"
+import { listActiveCentrals } from "./centrals.ts"
 import { memberScope, type Viewer } from "../visibility.ts"
 
 /**
@@ -25,10 +27,12 @@ export interface ValidationFormData {
   levels: { id: string; label: string; rank: number }[]
   reasons: { id: string; label: string; requiresDetail: boolean }[]
   patterns: { id: string; label: string; regex: string; captureGroup: number }[]
+  /** Centrais ativas (P19). */
+  centrals: { id: string; name: string }[]
 }
 
 export async function getValidationFormData(viewer: Viewer): Promise<ValidationFormData> {
-  const [members, levels, reasons, patterns] = await Promise.all([
+  const [members, levels, reasons, patterns, centrals] = await Promise.all([
     db.teamMember.findMany({
       where: { ...memberScope(viewer), status: { in: ["ACTIVE", "OFFBOARDING"] } },
       orderBy: { preferredName: "asc" },
@@ -49,8 +53,9 @@ export async function getValidationFormData(viewer: Viewer): Promise<ValidationF
       orderBy: { order: "asc" },
       select: { id: true, label: true, regex: true, captureGroup: true },
     }),
+    listActiveCentrals(viewer),
   ])
-  return { members, levels, reasons, patterns }
+  return { members, levels, reasons, patterns, centrals }
 }
 
 /* ──────────────────────────── Lista do período ──────────────────────────── */
@@ -65,6 +70,8 @@ export interface ValidationRow {
   supervisorPriority: { id: string; label: string } | null
   outcome: ValidationOutcome
   reason: { id: string; label: string } | null
+  /** Central do chamado (P19); null = sem central informada. */
+  central: { id: string; name: string } | null
   reasonOther: string | null
   note: string | null
   returned: boolean
@@ -93,6 +100,8 @@ export async function listValidations(viewer: Viewer, filters: ValidationFilters
     where: {
       ...rangeWhere(viewer, from, to),
       ...(filters.memberId ? { memberId: filters.memberId } : {}),
+      // Central filtra como a pessoa: o resumo passa a ser o da central.
+      ...centralWhere(filters.central),
     },
     orderBy: [{ validatedAt: "desc" }, { createdAt: "desc" }],
     select: {
@@ -109,6 +118,7 @@ export async function listValidations(viewer: Viewer, filters: ValidationFilters
       analystPriority: { select: { id: true, label: true } },
       supervisorPriority: { select: { id: true, label: true } },
       reason: { select: { id: true, label: true } },
+      central: { select: { id: true, name: true } },
     },
   })
   const all: ValidationRow[] = rows.map((r) => ({ ...r, returned: r.outcome === "RETURNED" }))

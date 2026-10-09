@@ -53,6 +53,8 @@ function facts(patch: Partial<AlertFacts> = {}): AlertFacts {
     agreements: [],
     plans: [],
     followUps: [],
+    devReturns: [],
+    watchItems: [],
     adherence: new Map(),
     lastDaily: day(-1),
     readiness: [],
@@ -71,7 +73,7 @@ describe("regra do motor (pura)", () => {
   test("nada pendente: lista vazia, contadores zerados", () => {
     const alerts = deriveAlerts(facts(), today, t)
     assert.deepEqual(alerts, [])
-    assert.deepEqual(alertCounts(alerts), { today: 0, team: 0, agreements: 0, records: 0, development: 0, dailies: 0 })
+    assert.deepEqual(alertCounts(alerts), { today: 0, team: 0, watch: 0, agreements: 0, validations: 0, records: 0, development: 0, dailies: 0 })
   })
 
   test("ordem por urgência real: vermelho antes de laranja antes de âmbar; dentro, o mais velho primeiro", () => {
@@ -199,7 +201,7 @@ describe("regra do motor (pura)", () => {
     )
     assert.deepEqual(alerts.map((a) => a.kind), ["overdue", "readiness"])
     assert.equal(alerts[1]!.informative, true)
-    assert.deepEqual(alertCounts(alerts), { today: 1, team: 1, agreements: 1, records: 0, development: 0, dailies: 0 })
+    assert.deepEqual(alertCounts(alerts), { today: 1, team: 1, watch: 0, agreements: 1, validations: 0, records: 0, development: 0, dailies: 0 })
   })
 
   test("limiares mudam o resultado: silêncio de 30 → 50 dias tira o alerta", () => {

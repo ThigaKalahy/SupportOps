@@ -310,7 +310,7 @@ describe("lista, exclusão e resumos", () => {
     const from = new Date(today)
     from.setUTCDate(from.getUTCDate() - 89)
     const period = await summaryByPeriod(ownerViewer, from, today)
-    const rows = await listValidations(ownerViewer, { period: "custom", from, to: today, memberId: null, outcome: null, reasonId: null }, today)
+    const rows = await listValidations(ownerViewer, { period: "custom", from, to: today, memberId: null, outcome: null, reasonId: null, central: null }, today)
     assert.equal(period.total, rows.rows.length)
     assert.ok(period.total > 100, "o seed tem ~180 validações em 90 dias")
     assert.equal(period.changeRate, Math.round((period.changed / period.total) * 100))

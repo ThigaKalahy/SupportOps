@@ -5,6 +5,7 @@ import * as React from "react"
 import { createValidation, updateValidation } from "@/actions/priority-validations"
 import { FormError } from "@/components/forms/form-kit"
 import { Button } from "@/components/ui/button"
+import { CentralCombobox } from "@/components/ui/CentralCombobox"
 import { Checkbox } from "@/components/ui/checkbox"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
@@ -29,6 +30,7 @@ const EMPTY: Values = {
   ticketUrl: "",
   ticketRef: "",
   memberId: "",
+  centralId: "",
   analystPriorityId: "",
   supervisorPriorityId: "",
   returned: false,
@@ -42,6 +44,7 @@ function fromRow(row: ValidationRow): Values {
     ticketUrl: row.ticketUrl,
     ticketRef: row.ticketRef,
     memberId: row.member.id,
+    centralId: row.central?.id ?? "",
     analystPriorityId: row.analystPriority.id,
     supervisorPriorityId: row.supervisorPriority?.id ?? "",
     returned: row.returned,
@@ -76,6 +79,12 @@ export function ValidationForm({
   onDoneEditing: () => void
 }) {
   const [values, setValues] = React.useState<Values>(EMPTY)
+  // Na edição, a central gravada entra na lista mesmo se tiver sido desativada depois.
+  const centralOptions = React.useMemo(
+    () =>
+      editing?.central && !data.centrals.some((c) => c.id === editing.central!.id) ? [...data.centrals, editing.central] : data.centrals,
+    [data.centrals, editing],
+  )
   const [refSource, setRefSource] = React.useState<RefSource>(null)
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [formError, setFormError] = React.useState<string | null>(null)
@@ -210,7 +219,7 @@ export function ValidationForm({
     })
   }
 
-  const fieldOrder = ["ticketUrl", "ticketRef", "memberId", "analystPriorityId", "supervisorPriorityId", "reasonId", "reasonOther", "note"]
+  const fieldOrder = ["ticketUrl", "ticketRef", "memberId", "centralId", "analystPriorityId", "supervisorPriorityId", "reasonId", "reasonOther", "note"]
   const formRef = React.useRef<HTMLFormElement>(null)
   function focusFirstError(fieldErrors: Record<string, string>) {
     const first = fieldOrder.find((f) => fieldErrors[f])
@@ -322,6 +331,19 @@ export function ValidationForm({
                 ))}
               </SelectContent>
             </Select>
+          )}
+        </FieldGroup>
+
+        {/* Central (P19): opcional, entre o responsável e a prioridade do analista. */}
+        <FieldGroup label={labels.centrals.field} error={errors.centralId} className="w-44 shrink-0">
+          {(control) => (
+            <CentralCombobox
+              {...control}
+              data-field="centralId"
+              options={centralOptions}
+              value={values.centralId || null}
+              onValueChange={(id) => patch({ centralId: id ?? "" })}
+            />
           )}
         </FieldGroup>
 

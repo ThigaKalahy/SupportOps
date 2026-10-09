@@ -6,6 +6,7 @@ import { cache } from "react"
 import { DragIndicator, AgreementStatusCell } from "@/components/agreements/agreements-table"
 import { CrumbLabel } from "@/components/shell/crumb-label"
 import { ContextActions } from "@/components/shell/context-actions"
+import { WatchButton } from "@/components/watch/watch-button"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { EmptyState } from "@/components/ui/empty-state"
 import { MetaLabel } from "@/components/ui/meta-label"
@@ -17,6 +18,7 @@ import { enumLabel, fill, labels } from "@/lib/labels"
 import type { Severity } from "@/lib/severity"
 import { canWrite, requireUser } from "@/server/access"
 import { getAgreementDetail, type AgreementCheckinRow } from "@/server/queries/agreements"
+import { activeWatchByLink } from "@/server/queries/watch"
 
 import { AgreementActions } from "./_components/agreement-actions"
 
@@ -59,12 +61,20 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
   if (!agreement) notFound()
 
   const moved = agreement.dueDate.getTime() !== agreement.originalDueDate.getTime()
+  const watching = canWrite(user) ? ((await activeWatchByLink(user, "agreementId", [agreement.id]))[agreement.id] ?? null) : null
 
   return (
     <div className="flex flex-col gap-8">
       <CrumbLabel segment={agreement.id} label={agreement.title} />
       {canWrite(user) ? (
         <ContextActions>
+          {/* P21: observar este combinado (abre a observação existente, se houver). */}
+          <WatchButton
+            origin="AGREEMENT"
+            defaults={{ title: agreement.title, heat: "MEDIUM" }}
+            link={{ agreementId: agreement.id }}
+            existing={watching}
+          />
           <AgreementActions
             open={agreement.open}
             agreement={{

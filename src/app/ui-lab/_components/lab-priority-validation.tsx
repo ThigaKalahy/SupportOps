@@ -29,6 +29,10 @@ const DATA: ValidationFormData = {
     { id: "r8", label: "Outro", requiresDetail: true },
   ],
   patterns: [{ id: "p1", label: "Helpdesk — tickets", regex: "/tickets/(\d+)", captureGroup: 1 }],
+  centrals: [
+    { id: "c1", name: "Central Alfa" },
+    { id: "c2", name: "Central Beta" },
+  ],
 }
 
 export function LabPriorityValidation() {

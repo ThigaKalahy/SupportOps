@@ -26,6 +26,12 @@ export interface AlertThresholds {
   adherenceDropPoints: number
   /** ...com pelo menos N combinados devidos em cada janela. */
   adherenceMinSample: number
+  /** Em observação (P21, D24): cadência de revisão por grau, em dias. */
+  watchHighCadenceDays: number
+  watchMediumCadenceDays: number
+  watchLowCadenceDays: number
+  /** Fogo alto frio: em fogo alto há mais de N dias sem mudar de grau. */
+  watchStaleHighDays: number
 }
 
 export const DEFAULT_THRESHOLDS: AlertThresholds = {
@@ -38,6 +44,10 @@ export const DEFAULT_THRESHOLDS: AlertThresholds = {
   dailyMissingDays: 2,
   adherenceDropPoints: 20,
   adherenceMinSample: 5,
+  watchHighCadenceDays: 2,
+  watchMediumCadenceDays: 7,
+  watchLowCadenceDays: 21,
+  watchStaleHighDays: 30,
 }
 
 type ScalarKey = Exclude<keyof AlertThresholds, "oneOnOneDays">
@@ -52,6 +62,10 @@ export const THRESHOLD_LIMITS: Record<ScalarKey, { min: number; max: number }> =
   dailyMissingDays: { min: 1, max: 10 },
   adherenceDropPoints: { min: 5, max: 60 },
   adherenceMinSample: { min: 2, max: 20 },
+  watchHighCadenceDays: { min: 1, max: 14 },
+  watchMediumCadenceDays: { min: 2, max: 30 },
+  watchLowCadenceDays: { min: 7, max: 90 },
+  watchStaleHighDays: { min: 7, max: 120 },
 }
 
 export const ONE_ON_ONE_LIMITS = { min: 7, max: 120 } as const

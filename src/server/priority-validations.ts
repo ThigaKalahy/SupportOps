@@ -10,6 +10,7 @@ import {
 } from "../lib/validators/priority-validation.ts"
 
 import { writeAudit } from "./audit.ts"
+import { resolveCentralId } from "./centrals.ts"
 import { db } from "./db.ts"
 import { canWrite, memberScope, type Viewer } from "./visibility.ts"
 
@@ -82,6 +83,8 @@ export async function createValidationRecord(user: Viewer, input: unknown): Prom
     select: { id: true },
   })
   if (!member) return { ok: false, error: labels.validation.generic, fieldErrors: { memberId: labels.validation.required } }
+  const centralId = await resolveCentralId(user.organizationId, data.centralId)
+  if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
 
   const values = snapshot(catalog, data)
   const reasonId = values.outcome === "MAINTAINED" ? null : data.reasonId
@@ -94,6 +97,7 @@ export async function createValidationRecord(user: Viewer, input: unknown): Prom
         ticketUrl: data.ticketUrl,
         ticketRef: data.ticketRef,
         memberId: member.id,
+        centralId,
         ...values,
         reasonId,
         reasonOther,
@@ -110,6 +114,7 @@ export async function createValidationRecord(user: Viewer, input: unknown): Prom
         after: {
           ticketRef: row.ticketRef,
           memberId: row.memberId,
+          centralId: row.centralId,
           outcome: row.outcome,
           analystRank: row.analystRankSnapshot,
           supervisorRank: row.supervisorRankSnapshot,
@@ -161,6 +166,10 @@ export async function updateValidationRecord(user: Viewer, input: unknown): Prom
   const data = parsed.data
   const member = await db.teamMember.findFirst({ where: { id: data.memberId, ...memberScope(user) }, select: { id: true } })
   if (!member) return { ok: false, error: labels.validation.generic }
+  // A central gravada continua valendo mesmo se tiver sido desativada depois; trocar exige uma ativa.
+  const centralId =
+    data.centralId && data.centralId === before.centralId ? before.centralId : await resolveCentralId(user.organizationId, data.centralId)
+  if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
 
   const values = samePriorities
     ? {
@@ -181,6 +190,7 @@ export async function updateValidationRecord(user: Viewer, input: unknown): Prom
         ticketUrl: data.ticketUrl,
         ticketRef: data.ticketRef,
         memberId: member.id,
+        centralId,
         ...values,
         reasonId,
         reasonOther,
@@ -228,6 +238,7 @@ export async function deleteValidationRecord(user: Viewer, input: unknown): Prom
 function auditView(v: {
   ticketRef: string
   memberId: string
+  centralId: string | null
   outcome: string
   analystPriorityId: string
   supervisorPriorityId: string | null
@@ -240,6 +251,7 @@ function auditView(v: {
   return {
     ticketRef: v.ticketRef,
     memberId: v.memberId,
+    centralId: v.centralId,
     outcome: v.outcome,
     analystPriorityId: v.analystPriorityId,
     supervisorPriorityId: v.supervisorPriorityId,
@@ -251,7 +263,8 @@ function auditView(v: {
   }
 }
 
-function withExtractedRef(input: unknown, patterns: { id: string; regex: string; captureGroup: number }[]): unknown {
+/** ID vazio: extrai da URL pelos padrões ativos (também usado pela devolução do desenvolvimento, P20). */
+export function withExtractedRef(input: unknown, patterns: { id: string; regex: string; captureGroup: number }[]): unknown {
   if (typeof input !== "object" || input === null) return input
   const record = input as Record<string, unknown>
   const ref = typeof record.ticketRef === "string" ? record.ticketRef.trim() : ""

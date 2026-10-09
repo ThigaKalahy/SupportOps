@@ -1,5 +1,6 @@
 import { businessDateAtNoon, formatDate, parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
+import { pendingWatchIdsOf } from "../lib/validators/watch.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import {
   feedbackSchema,
@@ -11,6 +12,7 @@ import {
 } from "../lib/validators/records.ts"
 
 import { writeAudit } from "./audit.ts"
+import { linkPendingWatchItems } from "./watch.ts"
 import { db } from "./db.ts"
 import { findEditableRecord, findToggleableSource } from "./queries/records.ts"
 import {
@@ -104,6 +106,8 @@ export async function createOneOnOneRecord(user: Viewer, input: unknown): Promis
       },
     })
     await recordTimelineEvents(tx, [timelineEventFor.oneOnOne(created)])
+    // P21: observações marcadas no formulário antes de salvar passam a apontar para este 1:1.
+    await linkPendingWatchItems(tx, user.organizationId, pendingWatchIdsOf(input), { oneOnOneId: created.id })
     const agreementIds = await createGeneratedAgreements(
       tx,
       user,
@@ -147,6 +151,8 @@ export async function createFeedbackRecord(user: Viewer, input: unknown): Promis
       },
     })
     await recordTimelineEvents(tx, [timelineEventFor.feedback(created)])
+    // P21: observações marcadas no formulário antes de salvar passam a apontar para este feedback.
+    await linkPendingWatchItems(tx, user.organizationId, pendingWatchIdsOf(input), { feedbackId: created.id })
     const agreementIds = await createGeneratedAgreements(
       tx,
       user,

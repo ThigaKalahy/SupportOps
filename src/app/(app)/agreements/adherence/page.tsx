@@ -2,7 +2,9 @@ import type { Metadata } from "next"
 
 import { LowConfidenceMark } from "@/components/adherence/adherence-parts"
 import { AdherenceTable } from "@/components/adherence/adherence-table"
+import { CentralMetricsTable } from "@/components/centrals/central-metrics-table"
 import { ContextActions } from "@/components/shell/context-actions"
+import { Section } from "@/components/ui/section"
 import { PageHeader } from "@/components/ui/page-header"
 import { ADHERENCE, percent } from "@/lib/adherence"
 import { adherenceRange, parseAdherenceFilters } from "@/lib/adherence-filters"
@@ -10,6 +12,7 @@ import { formatDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { canWrite, requireUser } from "@/server/access"
 import { getTeamAdherence } from "@/server/queries/adherence"
+import { centralMetrics } from "@/server/queries/centrals"
 
 import { AdherenceToolbar } from "./_components/adherence-toolbar"
 
@@ -33,7 +36,7 @@ export default async function TeamAdherencePage({
   const user = await requireUser()
   const filters = parseAdherenceFilters(await searchParams)
   const range = adherenceRange(filters)
-  const team = await getTeamAdherence(user, range.from, range.to)
+  const [team, centrals] = await Promise.all([getTeamAdherence(user, range.from, range.to), centralMetrics(user, range.from, range.to)])
   const rate = percent(team.teamRate)
 
   return (
@@ -66,6 +69,26 @@ export default async function TeamAdherencePage({
           </p>
         ) : null}
       </div>
+
+      {/* P19: volume por central no mesmo período. A unidade é a central, não a pessoa (D7). */}
+      <Section title={labels.centrals.metrics.title} className="border-t border-line pt-6">
+        <p className="-mt-2 max-w-3xl text-sm text-ink-secondary">{labels.centrals.metrics.direction}</p>
+        <CentralMetricsTable rows={centrals.rows} none={centrals.none} />
+        {centrals.totals.agreements + centrals.totals.validations > 0 ? (
+          <p className="text-xs text-ink-secondary">
+            {fill(labels.centrals.metrics.coverage, {
+              agreements: coverage(centrals.totals.agreements - centrals.none.agreements, centrals.totals.agreements),
+              validations: coverage(centrals.totals.validations - centrals.none.validations, centrals.totals.validations),
+            })}
+          </p>
+        ) : null}
+      </Section>
     </div>
   )
+}
+
+/** "62% (31 de 50)", ou "—" sem registro: cobertura sempre com o total (D19). */
+function coverage(count: number, total: number): string {
+  if (total === 0) return "—"
+  return fill(labels.centrals.metrics.coverageRate, { rate: `${Math.round((count / total) * 100)}%`, count, total })
 }

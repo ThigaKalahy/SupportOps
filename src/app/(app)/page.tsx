@@ -35,7 +35,7 @@ export default async function TodayPage() {
   const user = await requireUser()
   const today = todayBusinessDate()
   const writer = canWrite(user)
-  const [{ alerts }, panel, members] = await Promise.all([
+  const [{ alerts, watch }, panel, members] = await Promise.all([
     loadAlerts(),
     getTodayPanel(user, today),
     writer ? listAgreementMembers(user) : Promise.resolve([]),
@@ -71,7 +71,7 @@ export default async function TodayPage() {
           <Section title={T.rhythm}>
             <StatStrip
               aria-label={T.rhythm}
-              className="grid grid-cols-2 gap-x-0 [&>div:nth-child(3)]:border-l-0 [&>div:nth-child(3)]:pl-0"
+              className="grid grid-cols-2 gap-x-0 [&>div:nth-child(3)]:border-l-0 [&>div:nth-child(3)]:pl-0 [&>div:nth-child(5)]:border-l-0 [&>div:nth-child(5)]:pl-0"
               items={[
                 {
                   id: "daily",
@@ -89,6 +89,13 @@ export default async function TodayPage() {
                       ? T.rhythmAdherenceNone
                       : fill(T.rhythmAdherenceDetail, { onTime: rate.numerator, total: rate.denominator }) +
                         (rate.lowConfidence ? ` · ${T.rhythmAdherenceSmall}` : ""),
+                },
+                // P21: observações ativas, com o fogo alto ao lado.
+                {
+                  id: "watch",
+                  label: T.rhythmItems.watch,
+                  value: watch?.active ?? 0,
+                  coverage: plural(T.rhythmWatchDetail, watch?.high ?? 0),
                 },
               ]}
             />

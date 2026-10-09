@@ -52,6 +52,7 @@ export type TimelineSource =
   | { kind: "note"; id: string }
   | { kind: "developmentPlan"; id: string }
   | { kind: "memberChange"; id: string }
+  | { kind: "watchItem"; id: string }
 
 const SOURCE_COLUMN = {
   agreement: "agreementId",
@@ -61,6 +62,7 @@ const SOURCE_COLUMN = {
   note: "noteId",
   developmentPlan: "developmentPlanId",
   memberChange: "memberChangeId",
+  watchItem: "watchItemId",
 } as const satisfies Record<TimelineSource["kind"], keyof Prisma.TimelineEventUncheckedCreateInput>
 
 export interface TimelineEventInput {
@@ -255,6 +257,36 @@ interface MemberChangeLike {
 }
 
 export const timelineEventFor = {
+  /**
+   * Em observação (P21): só com pessoa (D26), com a visibilidade da observação
+   * (nasce PRIVATE — D25). Criação e resolução; revisão não gera linha.
+   */
+  watchCreated(w: { id: string; memberId: string; title: string; context: string | null; heat: "HIGH" | "MEDIUM" | "LOW"; createdAt: Date; authorUserId: string; visibility: Visibility }): TimelineEventInput {
+    return {
+      memberId: w.memberId,
+      occurredAt: w.createdAt,
+      type: "WATCH",
+      title: fill(labels.watch.timeline.created, { heat: labels.watch.heat[w.heat].toLowerCase(), title: w.title }),
+      summary: w.context,
+      authorUserId: w.authorUserId,
+      visibility: w.visibility,
+      source: { kind: "watchItem", id: w.id },
+    }
+  },
+  watchResolved(w: { id: string; memberId: string; title: string; createdAt: Date; resolvedAt: Date; note: string; authorUserId: string; visibility: Visibility }): TimelineEventInput {
+    const date = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(d)
+    return {
+      memberId: w.memberId,
+      occurredAt: w.resolvedAt,
+      type: "WATCH",
+      title: fill(labels.watch.timeline.resolved, { title: w.title }),
+      summary: fill(labels.watch.timeline.resolvedSummary, { created: date(w.createdAt), resolved: date(w.resolvedAt), note: w.note }),
+      authorUserId: w.authorUserId,
+      visibility: w.visibility,
+      tags: ["resolved"],
+      source: { kind: "watchItem", id: w.id },
+    }
+  },
   agreementCreated(a: AgreementLike): TimelineEventInput {
     return {
       memberId: a.memberId,

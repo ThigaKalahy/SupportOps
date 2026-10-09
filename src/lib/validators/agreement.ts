@@ -22,6 +22,8 @@ export const createAgreementSchema = z.object({
   description: optionalText(2000),
   priority: z.enum(AGREEMENT_PRIORITIES),
   origin: z.enum(AGREEMENT_ORIGINS),
+  /** Central de atendimento (P19): opcional; "" = sem central. */
+  centralId: z.string().max(40).default(""),
 })
 
 export type CreateAgreementInput = z.infer<typeof createAgreementSchema>

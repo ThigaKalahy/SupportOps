@@ -4,7 +4,7 @@ import { AGREEMENT_ORIGINS, AGREEMENT_PRIORITIES } from "./validators/agreement.
 
 /**
  * Estado da central de combinados na URL:
- * ?view=overdue|due-soon|open|done|all&member=<id>&seniority=PLENO&origin=DAILY&priority=HIGH&created=30d
+ * ?view=overdue|due-soon|open|done|all&member=<id>&seniority=PLENO&origin=DAILY&priority=HIGH&created=30d&central=<id>|none
  * Sem `view` = Em aberto.
  */
 
@@ -24,6 +24,8 @@ export interface AgreementFilters {
   origin: AgreementOrigin | null
   priority: AgreementPriority | null
   created: CreatedPeriod
+  /** Central (P19): id, "none" (sem central informada) ou null. */
+  central: string | null
 }
 
 export const AGREEMENT_PARAMS = {
@@ -33,6 +35,7 @@ export const AGREEMENT_PARAMS = {
   origin: "origin",
   priority: "priority",
   created: "created",
+  central: "central",
 } as const
 
 type RawParams = Record<string, string | string[] | undefined> | URLSearchParams
@@ -50,6 +53,7 @@ function oneOf<T extends string>(values: readonly T[], value: string | undefined
 export function parseAgreementFilters(params: RawParams): AgreementFilters {
   const member = read(params, AGREEMENT_PARAMS.member)
   const seniority = read(params, AGREEMENT_PARAMS.seniority)
+  const central = read(params, AGREEMENT_PARAMS.central)
   return {
     view: oneOf(AGREEMENT_VIEWS, read(params, AGREEMENT_PARAMS.view)) ?? "open",
     memberId: member && /^[\w-]{1,64}$/.test(member) ? member : null,
@@ -57,12 +61,13 @@ export function parseAgreementFilters(params: RawParams): AgreementFilters {
     origin: oneOf(AGREEMENT_ORIGINS, read(params, AGREEMENT_PARAMS.origin)),
     priority: oneOf(AGREEMENT_PRIORITIES, read(params, AGREEMENT_PARAMS.priority)),
     created: oneOf(CREATED_PERIODS, read(params, AGREEMENT_PARAMS.created)) ?? "all",
+    central: central && /^[\w-]{1,64}$/.test(central) ? central : null,
   }
 }
 
 /** Há filtro além da aba? (para o estado vazio orientar a limpar). */
 export function hasAgreementFilters(filters: AgreementFilters): boolean {
-  return Boolean(filters.memberId || filters.seniority || filters.origin || filters.priority || filters.created !== "all")
+  return Boolean(filters.memberId || filters.seniority || filters.origin || filters.priority || filters.created !== "all" || filters.central)
 }
 
 /** Início do período de criação como instante (null = qualquer data). */

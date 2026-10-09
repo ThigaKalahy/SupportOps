@@ -27,9 +27,10 @@ import {
 import type { Viewer } from "../src/server/visibility.ts"
 
 const SRC = join(import.meta.dirname, "..", "src")
-const SENSITIVE_MODELS = "oneOnOne|feedback|note|timelineEvent"
+// watchItem (P21, D25): observação é a superfície mais provável de anotação gerencial crua.
+const SENSITIVE_MODELS = "oneOnOne|feedback|note|timelineEvent|watchItem"
 const READ_CALL = new RegExp(`\\.(${SENSITIVE_MODELS})\\.(findMany|findFirst|findFirstOrThrow|findUnique|findUniqueOrThrow|count|aggregate|groupBy)\\(`, "g")
-const NESTED_RELATION = /\b(oneOnOnes|feedbacks|notes|timelineEvents)\s*:\s*(true|\{)/g
+const NESTED_RELATION = /\b(oneOnOnes|feedbacks|notes|timelineEvents|watchItems)\s*:\s*(true|\{)/g
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -78,7 +79,7 @@ describe("camada estática: leituras sensíveis só com visibilityFilter", () =>
         // Fim do template: crase seguida de quebra de linha (crases internas de Prisma.sql não fecham linha).
         const end = source.indexOf("`\n", start + 1)
         const sql = source.slice(start, end > start ? end : undefined)
-        const tables = [...sql.matchAll(/"(OneOnOne|Feedback|Note|TimelineEvent)"/g)].map((m) => m[1])
+        const tables = [...sql.matchAll(/"(OneOnOne|Feedback|Note|TimelineEvent|WatchItem)"/g)].map((m) => m[1])
         if (match[1]) violations.push(`${rel}: $queryRawUnsafe é proibido (use $queryRaw com parâmetros)`)
         if (tables.length === 0) continue
         if (!rel.startsWith("server/queries/")) violations.push(`${rel}: SQL cru em tabela sensível fora de src/server/queries`)

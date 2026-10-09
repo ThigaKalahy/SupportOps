@@ -3,6 +3,8 @@ import { z } from "zod"
 import { parseDisplayDate } from "../dates.ts"
 import { labels } from "../labels.ts"
 
+import { pendingWatchIds } from "./watch.ts"
+
 import { optionalText, pastDisplayDate } from "./fields.ts"
 
 /**
@@ -47,6 +49,8 @@ export const dailyReviewSchema = z.object({
 
 export const dailyParticipantSchema = z.object({
   memberId: z.string().min(1),
+  /** P21: observações criadas na nota antes de salvar; ganham o vínculo com a daily. */
+  watchIds: pendingWatchIds,
   present: z.boolean(),
   note: z.string().trim().max(1000, v.tooLong),
   isBlocker: z.boolean(),
@@ -54,6 +58,10 @@ export const dailyParticipantSchema = z.object({
 
 export const dailyNewAgreementSchema = z.object({
   memberId: z.string(),
+  /** Central (P19): opcional, "" = sem. */
+  centralId: z.string().max(40).default(""),
+  /** P21: observações criadas na linha antes de salvar; ganham o vínculo com o combinado criado. */
+  watchIds: pendingWatchIds,
   title: z.string().trim().max(160, v.tooLong),
   dueDate: z.string().trim(),
 })

@@ -20,6 +20,7 @@ export function ValidationsWorkspace({
   empty,
   summary,
   periodEmpty,
+  watching,
 }: {
   form: ValidationFormData | null
   rows: ValidationRow[]
@@ -29,6 +30,8 @@ export function ValidationsWorkspace({
   summary: React.ReactNode
   /** Nenhuma validação no período (o resumo mostra o estado vazio). */
   periodEmpty: boolean
+  /** P21: observação ativa por validação. */
+  watching?: Record<string, { id: string; heat: "HIGH" | "MEDIUM" | "LOW" }>
 }) {
   const [editing, setEditing] = React.useState<ValidationRow | null>(null)
 
@@ -48,6 +51,7 @@ export function ValidationsWorkspace({
           showDate={showDate}
           canWrite={canWrite}
           empty={empty}
+          watching={watching}
           onEdit={(row) => {
             setEditing(row)
             window.scrollTo({ top: 0 })

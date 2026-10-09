@@ -11,9 +11,11 @@ import { DateStamp } from "@/components/ui/date-stamp"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { StatusPill } from "@/components/ui/status-pill"
+import { WatchButton } from "@/components/watch/watch-button"
 import { formatTime } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { isHttpUrl, OUTCOME_SEVERITY } from "@/lib/priority-validation"
+import type { WatchHeat } from "@/lib/watch"
 import type { ValidationRow } from "@/server/queries/priority-validations"
 
 const T = labels.priorityValidations.table
@@ -29,8 +31,11 @@ export function ValidationsTable({
   canWrite,
   empty,
   onEdit,
+  watching = {},
 }: {
   rows: ValidationRow[]
+  /** P21: observação ativa por validação. */
+  watching?: Record<string, { id: string; heat: WatchHeat }>
   showDate: boolean
   canWrite: boolean
   empty: { title: string; direction: string }
@@ -80,6 +85,15 @@ export function ValidationsTable({
     { id: "member",
       stackedOrder: 1, header: T.member, cell: (r) => r.member.preferredName, width: "128px" },
     {
+      id: "central",
+      header: labels.centrals.column,
+      cell: (r) =>
+        r.central ? <span className="truncate text-ink">{r.central.name}</span> : <span className="text-ink-secondary">{T.none}</span>,
+      title: (r) => r.central?.name ?? labels.centrals.none,
+      width: "136px",
+      hideBelow: "lg",
+    },
+    {
       id: "analyst",
       header: T.analyst,
       cell: (r) => <span className="text-ink-secondary">{r.analystPriority.label}</span>,
@@ -128,7 +142,14 @@ export function ValidationsTable({
       id: "actions",
       header: T.actions,
       cell: (r) => (
-        <DropdownMenu modal={false}>
+        <span className="flex items-center justify-end gap-0.5">
+          <WatchButton
+            origin="PRIORITY_VALIDATION"
+            defaults={{ title: fill(labels.watch.links.validation, { ref: r.ticketRef }), heat: "MEDIUM" }}
+            link={{ priorityValidationId: r.id }}
+            existing={watching[r.id] ?? null}
+          />
+          <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label={fill(T.rowActions, { ref: r.ticketRef })}>
               <EllipsisIcon />
@@ -140,10 +161,11 @@ export function ValidationsTable({
               {T.delete}
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+          </DropdownMenu>
+        </span>
       ),
       title: () => undefined,
-      width: "56px",
+      width: "88px",
       align: "right",
       stacked: "aside",
     })

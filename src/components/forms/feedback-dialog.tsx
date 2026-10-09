@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form"
 
 import { createFeedback, updateFeedback } from "@/actions/records"
 import { Button } from "@/components/ui/button"
+import { WatchButton } from "@/components/watch/watch-button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
@@ -66,6 +67,8 @@ export function FeedbackDialog({
     [member.id, editing],
   )
   const form = useForm<FeedbackInput>({ resolver: zodResolver(feedbackSchema), defaultValues: defaults() })
+  // P21: observações marcadas neste formulário antes de salvar (ligadas ao registro ao salvar).
+  const [watchIds, setWatchIds] = React.useState<string[]>([])
   const [visibilityTouched, setVisibilityTouched] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
@@ -73,6 +76,7 @@ export function FeedbackDialog({
   React.useEffect(() => {
     if (!open) return
     form.reset(defaults())
+    setWatchIds([])
     // Na edição, a visibilidade já foi escolhida: trocar a categoria não a muda.
     setVisibilityTouched(Boolean(editing))
     setFormError(null)
@@ -88,7 +92,7 @@ export function FeedbackDialog({
   const onSubmit = form.handleSubmit((values) => {
     setFormError(null)
     startTransition(async () => {
-      const result = editing ? await updateFeedback(editing.id, values) : await createFeedback(values)
+      const result = editing ? await updateFeedback(editing.id, values) : await createFeedback({ ...values, watchIds })
       if (result.ok) {
         toast.show(editing ? labels.toast.recordUpdated : labels.toast.feedbackCreated)
         onSaved?.()
@@ -213,6 +217,15 @@ export function FeedbackDialog({
           )}
           <FormError message={formError} />
           <DialogFooter>
+            {/* P21: observar sem sair do formulário; no registro novo, o vínculo se completa ao salvar. */}
+            <WatchButton
+              className="mr-auto"
+              origin="FEEDBACK"
+              defaults={{ title: form.watch("behavior").split("\n")[0] ?? "", heat: "MEDIUM" }}
+              link={editing ? { feedbackId: editing.id } : { memberId: member.id }}
+              pendingHint={editing ? undefined : labels.watch.button.pendingRecord}
+              onCreated={(id) => !editing && setWatchIds((ids) => [...ids, id])}
+            />
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>
               {labels.common.cancel}
             </Button>

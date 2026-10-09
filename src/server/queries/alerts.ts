@@ -2,6 +2,7 @@ import type { MemberStatus } from "@prisma/client"
 
 import { trendWindows } from "../../lib/adherence.ts"
 import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
+import { DEV_RETURN_ALERTS } from "../../lib/dev-returns.ts"
 import { feedbackFollowUp } from "../../lib/follow-up.ts"
 
 import { db } from "../db.ts"
@@ -69,6 +70,33 @@ export interface AlertFacts {
   lastDaily: Date | null
   /** Prontidão (P14) — o alerta informativo usa só quem já atende a TODA a próxima senioridade. */
   readiness: ReadinessRow[]
+  /** Devoluções do desenvolvimento (P20): as da janela de recorrência e todas ainda sem reenvio. */
+  devReturns: AlertDevReturn[]
+  /** Observações ATIVAS visíveis para quem consulta (P21; VIEWER só SHARED — D25). */
+  watchItems: AlertWatchItem[]
+}
+
+export interface AlertWatchItem {
+  id: string
+  memberId: string | null
+  title: string
+  heat: "HIGH" | "MEDIUM" | "LOW"
+  createdAt: Date
+  lastReviewedAt: Date
+  heatChangedAt: Date
+  reviewCount: number
+}
+
+export interface AlertDevReturn {
+  id: string
+  memberId: string
+  ticketRef: string
+  /** Datas de negócio. */
+  returnedAt: Date
+  resolvedAt: Date | null
+  reasonId: string
+  reasonLabel: string
+  category: "ANALYST" | "PROCESS"
 }
 
 const OPEN = ["OPEN", "IN_PROGRESS"] as const
@@ -87,7 +115,8 @@ export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresho
   const people = { ...scope, status: { not: "INACTIVE" as const } }
   const windows = trendWindows(today)
 
-  const [members, lastOneOnOnes, lastRecords, agreements, plans, feedbacks, conversations, adherenceRows, lastDaily, readiness] =
+  const recurringFrom = addDays(today, -(DEV_RETURN_ALERTS.recurringWindowDays - 1))
+  const [members, lastOneOnOnes, lastRecords, agreements, plans, feedbacks, conversations, adherenceRows, lastDaily, readiness, devReturns, watchItems] =
     await Promise.all([
       db.teamMember.findMany({
         where: people,
@@ -147,6 +176,26 @@ export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresho
         select: { date: true },
       }),
       getReadinessRows(viewer),
+      db.devReturn.findMany({
+        where: { member: people, OR: [{ returnedAt: { gte: recurringFrom } }, { resolvedAt: null }] },
+        select: {
+          id: true,
+          memberId: true,
+          ticketRef: true,
+          returnedAt: true,
+          resolvedAt: true,
+          reason: { select: { id: true, label: true, category: true } },
+        },
+      }),
+      db.watchItem.findMany({
+        where: {
+          organizationId: viewer.organizationId,
+          status: "ACTIVE",
+          OR: [{ memberId: null }, { member: people }],
+          ...visibilityFilter(viewer),
+        },
+        select: { id: true, memberId: true, title: true, heat: true, createdAt: true, lastReviewedAt: true, heatChangedAt: true, reviewCount: true },
+      }),
     ])
 
   const oneOnOneBy = new Map(lastOneOnOnes.map((r) => [r.memberId, r._max.date]))
@@ -194,5 +243,16 @@ export async function getAlertFacts(viewer: Viewer, today: Date, t: AlertThresho
     adherence,
     lastDaily: lastDaily?.date ?? null,
     readiness: readiness.rows,
+    devReturns: devReturns.map((r) => ({
+      id: r.id,
+      memberId: r.memberId,
+      ticketRef: r.ticketRef,
+      returnedAt: r.returnedAt,
+      resolvedAt: r.resolvedAt,
+      reasonId: r.reason.id,
+      reasonLabel: r.reason.label,
+      category: r.reason.category,
+    })),
+    watchItems,
   }
 }

@@ -35,6 +35,7 @@ export function AppShell({
   defaultCollapsed,
   user,
   agreementMembers,
+  centrals,
   people,
   counts,
   thresholds,
@@ -44,6 +45,8 @@ export function AppShell({
   user: ShellUser
   /** Pessoas para a criação rápida de combinado (atalho C); null para quem só lê. */
   agreementMembers: { id: string; preferredName: string }[] | null
+  /** Centrais ativas para o campo de central da criação rápida (P19). */
+  centrals: { id: string; name: string }[]
   /** Pessoas do time para a paleta de comandos (navegar; registrar só para quem escreve). */
   people: { id: string; preferredName: string }[]
   /** Contadores discretos da sidebar (mesma fonte da lista da home). */
@@ -112,7 +115,7 @@ export function AppShell({
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">
           <CrumbLabelsContext value={crumbLabels}>
             <ThresholdsProvider value={thresholds}>
-              <QuickAgreementProvider members={agreementMembers}>
+              <QuickAgreementProvider members={agreementMembers} centrals={centrals}>
                 {children}
                 <CommandPalette people={people} canWrite={user.role !== "VIEWER"} />
               </QuickAgreementProvider>

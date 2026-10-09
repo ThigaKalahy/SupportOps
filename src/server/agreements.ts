@@ -1,6 +1,7 @@
 import { parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
+import { pendingWatchIdsOf } from "../lib/validators/watch.ts"
 import {
   cancelAgreementSchema,
   completeAgreementSchema,
@@ -9,6 +10,8 @@ import {
 } from "../lib/validators/agreement.ts"
 
 import { writeAudit } from "./audit.ts"
+import { resolveCentralId } from "./centrals.ts"
+import { linkPendingWatchItems } from "./watch.ts"
 import { db } from "./db.ts"
 import { recordTimelineEvents, syncTimelineContent, timelineEventFor } from "./timeline.ts"
 import { canWrite, memberScope, type Viewer } from "./visibility.ts"
@@ -34,11 +37,14 @@ export async function createAgreementRecord(user: Viewer, input: unknown): Promi
   if (!member) return { ok: false, error: labels.validation.generic }
   const due = parseDisplayDate(data.dueDate)
   if (!due) return { ok: false, error: labels.validation.date, fieldErrors: { dueDate: labels.validation.date } }
+  const centralId = await resolveCentralId(user.organizationId, data.centralId)
+  if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
 
   await db.$transaction(async (tx) => {
     const created = await tx.agreement.create({
       data: {
         memberId: member.id,
+        centralId,
         title: data.title,
         description: textOrNull(data.description),
         origin: data.origin,
@@ -49,6 +55,8 @@ export async function createAgreementRecord(user: Viewer, input: unknown): Promi
       },
     })
     await recordTimelineEvents(tx, [timelineEventFor.agreementCreated(created)])
+    // P21: observação marcada no dialog antes de salvar passa a apontar para o combinado.
+    await linkPendingWatchItems(tx, user.organizationId, pendingWatchIdsOf(input), { agreementId: created.id })
     await writeAudit(
       {
         action: "agreement.create",
@@ -60,6 +68,7 @@ export async function createAgreementRecord(user: Viewer, input: unknown): Promi
           origin: created.origin,
           priority: created.priority,
           dueDate: data.dueDate,
+          centralId,
         },
       },
       { organizationId: user.organizationId, userId: user.id, tx },

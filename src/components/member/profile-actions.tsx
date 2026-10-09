@@ -15,6 +15,7 @@ import { NoteDialog } from "@/components/forms/note-dialog"
 import { OneOnOneDialog } from "@/components/forms/one-on-one-dialog"
 import { useQuickAgreement } from "@/components/forms/quick-agreement"
 import { Button } from "@/components/ui/button"
+import { WatchButton } from "@/components/watch/watch-button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,6 +64,15 @@ export function ProfileActions({
   return (
     <>
       <div className="flex items-center gap-2">
+        {/* P21: observação com a pessoa já preenchida; cada clique é uma observação nova. */}
+        <WatchButton
+          variant="label"
+          origin="MANUAL"
+          defaults={{ title: "" }}
+          link={{ memberId: member.id }}
+          labelText={labels.watch.actions.watch}
+          repeatable
+        />
         <div className="hidden items-center gap-2 xl:flex">
           {RECORD_ACTIONS.map((action) => (
             <Button key={action.kind} variant="secondary" size="sm" onClick={() => setDialog(action.kind)}>
