@@ -14,8 +14,8 @@ export const metadata: Metadata = {
 export default async function PriorityLevelsPage() {
   const ctx = await requireTeamContext()
   // Níveis de prioridade são do módulo de validação (D32): sem ele, /settings abre a primeira aba do time.
-  if (!settingsTabEnabled(settingsTabFor("/settings"), ctx.modules)) {
-    redirect(SETTINGS_TABS.find((tab) => settingsTabEnabled(tab, ctx.modules))!.href)
+  if (!settingsTabEnabled(settingsTabFor("/settings"), ctx)) {
+    redirect(SETTINGS_TABS.find((tab) => settingsTabEnabled(tab, ctx))!.href)
   }
   return <PriorityLevelsSettings items={await listPriorityLevels(ctx)} canWrite={canWrite(ctx)} />
 }

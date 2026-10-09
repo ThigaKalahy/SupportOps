@@ -17,7 +17,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
       <PageHeader title={S.title} subtitle={labels.pages.settings.subtitle} />
       <RouteTabs
         label={S.tabsLabel}
-        tabs={SETTINGS_TABS.filter((tab) => settingsTabEnabled(tab, ctx.modules)).map(({ href, label, exact }) => ({
+        tabs={SETTINGS_TABS.filter((tab) => settingsTabEnabled(tab, ctx)).map(({ href, label, exact }) => ({
           href,
           label,
           ...(exact ? { exact } : {}),

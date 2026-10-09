@@ -26,6 +26,7 @@
 | P20 Devolução do desenvolvimento | código pronto — migration aguarda autorização (junto com a do P19) | | 09/10/2026 |
 | P21 Em observação             | código pronto — migration aguarda autorização (junto com as do P19 e P20) | | 10/10/2026 |
 | P22 Multi-tenancy (banco e acesso) | concluída — ensaiada no branch de teste; migrations aguardam aplicação em produção | 1fba67d | 11/10/2026 |
+| P23 Seleção e troca de time   | concluída | | 09/10/2026 |
 
 ## Notas de handoff
 
@@ -412,4 +413,12 @@
   - Sessão/JWT deixaram de carregar `role`. `pnpm user:create` concede TeamAccess (gestor = MANAGER, leitura = VIEWER) para a conta nova entrar; o provisionamento completo é o P24.
   - `pnpm test` passou a usar `.env.test`: os testes com banco nunca mais apontam para produção.
 - **Verificado:** typecheck, lint e build; parte estrutural de `tests/isolation.test.ts` (7 testes). Migrations A e C geradas por `prisma migrate diff`; B escrita à mão (bloco DO com as falhas explícitas). Produção conferida só com leitura antes de escrever a B: 1 organização, 1 time, 1 usuário OWNER, migrations do P19–P21 aplicadas.
+
+### P23 — Seleção e troca de time (branch `fase/23-team-switch`)
+
+- **Ficou de fora:** nada foi visto no navegador — não há como logar no banco de teste (o usuário do seed não tem senha) e o `.env.local` é produção, onde as migrations do P22 ainda não foram aplicadas. Criação de time e de usuário pela interface é o P24. Abas de senioridades e responsabilidades em /settings não existem (já eram por time desde o P22, mas sem tela de cadastro).
+- **Precisa de revisão humana:** o fluxo com dois times de verdade (seleção depois do login, troca pela sidebar indo para a home, nome do time na barra e na aba do navegador) e /settings/team. Para isso: conceder a um usuário acesso a um segundo time em /settings/team — o time em si só existe quando o P24 criar, ou por SQL no banco de teste.
+- **Decisões tomadas sem perguntar:** o redirecionamento para /select-team fica em `requireTeamContext`, não no middleware (Edge, sem Prisma — importar Prisma no middleware quebra o build); com um time só a sidebar mostra o nome do time em texto (seção 2 do prompt), o único acréscimo visível para quem tem um time; conta sem nenhum time vai para /select-team com o aviso e o botão de sair; o `<title>` fica "Página · Prontuário · Time"; o admin não revoga o próprio acesso; conceder de novo a quem foi revogado reabre a mesma linha (`@@unique([userId, teamId])`), e o histórico fica no AuditLog.
+- **O P24 assume:** `requireAdminContext`, `/settings/team` e `src/server/teams.ts` existem; criar time entra ali, nascendo vazio (D33).
+- **Verificado:** typecheck, lint, build; `pnpm test` 275/275 no banco de teste, inclusive `tests/isolation.test.ts`.
 

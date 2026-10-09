@@ -128,6 +128,7 @@ export function Sidebar({
   user,
   counts,
   modules,
+  teamSwitcher,
 }: {
   pathname: string
   collapsed: boolean
@@ -135,6 +136,8 @@ export function Sidebar({
   user: ShellUser
   counts?: NavCounts
   modules: readonly string[]
+  /** Seletor (ou nome estático) do time ativo, acima da navegação (P23). */
+  teamSwitcher?: React.ReactNode
 }) {
   const ToggleIcon = collapsed ? PanelLeftOpenIcon : PanelLeftCloseIcon
   const toggleLabel = collapsed ? labels.shell.expandSidebar : labels.shell.collapseSidebar
@@ -148,6 +151,7 @@ export function Sidebar({
       )}
     >
       <ProductIdentity collapsed={collapsed} />
+      {teamSwitcher}
       <SidebarNav
         pathname={pathname}
         counts={counts}

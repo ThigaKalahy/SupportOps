@@ -9,6 +9,8 @@ export interface SettingsTab {
   exact?: boolean
   /** O catálogo só existe com ALGUM destes módulos ligados no time (D32). Sem lista: core. */
   modules?: ModuleKey[]
+  /** Só para quem administra a plataforma (`isPlatformAdmin`, P23). */
+  platformAdmin?: boolean
 }
 
 /** Abas de /settings, uma por catálogo, na ordem de exibição. */
@@ -24,10 +26,19 @@ export const SETTINGS_TABS: SettingsTab[] = [
   { href: "/settings/thresholds", label: S.tabs.thresholds },
   { href: "/settings/metrics", label: S.tabs.metrics },
   { href: "/settings/score", label: S.tabs.score },
+  { href: "/settings/team", label: S.tabs.team, platformAdmin: true },
 ]
 
-/** A aba existe neste time? (algum dos módulos dela ligado, ou é core) */
-export function settingsTabEnabled(tab: SettingsTab, modules: ReadonlySet<string> | readonly string[]): boolean {
+/**
+ * A aba existe para este contexto? Algum dos módulos dela ligado no time (ou é
+ * core) e, se for de administração, quem vê administra a plataforma.
+ */
+export function settingsTabEnabled(
+  tab: SettingsTab,
+  ctx: { modules: ReadonlySet<string> | readonly string[]; isPlatformAdmin: boolean },
+): boolean {
+  if (tab.platformAdmin && !ctx.isPlatformAdmin) return false
+  const { modules } = ctx
   const has = (key: string) => (modules instanceof Set ? modules.has(key) : (modules as readonly string[]).includes(key))
   return !tab.modules || tab.modules.some(has)
 }

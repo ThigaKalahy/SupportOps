@@ -7,6 +7,8 @@ import { ContextBar } from "@/components/shell/context-bar"
 import { crumbsFor, mainNav } from "@/components/shell/nav-config"
 import { NavLink } from "@/components/shell/nav-link"
 import { CurrentUser, ProductIdentity, SidebarNav, type NavCounts } from "@/components/shell/sidebar"
+import { TeamList, type TeamOption } from "@/components/teams/team-list"
+import { TeamSwitcher } from "@/components/teams/team-switcher"
 import { MODULE_KEYS } from "@/lib/modules"
 
 /** Todos os módulos ligados, como no time do Suporte. */
@@ -14,6 +16,14 @@ const LAB_MODULES = MODULE_KEYS
 
 /** Contadores do motor de alertas (P15), como o seed os produz. */
 const LAB_COUNTS: NavCounts = { today: 11, watch: 3, team: 6, agreements: 6, validations: 2, dailies: 0, records: 4, development: 1 }
+
+/** Times de quem acompanha mais de um (P23). */
+const LAB_TEAMS: TeamOption[] = [
+  { id: "lab-suporte", name: "Suporte N1/N2", level: "MANAGER", members: 9 },
+  { id: "lab-treinamento", name: "Treinamento", level: "VIEWER", members: 4 },
+  { id: "lab-implantacao", name: "Implantação", level: "VIEWER", members: 1 },
+]
+const LAB_ACTIVE = { id: "lab-suporte", name: "Suporte N1/N2" }
 import { Button } from "@/components/ui/button"
 import { labels } from "@/lib/labels"
 
@@ -74,6 +84,42 @@ export function LabShell() {
       </div>
 
       <div className="flex flex-wrap items-start gap-6">
+        <Specimen state="TeamSwitcher · um time (texto, não controle)">
+          <div className="w-[232px] rounded-lg border border-line bg-surface">
+            <TeamSwitcher teams={LAB_TEAMS.slice(0, 1)} activeTeam={LAB_ACTIVE} />
+          </div>
+        </Specimen>
+        <Specimen state="TeamSwitcher · vários times">
+          <div className="w-[232px] rounded-lg border border-line bg-surface">
+            <TeamSwitcher teams={LAB_TEAMS} activeTeam={LAB_ACTIVE} />
+          </div>
+        </Specimen>
+        <Specimen state="TeamSwitcher · 56px">
+          <div className="w-14 rounded-lg border border-line bg-surface">
+            <TeamSwitcher teams={LAB_TEAMS} activeTeam={LAB_ACTIVE} collapsed />
+          </div>
+        </Specimen>
+      </div>
+
+      <div className="flex flex-wrap items-start gap-6">
+        <Specimen state={`TeamList · ${S.default}`}>
+          <div className="w-[360px] overflow-hidden rounded-lg border border-line bg-surface">
+            <TeamList teams={LAB_TEAMS} onSelect={() => {}} />
+          </div>
+        </Specimen>
+        <Specimen state={`TeamList · ${S.selected} (time atual)`}>
+          <div className="w-[360px] overflow-hidden rounded-lg border border-line bg-surface">
+            <TeamList teams={LAB_TEAMS} activeId={LAB_ACTIVE.id} onSelect={() => {}} />
+          </div>
+        </Specimen>
+        <Specimen state="TeamList · abrindo">
+          <div className="w-[360px] overflow-hidden rounded-lg border border-line bg-surface">
+            <TeamList teams={LAB_TEAMS} activeId={LAB_ACTIVE.id} pendingId="lab-treinamento" onSelect={() => {}} />
+          </div>
+        </Specimen>
+      </div>
+
+      <div className="flex flex-wrap items-start gap-6">
         <Specimen state="CurrentUser · 232px">
           <div className="w-[208px]">
             <CurrentUser user={{ name: "Rafael Bittencourt", email: "rafael@exemplo.com.br", level: "MANAGER" }} />
@@ -85,6 +131,17 @@ export function LabShell() {
           </div>
         </Specimen>
       </div>
+
+      <Specimen state="ContextBar · mais de um time (time ativo sempre à vista)" className="w-full">
+        <div className="w-full overflow-hidden rounded-lg border border-line">
+          <ContextBar
+            className="border-b-0"
+            crumbs={[...crumbsFor("/team"), { label: labels.nav.timeline, href: "/team/exemplo/timeline" }]}
+            onOpenNavigation={() => {}}
+            teamName={LAB_ACTIVE.name}
+          />
+        </div>
+      </Specimen>
 
       <Specimen state="ContextBar · VIEWER (somente leitura)" className="w-full">
         <div className="w-full overflow-hidden rounded-lg border border-line">

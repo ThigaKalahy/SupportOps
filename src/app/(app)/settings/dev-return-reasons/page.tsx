@@ -15,6 +15,6 @@ export const metadata: Metadata = {
 export default async function DevReturnReasonsPage() {
   const ctx = await requireTeamContext()
   // Catálogo de módulo desligado no time (D32): a rota não existe.
-  if (!settingsTabEnabled(settingsTabFor("/settings/dev-return-reasons"), ctx.modules)) notFound()
+  if (!settingsTabEnabled(settingsTabFor("/settings/dev-return-reasons"), ctx)) notFound()
   return <DevReturnReasonsSettings items={await listDevReturnReasons(ctx)} canWrite={canWrite(ctx)} />
 }

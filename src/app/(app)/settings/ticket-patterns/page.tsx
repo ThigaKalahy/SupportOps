@@ -14,6 +14,6 @@ export const metadata: Metadata = {
 export default async function TicketPatternsPage() {
   const ctx = await requireTeamContext()
   // Catálogo de módulo desligado no time (D32): a rota não existe.
-  if (!settingsTabEnabled(settingsTabFor("/settings/ticket-patterns"), ctx.modules)) notFound()
+  if (!settingsTabEnabled(settingsTabFor("/settings/ticket-patterns"), ctx)) notFound()
   return <TicketPatternsSettings items={await listTicketPatterns(ctx)} canWrite={canWrite(ctx)} />
 }

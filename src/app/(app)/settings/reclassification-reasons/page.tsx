@@ -14,6 +14,6 @@ export const metadata: Metadata = {
 export default async function ReclassificationReasonsPage() {
   const ctx = await requireTeamContext()
   // Catálogo de módulo desligado no time (D32): a rota não existe.
-  if (!settingsTabEnabled(settingsTabFor("/settings/reclassification-reasons"), ctx.modules)) notFound()
+  if (!settingsTabEnabled(settingsTabFor("/settings/reclassification-reasons"), ctx)) notFound()
   return <ReclassificationReasonsSettings items={await listReclassificationReasons(ctx)} canWrite={canWrite(ctx)} />
 }

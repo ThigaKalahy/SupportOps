@@ -20,10 +20,10 @@ type Form = "oneOnOne" | "feedback"
 
 /**
  * Barra de ações da home: registrar daily, novo combinado, validar
- * prioridade, registrar 1:1 e dar feedback. Texto curto, sem ícone. 1:1 e
+ * prioridade (só com o módulo ligado — D32), registrar 1:1 e dar feedback. Texto curto, sem ícone. 1:1 e
  * feedback perguntam primeiro "com quem?" e abrem o mesmo formulário do perfil.
  */
-export function TodayActions({ members }: { members: Person[] }) {
+export function TodayActions({ members, validation }: { members: Person[]; /** Módulo de validação ligado no time (D32). */ validation: boolean }) {
   const quick = useQuickAgreement()
   const [picking, setPicking] = React.useState<Form | null>(null)
   const [open, setOpen] = React.useState<{ form: Form; member: Person } | null>(null)
@@ -38,9 +38,11 @@ export function TodayActions({ members }: { members: Person[] }) {
           {A.agreement}
         </Button>
       ) : null}
-      <Button asChild variant="ghost" size="sm">
-        <Link href="/priority-validations">{A.validation}</Link>
-      </Button>
+      {validation ? (
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/priority-validations">{A.validation}</Link>
+        </Button>
+      ) : null}
       <Button variant="ghost" size="sm" onClick={() => setPicking("oneOnOne")}>
         {A.oneOnOne}
       </Button>

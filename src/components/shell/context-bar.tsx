@@ -7,6 +7,7 @@ import { EyeIcon, MenuIcon, SearchIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { MetaLabel } from "@/components/ui/meta-label"
 import { labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 
@@ -81,6 +82,23 @@ export function ReadOnlyIndicator() {
 }
 
 /**
+ * Time ativo, à esquerda do breadcrumb (P23). Só para quem tem mais de um time:
+ * sempre visível, em toda tela e em toda largura — com a sidebar recolhida ou no
+ * celular é a única pista de qual time se está lendo.
+ */
+export function ActiveTeamIndicator({ name }: { name: string }) {
+  return (
+    <span className="flex min-w-0 shrink-0 items-center gap-1.5" title={name}>
+      <span className="sr-only">{labels.teams.switcherLabel}: </span>
+      <MetaLabel className="max-w-[16ch] truncate text-ink">{name}</MetaLabel>
+      <span aria-hidden className="text-ink-secondary">
+        /
+      </span>
+    </span>
+  )
+}
+
+/**
  * Barra de contexto de 48px no topo do conteúdo: breadcrumb à esquerda, busca
  * no centro, ação primária à direita. Não é navbar.
  *
@@ -93,9 +111,12 @@ export function ContextBar({
   actions,
   actionsSlotId,
   readOnly = false,
+  teamName = null,
   onOpenSearch,
   className,
 }: {
+  /** Nome do time ativo (só com mais de um time — P23). */
+  teamName?: string | null
   crumbs: Crumb[]
   /** Abre a paleta de comandos (campo de busca e, no celular, o ícone). */
   onOpenSearch?: () => void
@@ -122,6 +143,7 @@ export function ContextBar({
             <MenuIcon />
           </Button>
         ) : null}
+        {teamName ? <ActiveTeamIndicator name={teamName} /> : null}
         <Breadcrumb crumbs={crumbs} />
       </div>
       <div className="hidden w-full max-w-[360px] justify-center md:flex">

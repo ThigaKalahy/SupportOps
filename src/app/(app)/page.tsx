@@ -11,7 +11,8 @@ import { StatStrip } from "@/components/ui/stat-strip"
 import { percent } from "@/lib/adherence"
 import { businessDaysBetween, formatDate, formatWeekday, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
-import { canWrite, requireTeamContext } from "@/server/scope"
+import { MODULES } from "@/lib/modules"
+import { canWrite, hasModule, requireTeamContext } from "@/server/scope"
 import { listAgreementMembers } from "@/server/queries/agreements"
 import { getTodayPanel } from "@/server/queries/today"
 
@@ -47,7 +48,10 @@ export default async function TodayPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <PageHeader title={T.title} subtitle={fill(T.date, { weekday: formatWeekday(today, "business"), date: formatDate(today, "business") })} />
-        {writer ? <TodayActions members={members.map((m) => ({ id: m.id, preferredName: m.preferredName }))} /> : null}
+        {writer ? <TodayActions
+            members={members.map((m) => ({ id: m.id, preferredName: m.preferredName }))}
+            validation={hasModule(ctx, MODULES.PRIORITY_VALIDATION)}
+          /> : null}
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] xl:grid-cols-[minmax(0,1fr)_400px]">

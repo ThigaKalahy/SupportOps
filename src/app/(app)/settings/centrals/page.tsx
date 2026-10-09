@@ -15,6 +15,6 @@ export const metadata: Metadata = {
 export default async function CentralsPage() {
   const ctx = await requireTeamContext()
   // Catálogo de módulo desligado no time (D32): a rota não existe.
-  if (!settingsTabEnabled(settingsTabFor("/settings/centrals"), ctx.modules)) notFound()
+  if (!settingsTabEnabled(settingsTabFor("/settings/centrals"), ctx)) notFound()
   return <CentralsSettings items={await listCentralSettings(ctx)} canWrite={canWrite(ctx)} />
 }

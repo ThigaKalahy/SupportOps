@@ -93,6 +93,8 @@ const subrouteLabels: Record<string, string> = {
   competencies: labels.settings.tabs.competencies,
   thresholds: labels.settings.tabs.thresholds,
   metrics: labels.settings.tabs.metrics,
+  // /settings/team (P23). Só aparece como segmento depois de /settings: /team é seção própria.
+  team: labels.settings.tabs.team,
   score: labels.settings.tabs.score,
   preview: labels.settings.score.preview.title,
 }

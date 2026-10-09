@@ -15,9 +15,11 @@ import { db } from "./db.ts"
  *   nem do JWT, e a validação não é guardada na sessão (D30). O `cache` do React só
  *   evita repetir as mesmas consultas dentro de UMA requisição.
  * - Cookie ausente, inválido ou de time sem acesso: com exatamente um time, resolve
- *   para ele; com mais de um, lança `TeamSelectionRequiredError` (o P23 transforma
- *   em tela de seleção); sem nenhum, lança `NoTeamAccessError`. Nunca cai num padrão
- *   nem no "primeiro time que encontrar".
+ *   para ele; com mais de um, ou com nenhum, manda para /select-team (P23), que
+ *   lista os times para escolher ou diz que a conta não tem acesso. Nunca cai num
+ *   padrão nem no "primeiro time que encontrar".
+ * - O middleware não faz esse redirecionamento: ele roda no Edge, sem Prisma, e não
+ *   tem como consultar TeamAccess. Quem decide é esta função, no servidor.
  *
  * Este arquivo NÃO conhece visibilidade, e src/server/visibility.ts não conhece
  * escopo (D29): os dois gates se compõem no ponto de uso —
@@ -25,6 +27,9 @@ import { db } from "./db.ts"
  */
 
 export const ACTIVE_TEAM_COOKIE = "active-team"
+
+/** Tela de escolha do time ativo (P23). Fora do shell: não depende de time ativo. */
+export const SELECT_TEAM_PATH = "/select-team"
 
 export interface TeamContext {
   userId: string
@@ -58,22 +63,6 @@ export class TeamAccessError extends ScopeError {
   constructor() {
     super(labels.access.noTeamAccess)
     this.name = "TeamAccessError"
-  }
-}
-
-/** Conta sem nenhum TeamAccess: não entra em lugar nenhum. */
-export class NoTeamAccessError extends ScopeError {
-  constructor() {
-    super(labels.access.noTeams)
-    this.name = "NoTeamAccessError"
-  }
-}
-
-/** Mais de um time e nenhum time ativo válido: o P23 redireciona para a seleção. */
-export class TeamSelectionRequiredError extends ScopeError {
-  constructor() {
-    super(labels.access.selectTeam)
-    this.name = "TeamSelectionRequiredError"
   }
 }
 
@@ -119,7 +108,36 @@ export async function accessibleTeamIds(userId: string): Promise<string[]> {
   return rows.map((r) => r.teamId)
 }
 
-const COOKIE_OPTIONS = {
+/** Um time que o usuário pode abrir, para a seleção e o seletor da sidebar (P23). */
+export interface AccessibleTeam {
+  id: string
+  name: string
+  level: TeamAccessLevel
+  /** Pessoas ativas no time — só o número, nenhum dado delas. */
+  members: number
+}
+
+/**
+ * Times do usuário (TeamAccess não revogado, time ativo), em ordem de nome, com o
+ * nível e a contagem de pessoas. É a única leitura que atravessa times: devolve
+ * só nome e contagem dos times aos quais o próprio usuário tem acesso.
+ */
+export async function listAccessibleTeams(userId: string): Promise<AccessibleTeam[]> {
+  const access = await db.teamAccess.findMany({
+    where: { userId, revokedAt: null, team: { isActive: true } },
+    select: { level: true, team: { select: { id: true, name: true } } },
+  })
+  const teamIds = access.map((a) => a.team.id)
+  const counts = teamIds.length
+    ? await db.teamMember.groupBy({ by: ["teamId"], where: { teamId: { in: teamIds }, status: { not: "INACTIVE" } }, _count: { _all: true } })
+    : []
+  const byTeam = new Map(counts.map((c) => [c.teamId, c._count._all]))
+  return access
+    .map((a) => ({ id: a.team.id, name: a.team.name, level: a.level, members: byTeam.get(a.team.id) ?? 0 }))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+}
+
+export const ACTIVE_TEAM_COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
@@ -154,11 +172,11 @@ export const requireTeamContext = cache(async (): Promise<TeamContext> => {
   }
 
   const teams = await accessibleTeamIds(user.id)
-  if (teams.length === 0) throw new NoTeamAccessError()
-  if (teams.length > 1) throw new TeamSelectionRequiredError()
+  // Nenhum time, ou mais de um sem escolha válida: a tela de seleção resolve (P23).
+  if (teams.length !== 1) return redirect(SELECT_TEAM_PATH)
   const ctx = await teamContextFor(user.id, teams[0]!)
   try {
-    store.set(ACTIVE_TEAM_COOKIE, ctx.teamId, COOKIE_OPTIONS)
+    store.set(ACTIVE_TEAM_COOKIE, ctx.teamId, ACTIVE_TEAM_COOKIE_OPTIONS)
   } catch {
     // Server Component não grava cookie; a resolução acima se repete na próxima requisição.
   }
@@ -173,6 +191,22 @@ export async function requireWriteContext(): Promise<TeamContext> {
   const ctx = await requireTeamContext()
   requireManager(ctx)
   return ctx
+}
+
+/**
+ * Contexto de quem administra a plataforma (P23, /settings/team): o time da
+ * requisição + `isPlatformAdmin`. Não exige MANAGER no time ativo — administrar
+ * times não é escrever dado de time — e não dá acesso a dado de time nenhum.
+ */
+export async function requireAdminContext(): Promise<TeamContext> {
+  const ctx = await requireTeamContext()
+  requirePlatformAdmin(ctx)
+  return ctx
+}
+
+/** Só quem tem `isPlatformAdmin` cria time, concede acesso e liga módulo. */
+export function requirePlatformAdmin(ctx: Pick<TeamContext, "isPlatformAdmin">): void {
+  if (!ctx.isPlatformAdmin) throw new ForbiddenError()
 }
 
 /** Início de todo `where` (leitura e escrita) e de todo `data` de criação em dado de time. */

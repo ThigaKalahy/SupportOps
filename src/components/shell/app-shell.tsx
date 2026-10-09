@@ -4,6 +4,8 @@ import * as React from "react"
 import { usePathname } from "next/navigation"
 
 import { QuickAgreementProvider } from "@/components/forms/quick-agreement"
+import type { TeamOption } from "@/components/teams/team-list"
+import { TeamSwitcher } from "@/components/teams/team-switcher"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { ToastProvider } from "@/components/ui/toast"
 import type { AlertThresholds } from "@/lib/alert-thresholds"
@@ -40,9 +42,14 @@ export function AppShell({
   counts,
   thresholds,
   modules,
+  teams,
+  activeTeam,
   children,
 }: {
   defaultCollapsed: boolean
+  /** Times com acesso (P23). Com mais de um, há seletor e o time ativo fica sempre à vista. */
+  teams: TeamOption[]
+  activeTeam: { id: string; name: string }
   user: ShellUser
   /** Módulos ligados no time ativo (D32). */
   modules: string[]
@@ -58,6 +65,7 @@ export function AppShell({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const multiTeam = teams.length > 1
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const [segmentLabels, setSegmentLabels] = React.useState<Record<string, string>>({})
@@ -90,13 +98,22 @@ export function AppShell({
         {labels.shell.skipToContent}
       </a>
 
-      <Sidebar pathname={pathname} collapsed={collapsed} onToggle={toggleCollapsed} user={user} counts={counts} modules={modules} />
+      <Sidebar
+        pathname={pathname}
+        collapsed={collapsed}
+        onToggle={toggleCollapsed}
+        user={user}
+        counts={counts}
+        modules={modules}
+        teamSwitcher={<TeamSwitcher teams={teams} activeTeam={activeTeam} collapsed={collapsed} />}
+      />
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="left" className="w-[264px] gap-0 p-0">
           <SheetTitle className="sr-only">{labels.shell.mainNavigation}</SheetTitle>
           <SheetDescription className="sr-only">{labels.app.name}</SheetDescription>
           <ProductIdentity />
+          <TeamSwitcher teams={teams} activeTeam={activeTeam} />
           <SidebarNav
             pathname={pathname}
             counts={counts}
@@ -114,6 +131,7 @@ export function AppShell({
           onOpenNavigation={() => setDrawerOpen(true)}
           actionsSlotId={CONTEXT_ACTIONS_ID}
           readOnly={user.level === "VIEWER"}
+          teamName={multiTeam ? activeTeam.name : null}
           onOpenSearch={openCommandPalette}
         />
         <main id="conteudo" className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 py-6 md:px-6">

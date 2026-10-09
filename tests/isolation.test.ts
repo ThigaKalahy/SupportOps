@@ -79,6 +79,7 @@ import * as settings from "../src/server/queries/settings.ts"
 import * as thresholds from "../src/server/queries/thresholds.ts"
 import * as timeline from "../src/server/queries/timeline.ts"
 import * as today from "../src/server/queries/today.ts"
+import * as teamsQ from "../src/server/queries/teams.ts"
 import * as watch from "../src/server/queries/watch.ts"
 import {
   createFeedbackRecord,
@@ -90,7 +91,8 @@ import {
   updateNoteRecord,
   updateOneOnOneRecord,
 } from "../src/server/records.ts"
-import { teamContextFor, type TeamContext } from "../src/server/scope.ts"
+import { listAccessibleTeams, teamContextFor, type TeamContext } from "../src/server/scope.ts"
+import { grantTeamAccessRecord, revokeTeamAccessRecord, setTeamModuleRecord } from "../src/server/teams.ts"
 import {
   createScoreDefinitionRecord,
   deleteScoreDefinitionRecord,
@@ -262,7 +264,16 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
     assert.deepEqual(violations, [])
   })
 
-  test("toda Server Action monta o contexto de time; as de escrita exigem nível MANAGER", () => {
+  /**
+   * Actions que ESTABELECEM o contexto em vez de partir dele. Cada uma com o motivo;
+   * a regra continua valendo para todas as outras.
+   */
+  const ESTABLISHES_CONTEXT: Record<string, string> = {
+    "actions/team-selection.ts:selectTeam":
+      "escolhe o time ativo (P23): confere o time pedido com teamContextFor (TeamAccess) antes de gravar o cookie",
+  }
+
+  test("toda Server Action monta o contexto de time; as de escrita exigem nível MANAGER (ou administração)", () => {
     const violations: string[] = []
     for (const file of files.filter((f) => rel(f).startsWith("actions/") && !rel(f).endsWith("auth.ts"))) {
       const source = readFileSync(file, "utf8")
@@ -270,8 +281,15 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
         const open = source.indexOf("{", m.index! + m[0].length)
         const next = source.indexOf("\nexport ", open)
         const body = source.slice(open, next === -1 ? undefined : next)
-        if (!/requireTeamContext\(\)|requireWriteContext\(\)/.test(body)) violations.push(`${rel(file)}: ${m[1]} sem contexto de time`)
-        if (body.includes("runAction(") && !body.includes("requireWriteContext()")) violations.push(`${rel(file)}: ${m[1]} escreve sem requireWriteContext`)
+        const key = `${rel(file)}:${m[1]}`
+        if (key in ESTABLISHES_CONTEXT) {
+          if (!body.includes("teamContextFor(")) violations.push(`${key}: estabelece o contexto sem conferir TeamAccess`)
+          continue
+        }
+        if (!/requireTeamContext\(\)|requireWriteContext\(\)|requireAdminContext\(\)/.test(body)) violations.push(`${key} sem contexto de time`)
+        if (body.includes("runAction(") && !/requireWriteContext\(\)|requireAdminContext\(\)/.test(body)) {
+          violations.push(`${key} escreve sem requireWriteContext/requireAdminContext`)
+        }
       }
     }
     assert.deepEqual(violations, [])
@@ -634,6 +652,15 @@ const PURE_QUERY_EXPORTS: Record<string, string> = {
   summarize: "conta resultados recebidos em memória; não lê o banco",
 }
 
+/**
+ * Exportações de src/server/queries que olham VÁRIOS times de propósito, só para
+ * `isPlatformAdmin`, e devolvem dado de plataforma (nome, módulos, acesso), nunca
+ * registro de time. Cobertas pelo teste "administração de times" abaixo.
+ */
+const PLATFORM_QUERY_EXPORTS: Record<string, string> = {
+  listTeamsForAdmin: "/settings/team (P23): times, módulos e acessos da organização, mais a contagem de pessoas",
+}
+
 /** Todo núcleo de escrita (`*Record`), chamado por um VIEWER. */
 const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unknown>> = {
   createAgreementRecord: (c, o) => createAgreementRecord(c, { memberId: o.member, title: "x", dueDate: "01/01/2030" }),
@@ -693,6 +720,10 @@ const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unk
   resolveWatchItemRecord: (c, o) => resolveWatchItemRecord(c, { id: o.watch, note: "resolvida" }),
   archiveWatchItemRecord: (c, o) => archiveWatchItemRecord(c, { id: o.watch }),
   setWatchVisibilityRecord: (c, o) => setWatchVisibilityRecord(c, { id: o.watch, visibility: "SHARED" }),
+  // Administração (P23): o VIEWER também não é administrador da plataforma.
+  setTeamModuleRecord: (c) => setTeamModuleRecord(c, { teamId: T1, moduleKey: MODULES.CENTRALS, enabled: false }),
+  grantTeamAccessRecord: (c) => grantTeamAccessRecord(c, { teamId: T1, userId: USERS.m2, level: "VIEWER" }),
+  revokeTeamAccessRecord: (c) => revokeTeamAccessRecord(c, { teamId: T1, userId: USERS.m1 }),
 }
 
 describe("banco: dois times isolados (T1, T2) — critério de aceite do P22", async () => {
@@ -740,7 +771,7 @@ describe("banco: dois times isolados (T1, T2) — critério de aceite do P22", a
     const exported = sourceFiles(join(SRC, "server", "queries")).flatMap((file) =>
       [...readFileSync(file, "utf8").matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]!),
     )
-    const missing = exported.filter((name) => !(name in QUERIES) && !(name in PURE_QUERY_EXPORTS))
+    const missing = exported.filter((name) => !(name in QUERIES) && !(name in PURE_QUERY_EXPORTS) && !(name in PLATFORM_QUERY_EXPORTS))
     assert.deepEqual(missing, [], "função de query sem cobertura de isolamento")
   })
 
@@ -871,6 +902,55 @@ describe("banco: dois times isolados (T1, T2) — critério de aceite do P22", a
     const created = await dbIncludingDeleted.watchItem.findUniqueOrThrow({ where: { id: (result as { id: string }).id } })
     assert.equal(created.teamId, T1)
     assert.equal(await dbIncludingDeleted.auditLog.count({ where: { entityId: created.id, teamId: T1 } }), 1)
+  })
+
+  test("P23 — seleção: cada um lista só os times com acesso, com nível e contagem", async () => {
+    const asV = await listAccessibleTeams(USERS.v)
+    assert.deepEqual(asV.map((t) => [t.id, t.level, t.members]), [[T1, "VIEWER", 1], [T2, "VIEWER", 1]])
+    const asM1 = await listAccessibleTeams(USERS.m1)
+    assert.deepEqual(asM1.map((t) => t.id), [T1])
+    // Administração da plataforma não é acesso a time.
+    assert.deepEqual(await listAccessibleTeams(USERS.admin), [])
+  })
+
+  test("P23 — administração de times: só isPlatformAdmin; módulo e acesso auditados; revogar não apaga", async () => {
+    const admin: TeamContext = { ...m1, userId: USERS.admin, isPlatformAdmin: true }
+    // MANAGER de time não administra a plataforma.
+    await assert.rejects(teamsQ.listTeamsForAdmin(m1), { name: "ForbiddenError" })
+    await assert.rejects(setTeamModuleRecord(m1, { teamId: T2, moduleKey: MODULES.CENTRALS, enabled: false }), { name: "ForbiddenError" })
+    await assert.rejects(grantTeamAccessRecord(m1, { teamId: T2, userId: USERS.m1, level: "MANAGER" }), { name: "ForbiddenError" })
+
+    // O administrador vê os dois times — só dado de plataforma, nenhum registro de time.
+    const data = await teamsQ.listTeamsForAdmin(admin)
+    assert.deepEqual(data.teams.map((t) => t.id), [T1, T2])
+    assertNoLeak("listTeamsForAdmin", data, t1)
+    assertNoLeak("listTeamsForAdmin", data, t2)
+
+    // Módulo: desligar não apaga dado; auditoria com o time ALVO.
+    assert.ok((await setTeamModuleRecord(admin, { teamId: T2, moduleKey: MODULES.CENTRALS, enabled: false })).ok)
+    assert.equal((await teamContextFor(USERS.m2, T2)).modules.has(MODULES.CENTRALS), false)
+    assert.equal(await dbIncludingDeleted.central.count({ where: { teamId: T2 } }), 1)
+    assert.equal(await dbIncludingDeleted.auditLog.count({ where: { action: "team.module.disable", teamId: T2, userId: USERS.admin } }), 1)
+    assert.ok((await setTeamModuleRecord(admin, { teamId: T2, moduleKey: MODULES.CENTRALS, enabled: true })).ok)
+
+    // Acesso: conceder dá contexto; revogar tira, e a linha fica com revokedAt.
+    await assert.rejects(teamContextFor(USERS.m1, T2), { name: "TeamAccessError" })
+    assert.ok((await grantTeamAccessRecord(admin, { teamId: T2, userId: USERS.m1, level: "VIEWER" })).ok)
+    assert.equal((await teamContextFor(USERS.m1, T2)).level, "VIEWER")
+    assert.ok((await grantTeamAccessRecord(admin, { teamId: T2, userId: USERS.m1, level: "MANAGER" })).ok)
+    assert.equal((await teamContextFor(USERS.m1, T2)).level, "MANAGER")
+    assert.ok((await revokeTeamAccessRecord(admin, { teamId: T2, userId: USERS.m1 })).ok)
+    await assert.rejects(teamContextFor(USERS.m1, T2), { name: "TeamAccessError" })
+    const row = await dbIncludingDeleted.teamAccess.findUniqueOrThrow({ where: { userId_teamId: { userId: USERS.m1, teamId: T2 } } })
+    assert.ok(row.revokedAt, "revogar preenche revokedAt e não apaga")
+    assert.deepEqual(
+      (await dbIncludingDeleted.auditLog.findMany({ where: { entity: "TeamAccess", teamId: T2 }, orderBy: { at: "asc" }, select: { action: true } })).map((a) => a.action),
+      ["team.access.grant", "team.access.level", "team.access.revoke"],
+    )
+    // Ninguém revoga o próprio acesso; time de outra organização não existe para o admin.
+    assert.equal((await revokeTeamAccessRecord(admin, { teamId: T1, userId: USERS.admin })).ok, false)
+    assert.equal((await setTeamModuleRecord(admin, { teamId: "seed_team", moduleKey: MODULES.CENTRALS, enabled: false })).ok, false)
+    await dbIncludingDeleted.teamAccess.delete({ where: { id: row.id } })
   })
 
   test("o módulo PRIORITY_VALIDATION existe na lista de módulos válidos (sanidade)", () => {
