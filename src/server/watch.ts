@@ -93,20 +93,20 @@ export async function createWatchItemRecord(ctx: TeamContext, input: unknown): P
 
 const findOwned = findWatchForWrite
 
-/** "Revisado hoje": um clique, nota opcional. Grava WatchReview, lastReviewedAt e reviewCount. Sem timeline. */
+/** "Revisado hoje": com a atualização obrigatória (C5). Grava WatchReview com a nota, lastReviewedAt e reviewCount. Sem timeline. */
 export async function reviewWatchItemRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
   requireManager(ctx)
   const parsed = reviewWatchSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: labels.validation.generic }
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   const item = await findOwned(ctx, parsed.data.id)
   if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.validation.generic }
   const now = new Date()
   await db.$transaction(async (tx) => {
     await tx.watchReview.create({
-      data: { ...teamScope(ctx), watchItemId: item.id, reviewedAt: now, note: textOrNull(parsed.data.note), heatBefore: item.heat, heatAfter: item.heat, authorUserId: ctx.userId },
+      data: { ...teamScope(ctx), watchItemId: item.id, reviewedAt: now, note: parsed.data.note, heatBefore: item.heat, heatAfter: item.heat, authorUserId: ctx.userId },
     })
     await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { lastReviewedAt: now, reviewCount: { increment: 1 } } })
-    await audit(ctx, "review", item.id, { lastReviewedAt: item.lastReviewedAt }, { lastReviewedAt: now }, tx)
+    await audit(ctx, "review", item.id, { lastReviewedAt: item.lastReviewedAt }, { lastReviewedAt: now, note: parsed.data.note }, tx)
   })
   return { ok: true }
 }

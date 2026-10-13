@@ -1416,6 +1416,14 @@ export const labels = {
     coldHigh: "fogo alto há {days} dias sem mudar de grau",
     resolved: "Resolvida em {date}",
     archived: "Arquivada em {date}",
+    /** "Revisado hoje" com a atualização obrigatória (C5): vira o histórico da observação. */
+    reviewForm: {
+      note: "Atualização",
+      placeholder: "O que mudou desde a última revisão?",
+      required: "Escreva a atualização: é o que fica no histórico desta observação.",
+      confirm: "Salvar revisão",
+      cancel: "Cancelar",
+    },
     resolveForm: {
       title: "Resolver observação",
       note: "Resolução",

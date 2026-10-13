@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StatusPill } from "@/components/ui/status-pill"
+import { Textarea } from "@/components/ui/textarea"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { HEAT_SEVERITY, WATCH_HEATS, type WatchHeat, type WatchOrigin } from "@/lib/watch"
@@ -85,6 +86,9 @@ export function WatchButton({
   const [context, setContext] = React.useState(defaults.context ?? "")
   const [heat, setHeat] = React.useState<WatchHeat>(defaults.heat ?? "MEDIUM")
   const [error, setError] = React.useState<string | null>(null)
+  // C5: a atualização é obrigatória para revisar.
+  const [reviewNote, setReviewNote] = React.useState("")
+  const reviewRef = React.useRef<HTMLTextAreaElement>(null)
   const [confirmed, setConfirmed] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
   const titleRef = React.useRef<HTMLInputElement>(null)
@@ -130,9 +134,11 @@ export function WatchButton({
 
   function review() {
     if (!existing) return
+    if (reviewNote.trim().length < 3) return setError(W.reviewForm.required)
     startTransition(async () => {
-      const result = await reviewWatch({ id: existing.id })
-      if (!result.ok) return setError(result.error)
+      const result = await reviewWatch({ id: existing.id, note: reviewNote })
+      if (!result.ok) return setError(result.fieldErrors?.note ?? result.error)
+      setReviewNote("")
       setOpen(false)
       setConfirmed(W.reviewedToast)
     })
@@ -175,6 +181,7 @@ export function WatchButton({
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             if (!existing) titleRef.current?.focus()
+            else reviewRef.current?.focus()
           }}
           // Enter/Esc do popover não chegam ao formulário de fora (daily, 1:1).
           onKeyDown={(event) => {
@@ -191,6 +198,24 @@ export function WatchButton({
                 <StatusPill severity={HEAT_SEVERITY[existing.heat]} label={W.heat[existing.heat]} />
                 <span className="truncate text-sm text-ink">{title || defaults.title}</span>
               </div>
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-ink">
+                {W.reviewForm.note}
+                <Textarea
+                  ref={reviewRef}
+                  rows={3}
+                  value={reviewNote}
+                  maxLength={1000}
+                  placeholder={W.reviewForm.placeholder}
+                  aria-invalid={Boolean(error) || undefined}
+                  onChange={(e) => setReviewNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault()
+                      review()
+                    }
+                  }}
+                />
+              </label>
               {error ? <p role="alert" className="text-xs text-overdue">{error}</p> : null}
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" loading={pending} onClick={review}>

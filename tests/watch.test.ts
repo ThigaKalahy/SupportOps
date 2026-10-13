@@ -113,10 +113,12 @@ describe("alertas e home", () => {
 })
 
 describe("formulários (D27)", () => {
-  test("título obrigatório; revisar sem nota é válido; resolver exige texto", () => {
+  test("título obrigatório; revisar exige a atualização (C5); resolver exige texto", () => {
     assert.ok(!createWatchSchema.safeParse({ title: " ", heat: "HIGH", origin: "MANUAL" }).success)
     assert.ok(createWatchSchema.safeParse({ title: "Algo", heat: "HIGH", origin: "MANUAL" }).success)
-    assert.ok(reviewWatchSchema.safeParse({ id: "x" }).success)
+    assert.ok(!reviewWatchSchema.safeParse({ id: "x" }).success)
+    assert.ok(!reviewWatchSchema.safeParse({ id: "x", note: "  " }).success)
+    assert.ok(reviewWatchSchema.safeParse({ id: "x", note: "Conversamos; melhorou a fila." }).success)
     assert.ok(!resolveWatchSchema.safeParse({ id: "x", note: "" }).success)
     assert.ok(resolveWatchSchema.safeParse({ id: "x", note: "Conversamos e ajustou a fila." }).success)
   })

@@ -7,7 +7,9 @@ import { optionalText } from "./fields.ts"
 
 /**
  * Em observação (P21). Só título e grau são obrigatórios; todos os vínculos
- * são opcionais (D24). Resolver exige texto (D27); revisar não (exigir texto
+ * são opcionais (D24). Resolver exige texto (D27); revisar também, desde o C5
+ * (decisão do usuário em 13/10/2026: a nota de cada revisão é o histórico da
+ * evolução do tema). Antes: revisar não exigia (exigir texto
  * faria parar de revisar).
  */
 
@@ -35,7 +37,10 @@ export type CreateWatchInput = z.input<typeof createWatchSchema>
 
 export const watchRefSchema = z.object({ id: z.string().min(1) })
 
-export const reviewWatchSchema = z.object({ id: z.string().min(1), note: optionalText(500).default("") })
+export const reviewWatchSchema = z.object({
+  id: z.string().min(1),
+  note: z.string().trim().min(3, W.reviewForm.required).max(1000, v.tooLong),
+})
 
 export const heatWatchSchema = z.object({ id: z.string().min(1), direction: z.enum(["up", "down"]) })
 

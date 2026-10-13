@@ -173,9 +173,13 @@ function WatchLine({ row, canWrite, onOpen, onEdit }: { row: WatchRow; canWrite:
         </div>
         {canWrite && active ? (
           <div className="flex shrink-0 items-center gap-1">
-            <Button size="sm" variant="secondary" loading={pending} onClick={() => run(() => reviewWatch({ id: row.id }), W.reviewedToast)}>
-              {W.actions.reviewed}
-            </Button>
+            <NotePopover
+              trigger={W.actions.reviewed}
+              triggerVariant="secondary"
+              texts={W.reviewForm}
+              submitNote={(note) => reviewWatch({ id: row.id, note })}
+              done={W.reviewedToast}
+            />
             <Button
               size="icon-sm"
               variant="ghost"
@@ -196,7 +200,13 @@ function WatchLine({ row, canWrite, onOpen, onEdit }: { row: WatchRow; canWrite:
             >
               <ArrowUpIcon />
             </Button>
-            <ResolvePopover id={row.id} />
+            <NotePopover
+              trigger={W.actions.resolve}
+              triggerVariant="ghost"
+              texts={W.resolveForm}
+              submitNote={(note) => resolveWatch({ id: row.id, note })}
+              done={W.resolveForm.done}
+            />
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button size="icon-sm" variant="ghost" aria-label={fill(W.actions.rowActions, { title: row.title })}>
@@ -226,8 +236,20 @@ function WatchLine({ row, canWrite, onOpen, onEdit }: { row: WatchRow; canWrite:
 }
 
 /** Resolver: popover com o texto OBRIGATÓRIO (D27). */
-function ResolvePopover({ id }: { id: string }) {
-  const R = W.resolveForm
+/** Ação com texto obrigatório num popover (Revisado hoje e Resolver): Ctrl/⌘+Enter salva. */
+function NotePopover({
+  trigger,
+  triggerVariant,
+  texts,
+  submitNote,
+  done,
+}: {
+  trigger: string
+  triggerVariant: "secondary" | "ghost"
+  texts: { note: string; placeholder: string; required: string; confirm: string; cancel: string }
+  submitNote: (note: string) => Promise<{ ok: boolean; error?: string; fieldErrors?: Record<string, string> }>
+  done: string
+}) {
   const toast = useToast()
   const [open, setOpen] = React.useState(false)
   const [note, setNote] = React.useState("")
@@ -235,13 +257,13 @@ function ResolvePopover({ id }: { id: string }) {
   const [pending, startTransition] = React.useTransition()
 
   function submit() {
-    if (note.trim().length < 3) return setError(R.required)
+    if (note.trim().length < 3) return setError(texts.required)
     startTransition(async () => {
-      const result = await resolveWatch({ id, note })
-      if (!result.ok) return setError(result.fieldErrors?.note ?? result.error)
+      const result = await submitNote(note)
+      if (!result.ok) return setError(result.fieldErrors?.note ?? result.error ?? labels.validation.generic)
       setOpen(false)
       setNote("")
-      toast.show(R.done, { tone: "calm" })
+      toast.show(done, { tone: "calm" })
     })
   }
 
@@ -254,8 +276,8 @@ function ResolvePopover({ id }: { id: string }) {
       }}
     >
       <PopoverTrigger asChild>
-        <Button size="sm" variant="ghost">
-          {W.actions.resolve}
+        <Button size="sm" variant={triggerVariant}>
+          {trigger}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
@@ -273,8 +295,8 @@ function ResolvePopover({ id }: { id: string }) {
           }}
         >
           <label className="flex flex-col gap-1.5 text-sm font-medium text-ink">
-            {R.note}
-            <Textarea autoFocus rows={3} value={note} maxLength={1000} placeholder={R.placeholder} aria-invalid={Boolean(error) || undefined} onChange={(e) => setNote(e.target.value)} />
+            {texts.note}
+            <Textarea autoFocus rows={3} value={note} maxLength={1000} placeholder={texts.placeholder} aria-invalid={Boolean(error) || undefined} onChange={(e) => setNote(e.target.value)} />
           </label>
           {error ? (
             <p role="alert" className="text-xs text-overdue">
@@ -283,10 +305,10 @@ function ResolvePopover({ id }: { id: string }) {
           ) : null}
           <div className="flex justify-end gap-2">
             <Button type="button" size="sm" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
-              {R.cancel}
+              {texts.cancel}
             </Button>
             <Button type="submit" size="sm" loading={pending}>
-              {R.confirm}
+              {texts.confirm}
             </Button>
           </div>
         </form>

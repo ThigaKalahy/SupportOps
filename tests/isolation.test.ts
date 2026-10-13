@@ -728,7 +728,7 @@ const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unk
   deleteCatalogItemRecord: (c, o) => deleteCatalogItemRecord(c, { kind: "central", id: o.central }),
   setThresholdRecord: (c) => setThresholdRecord(c, { key: "dueSoonDays", value: 6 }),
   createWatchItemRecord: (c, o) => createWatchItemRecord(c, { title: "x", heat: "LOW", origin: "MANUAL", memberId: o.member }),
-  reviewWatchItemRecord: (c, o) => reviewWatchItemRecord(c, { id: o.watch }),
+  reviewWatchItemRecord: (c, o) => reviewWatchItemRecord(c, { id: o.watch, note: "revisada" }),
   changeWatchHeatRecord: (c, o) => changeWatchHeatRecord(c, { id: o.watch, direction: "down" }),
   resolveWatchItemRecord: (c, o) => resolveWatchItemRecord(c, { id: o.watch, note: "resolvida" }),
   archiveWatchItemRecord: (c, o) => archiveWatchItemRecord(c, { id: o.watch }),
@@ -819,7 +819,8 @@ describe("banco: dois times isolados (T1, T2) — critério de aceite do P22", a
       await completeAgreementRecord(m1, { id: t2.agreement, outcome: "" }),
       await cancelAgreementRecord(m1, { id: t2.agreement, reason: "tentativa" }),
       await updateAgreementRecord(m1, { id: t2.agreement, title: "invadido", description: "", priority: "HIGH" }),
-      await reviewWatchItemRecord(m1, { id: t2.watch }),
+      // Com nota válida: a recusa tem que vir do escopo, não da validação.
+      await reviewWatchItemRecord(m1, { id: t2.watch, note: "tentativa de outro time" }),
       await setRecordVisibilityRecord(m1, { eventId: t2.events.feedbackPrivate, visibility: "SHARED" }),
       await deleteRecordRecord(m1, { kind: "feedback", id: t2.feedbackShared }),
       await resolveDevReturnRecord(m1, { id: t2.devReturn, resolvedAt: "01/01/2026", resolutionNote: "" }),

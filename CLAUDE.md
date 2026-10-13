@@ -205,6 +205,7 @@ A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, i
 - `WatchItem` tem todos os vínculos opcionais; só `title` e `heat` são obrigatórios.
 - Estado de revisão e "fogo alto frio" são DERIVADOS em query a partir de `lastReviewedAt`, `heatChangedAt` e das cadências de Settings. Nunca persistidos (D9).
 - `WatchReview` registra cada revisão, com grau antes e depois. Revisão não escreve em `TimelineEvent`.
+- "Revisado hoje" exige a atualização em texto (C5, decisão do usuário em 13/10/2026): a nota de cada revisão é o histórico da evolução do tema, lido no painel da observação. Mudar o grau (esfriar/esquentar) continua sem texto.
 - Nem `PriorityValidation` nem `DevReturn` escrevem em `TimelineEvent` (D15, D21).
 - Prazo de combinado (D28): combinado criado na Seção 3 de uma daily nasce com `originalDueDate` e `dueDate` iguais à DATA DA DAILY. Reagendar na daily do dia D propõe o próprio dia D. Combinado criado fora de daily nasce com prazo HOJE. `originalDueDate` continua imutável (D17).
 - Prazo igual a hoje é severidade `neutral`. O sinal de atraso começa no primeiro dia de vencimento.

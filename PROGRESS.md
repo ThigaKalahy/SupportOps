@@ -30,6 +30,7 @@
 | P24 Provisionamento de time   | concluída — Treinamento e Hardware criados em produção | cf0bdb4 | 09/10/2026 |
 | C3 Revisão da daily (central e reagendar no dia) | concluída — suíte com banco não rodou (branch de teste expirou) | | 13/10/2026 |
 | C4 Editar observação, transferir combinado, férias | código pronto — migration e testes com banco aguardam banco de teste | | 13/10/2026 |
+| C5 Revisão de observação com atualização | código pronto — sem commit | | 13/10/2026 |
 
 ## Notas de handoff
 
@@ -443,4 +444,9 @@
 - **Decisões tomadas sem perguntar:** férias com início e fim em tabela própria, "de férias" derivado da data (sem cron, sem mudar o status cadastrado); de férias = mesmo efeito de afastado (fora da daily, sem cadência de 1:1/silêncio); cancelar férias apaga o período (é planejamento) e a auditoria guarda; só observação ATIVA se edita; transferir não move prazo (checkin exige daily) — o dialog avisa quando o combinado já chega vencido.
 - **Não verificado:** migration não aplicada em lugar nenhum e testes com banco (`tests/c4.test.ts`, suíte de isolamento) não rodaram — o branch Neon de teste expirou. Verificado: typecheck, lint, build, testes estruturais de isolamento (7). Nada visto no navegador.
 - **Antes do deploy:** novo banco de teste → `pnpm test:db:prepare` (aplica a migration nova) → `pnpm test`. Em produção, o push aplica a migration (aditiva).
+
+### C5 — Revisão de observação com atualização (branch `fase/c5-review-note`)
+
+- "Revisado hoje" abre um campo de texto (na lista de /watch e no botão de observação das outras telas); a atualização é obrigatória (zod no cliente e no servidor, 3 a 1000 caracteres) e aparece no histórico do painel. Esfriar/esquentar continua sem texto.
+- Verificado: typecheck, lint, build, `tests/watch.test.ts` (sem banco), estruturais de isolamento. Testes com banco não rodaram (sem banco de teste).
 
