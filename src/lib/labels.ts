@@ -15,7 +15,7 @@
 export const labels = {
   app: {
     name: "Prontuário",
-    description: "Registro de gestão do time de suporte",
+    description: "Registro de gestão de times",
   },
   common: {
     save: "Salvar",
@@ -84,7 +84,7 @@ export const labels = {
     searchShortcut: "⌘K",
   },
   auth: {
-    explanation: "Registro de gestão do time de suporte. Acesso restrito.",
+    explanation: "Registro de gestão de times. Acesso restrito.",
     email: "E-mail",
     password: "Senha",
     submit: "Entrar",
@@ -102,6 +102,36 @@ export const labels = {
     selectTeam: "Escolha o time que você quer abrir.",
     moduleDisabled: "Este módulo não está ligado neste time.",
     adminOnly: "Só a administração da plataforma altera times, acessos e módulos.",
+  },
+  /** Férias (C4): período com início e fim; "de férias" é derivado da data. */
+  vacations: {
+    title: "Férias",
+    register: "Registrar férias",
+    until: "Férias até {date}",
+    upcoming: "Férias de {start} a {end}",
+    statePast: "{start} a {end}",
+    empty: "Nenhuma férias registrada.",
+    direction: "Durante as férias a pessoa sai da daily e não gera alerta de 1:1. No dia seguinte ao fim, volta sozinha. Combinados dela continuam abertos: transfira os que não podem esperar.",
+    current: "em curso",
+    next: "agendada",
+    pastTitle: "Anteriores",
+    cancel: "Cancelar férias",
+    cancelTitle: "Cancelar estas férias?",
+    cancelDescription: "O período sai do cadastro e a pessoa conta como disponível nessas datas. A auditoria guarda o registro.",
+    keep: "Manter férias",
+    dialogTitle: "Registrar férias de {name}",
+    dialogDescription: "Pode ser com antecedência. A pessoa só aparece como de férias dentro do período.",
+    start: "Início",
+    end: "Fim (último dia de férias)",
+    note: "Observação",
+    notePlaceholder: "Ex.: volta na segunda, dia 03/11",
+    saved: "Férias registradas.",
+    cancelled: "Férias canceladas.",
+    onVacation: { one: "1 de férias", other: "{count} de férias" },
+    validation: {
+      endBeforeStart: "O fim não pode ser antes do início.",
+      overlap: "Já existem férias registradas que se sobrepõem a este período.",
+    },
   },
   /** Times: seleção, troca e o indicador do time ativo (P23). */
   teams: {
@@ -551,6 +581,7 @@ export const labels = {
     complete: "Marcar como concluído",
     edit: "Editar",
     cancel: "Cancelar combinado",
+    transfer: "Transferir",
     showMore: "Mostrar mais {count}",
     showing: "{shown} de {total}",
     new: "Novo combinado",
@@ -580,6 +611,24 @@ export const labels = {
       keep: "Manter combinado",
       confirm: "Cancelar combinado",
     },
+    /** Troca de responsável (C4): o mesmo combinado muda de dono. */
+    transferDialog: {
+      title: "Transferir combinado",
+      description:
+        "O combinado passa a ser de outra pessoa e sai do cumprimento de {name}. O prazo original não muda; o histórico de revisões vai junto.",
+      to: "Novo responsável",
+      toPlaceholder: "Escolha a pessoa",
+      reason: "Motivo",
+      reasonPlaceholder: "Ex.: férias de 13/10 a 27/10",
+      overdueHint: "Vence desde {date}: chega vencido para quem recebe. Reagende na próxima daily, se fizer sentido.",
+      confirm: "Transferir combinado",
+      done: "Combinado transferido para {name}.",
+      noOne: "Não há outra pessoa ativa no time para receber.",
+    },
+    transferErrors: {
+      sameMember: "Escolha uma pessoa diferente da atual.",
+      memberUnavailable: "Esta pessoa não está ativa no time.",
+    },
     editDialog: {
       title: "Editar combinado",
       description: "Texto e prioridade. A timeline acompanha a edição.",
@@ -607,6 +656,12 @@ export const labels = {
       checkinColumns: { date: "Daily", outcome: "Desfecho", blocker: "Impeditivo", newDueDate: "Novo prazo" },
       noBlocker: "—",
       dragSummary: "Prazo movido {count} vezes desde {date}",
+      transfers: "Transferências",
+      transferLine: "De {from} para {to}",
+    },
+    timelineTransfer: {
+      out: "Combinado passado para {name}: {title}",
+      in: "Combinado recebido de {name}: {title}",
     },
     alreadyClosed: "Este combinado já está encerrado.",
   },
@@ -983,7 +1038,6 @@ export const labels = {
     },
     validation: {
       blockerRequired: "Descreva o impeditivo.",
-      futureDue: "O novo prazo precisa ser depois da daily.",
       notBeforeDaily: "O prazo não pode ser antes da daily.",
       replacementRequired: "Informe o novo combinado.",
       agreementClosed: "Um dos combinados revisados já foi encerrado em outra tela. Recarregue a página.",
@@ -998,7 +1052,8 @@ export const labels = {
       download: "Baixar PDF",
       downloading: "Gerando…",
       failed: "Não foi possível gerar o PDF",
-      title: "Daily do Suporte — {date}",
+      /** Neutro de propósito: "Daily do/da <time>" erraria o gênero de algum time. */
+      title: "Daily · {team} — {date}",
       author: "Registrada por {name}",
       present: { one: "1 presente", other: "{count} presentes" },
       absent: "Ausentes: {names}",
@@ -1281,6 +1336,17 @@ export const labels = {
   /** P21 — Em observação (D24–D27). */
   watch: {
     title: "Em observação",
+    /** Editar título e contexto (C4). */
+    edit: {
+      action: "Editar",
+      titleHint: "Editar título e contexto",
+      dialogTitle: "Editar observação",
+      dialogDescription: "Grau, vínculos e visibilidade têm ações próprias; aqui muda só o texto.",
+      titleField: "Título",
+      contextField: "Contexto",
+      saved: "Observação atualizada.",
+      notActive: "Só observações ativas podem ser editadas.",
+    },
     subtitle: "O que você acompanha de perto, do fogo alto ao baixo. O mais esquecido de cada grau fica no topo.",
     heat: { HIGH: "Fogo alto", MEDIUM: "Fogo médio", LOW: "Fogo baixo" },
     origin: {
@@ -2240,6 +2306,7 @@ export const enumLabels = {
     DEVELOPMENT: "PDI",
     NOTE: "Anotação",
     WATCH: "Em observação",
+    AGREEMENT_TRANSFER: "Transferência",
   },
   severity: {
     calm: "Em dia",

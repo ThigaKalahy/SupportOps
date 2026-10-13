@@ -304,6 +304,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
   function whatsapp(): WhatsAppDaily {
     const { input } = buildInput(stateRef.current)
     return {
+      teamName: form.teamName,
       date: parseDisplayDate(dateText)!,
       reviewed: input.reviews.map((r) => ({
         name: reviewOwner.get(r.agreementId)?.name ?? "",

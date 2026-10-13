@@ -173,6 +173,19 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
           author: { select: { name: true } },
         },
       },
+      // C4: trocas de responsável, em ordem.
+      transfers: {
+        where: teamScope(ctx),
+        orderBy: { transferredAt: "asc" },
+        select: {
+          id: true,
+          reason: true,
+          transferredAt: true,
+          fromMember: { select: { preferredName: true } },
+          toMember: { select: { preferredName: true } },
+          author: { select: { name: true } },
+        },
+      },
     },
   })
   if (!agreement) return null
@@ -210,6 +223,14 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
     slipDays: businessDaysBetween(agreement.originalDueDate, agreement.dueDate),
     reschedules: checkins.filter((c) => c.newDueDate !== null).length,
     checkins,
+    transfers: agreement.transfers.map((t) => ({
+      id: t.id,
+      at: t.transferredAt,
+      from: t.fromMember.preferredName,
+      to: t.toMember.preferredName,
+      reason: t.reason,
+      author: t.author.name,
+    })),
   }
 }
 

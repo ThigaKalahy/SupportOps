@@ -130,6 +130,7 @@ export function ReviewRow({
             {open && watch ? watch(state.blockerText) : null}
           </span>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {item.centralName ? <span className="text-xs text-ink-secondary">{item.centralName}</span> : null}
             <DueCell row={{ dueDate: item.dueDate, open: true, deadline: item.deadline }} />
             {/* Arrasto visível na linha, sem depender de hover: 3+ vira selo vermelho "arrastado Nx". */}
             {item.reschedules > 0 ? <DragIndicator reschedules={item.reschedules} /> : null}

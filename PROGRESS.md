@@ -28,6 +28,8 @@
 | P22 Multi-tenancy (banco e acesso) | concluída — ensaiada no branch de teste; migrations aguardam aplicação em produção | 1fba67d | 11/10/2026 |
 | P23 Seleção e troca de time   | concluída | 9c75315 | 09/10/2026 |
 | P24 Provisionamento de time   | concluída — Treinamento e Hardware criados em produção | cf0bdb4 | 09/10/2026 |
+| C3 Revisão da daily (central e reagendar no dia) | concluída — suíte com banco não rodou (branch de teste expirou) | | 13/10/2026 |
+| C4 Editar observação, transferir combinado, férias | código pronto — migration e testes com banco aguardam banco de teste | | 13/10/2026 |
 
 ## Notas de handoff
 
@@ -429,4 +431,16 @@
 - **Ficou de fora / depende de você:** ALLOWED_EMAILS na Vercel (e no .env.local) com Jean, Jeff e Vinícius + redeploy; o código do P22–P24 ainda não está publicado na Vercel (só o banco foi migrado). Nada visto no navegador — o critério de aceite (Jeff vê sistema vazio com 8 itens e nenhum vestígio dos módulos; Jean escolhe entre três times) precisa ser conferido por você depois do deploy.
 - **Decisões tomadas sem perguntar:** `team:create` não exige o e-mail no ALLOWED_EMAILS (o prompt pede para imprimir a linha); o administrador do script é o único `isPlatformAdmin` da organização, ou `ADMIN_EMAIL` se houver mais de um; "VIEWER em todos os outros times" exige ao menos um time e exclui quem é MANAGER em algum; as cadências de observação viram linhas de `AlertThreshold` com os valores padrão (antes, sem linha = padrão — o efeito é o mesmo); para o VIEWER, as telas vazias dizem o estado em vez de mandar registrar; /development só troca a tela inteira pela direção quando não há competência NEM PDI.
 - **Verificado:** typecheck, lint, build; `pnpm test` 279/279 no banco de teste; os dois scripts rodados por pipe no banco de teste (time de ensaio criado, acesso concedido e revogado, recusa de nome curto) e o ensaio apagado depois.
+
+### C3 — Revisão da daily (branch `fase/c3-daily-review`)
+
+- Reagendar para o próprio dia da daily passou a ser aceito (o schema exigia depois da daily, contra o padrão D28 que a tela já propunha). Central do combinado na linha da revisão (null com o módulo desligado).
+- **Não verificado:** `pnpm test` com banco — o branch Neon de teste expirou. Conferido direto no schema (13/10 e 14/10 aceitos, 12/10 recusado), teste estrutural de isolamento, typecheck, lint e build. `tests/dailies.test.ts` foi ajustado (recusa só antes da daily; sucesso reagenda para o próprio dia) e precisa rodar quando houver banco de teste.
+
+### C4 — Editar observação, transferir combinado e férias (branch `fase/c3-daily-review`, junto do C3)
+
+- **Decisão do usuário:** transferir (o mesmo combinado muda de dono; o cumprimento vai inteiro para quem recebe; prazo não muda).
+- **Decisões tomadas sem perguntar:** férias com início e fim em tabela própria, "de férias" derivado da data (sem cron, sem mudar o status cadastrado); de férias = mesmo efeito de afastado (fora da daily, sem cadência de 1:1/silêncio); cancelar férias apaga o período (é planejamento) e a auditoria guarda; só observação ATIVA se edita; transferir não move prazo (checkin exige daily) — o dialog avisa quando o combinado já chega vencido.
+- **Não verificado:** migration não aplicada em lugar nenhum e testes com banco (`tests/c4.test.ts`, suíte de isolamento) não rodaram — o branch Neon de teste expirou. Verificado: typecheck, lint, build, testes estruturais de isolamento (7). Nada visto no navegador.
+- **Antes do deploy:** novo banco de teste → `pnpm test:db:prepare` (aplica a migration nova) → `pnpm test`. Em produção, o push aplica a migration (aditiva).
 

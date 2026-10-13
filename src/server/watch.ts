@@ -4,6 +4,7 @@ import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import {
   createWatchSchema,
+  editWatchSchema,
   heatWatchSchema,
   resolveWatchSchema,
   reviewWatchSchema,
@@ -14,7 +15,7 @@ import { cooler, hotter } from "../lib/watch.ts"
 
 import { auditOf, writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
-import { recordTimelineEvents, syncTimelineVisibility, timelineEventFor } from "./timeline.ts"
+import { recordTimelineEvents, syncTimelineContent, syncTimelineVisibility, timelineEventFor } from "./timeline.ts"
 import { findActiveWatchForLink, findWatchForWrite, resolveWatchLinks, WATCH_LINKS } from "./queries/watch.ts"
 import { requireManager, teamScope, type TeamContext } from "./scope.ts"
 
@@ -185,6 +186,44 @@ export async function setWatchVisibilityRecord(ctx: TeamContext, input: unknown)
     await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { visibility: parsed.data.visibility } })
     await syncTimelineVisibility(tx, ctx, { kind: "watchItem", id: item.id }, parsed.data.visibility)
     await audit(ctx, "visibility.update", item.id, { visibility: item.visibility }, { visibility: parsed.data.visibility }, tx)
+  })
+  return { ok: true }
+}
+
+/**
+ * Editar título e contexto de uma observação ATIVA (C4). Resolvida e arquivada
+ * são histórico e não se editam. Com pessoa, a linha de criação da timeline
+ * acompanha o texto novo (com o grau de quando nasceu); a de resolução não existe
+ * ainda. Auditado `watch.update`.
+ */
+export async function updateWatchItemRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  const parsed = editWatchSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  const item = await findOwned(ctx, parsed.data.id)
+  if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.watch.edit.notActive }
+  const title = parsed.data.title
+  const context = textOrNull(parsed.data.context)
+  await db.$transaction(async (tx) => {
+    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { title, context } })
+    if (item.memberId) {
+      // O grau do título da timeline é o de quando a observação nasceu.
+      const first = await tx.watchReview.findFirst({
+        where: { ...teamScope(ctx), watchItemId: item.id },
+        orderBy: { reviewedAt: "asc" },
+        select: { heatBefore: true },
+      })
+      const createdRow = timelineEventFor.watchCreated({
+        ...item,
+        title,
+        context,
+        heat: first?.heatBefore ?? item.heat,
+        memberId: item.memberId,
+        authorUserId: item.createdByUserId,
+      })
+      await syncTimelineContent(tx, ctx, { kind: "watchItem", id: item.id }, { title: createdRow.title, summary: context }, "WATCH")
+    }
+    await audit(ctx, "update", item.id, { title: item.title, context: item.context }, { title, context }, tx)
   })
   return { ok: true }
 }

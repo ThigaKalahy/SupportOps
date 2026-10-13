@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SeverityDot } from "@/components/ui/severity-dot"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { formatDayMonth } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { avatarColors, initials } from "@/lib/people"
 import type { MemberForEdit, MemberFormCatalogs, TeamListRow } from "@/server/queries/members"
@@ -97,12 +98,16 @@ export function TeamTable({
       id: "status",
       header: C.status,
       cell: (r) =>
-        r.status === "ACTIVE" ? (
+        r.vacationUntil ? (
+          // Férias em curso (C4, derivado): mais informativo que "Ativo".
+          <Badge>{fill(labels.vacations.until, { date: formatDayMonth(r.vacationUntil, "business") })}</Badge>
+        ) : r.status === "ACTIVE" ? (
           <span className="text-ink-secondary">{enumLabel("memberStatus", r.status)}</span>
         ) : (
           <Badge>{enumLabel("memberStatus", r.status)}</Badge>
         ),
-      title: (r) => enumLabel("memberStatus", r.status),
+      title: (r) =>
+        r.vacationUntil ? fill(labels.vacations.until, { date: formatDayMonth(r.vacationUntil, "business") }) : enumLabel("memberStatus", r.status),
       width: "136px",
       hideBelow: "xl",
     },

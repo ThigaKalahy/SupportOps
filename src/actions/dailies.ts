@@ -57,5 +57,5 @@ export async function exportDailyPdf(dailyId: unknown): Promise<DailyPdfResult> 
     },
     auditOf(ctx),
   )
-  return { ok: true, filename: dailyPdfFilename(daily.date), base64: Buffer.from(bytes).toString("base64") }
+  return { ok: true, filename: dailyPdfFilename(daily.date, daily.teamName), base64: Buffer.from(bytes).toString("base64") }
 }

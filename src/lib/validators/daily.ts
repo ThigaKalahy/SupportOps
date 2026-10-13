@@ -12,8 +12,9 @@ import { optionalText, pastDisplayDate } from "./fields.ts"
  * Server Action. Datas em "DD/MM/AAAA".
  *
  * - reviews: só os combinados que receberam desfecho. Parcial/Não feito exigem
- *   impeditivo e uma de duas ações: reagendar (novo prazo DEPOIS da daily) ou
- *   substituir (novo combinado com título e prazo a partir do dia da daily).
+ *   impeditivo e uma de duas ações: reagendar ou substituir (novo combinado
+ *   com título). Nos dois, o prazo novo vale a partir do dia da daily, inclusive
+ *   o próprio dia — é o padrão que a tela propõe (D28).
  * - participants: todos os membros ativos, presentes ou não.
  * - newAgreements: linhas vazias são descartadas no cliente antes de enviar.
  */
@@ -23,12 +24,6 @@ const d = labels.dailies.validation
 
 export const CHECKIN_OUTCOMES = ["DONE", "PARTIAL", "NOT_DONE"] as const
 export const REVIEW_ACTIONS = ["reschedule", "replace"] as const
-
-function after(day: string, value: string): boolean {
-  const start = parseDisplayDate(day)
-  const end = parseDisplayDate(value)
-  return start !== null && end !== null && end > start
-}
 
 function onOrAfter(day: string, value: string): boolean {
   const start = parseDisplayDate(day)
@@ -84,8 +79,8 @@ export const dailySchema = z
       if (review.action === "reschedule") {
         if (parseDisplayDate(review.newDueDate) === null) {
           ctx.addIssue({ code: "custom", path: ["reviews", i, "newDueDate"], message: v.date })
-        } else if (!after(data.date, review.newDueDate)) {
-          ctx.addIssue({ code: "custom", path: ["reviews", i, "newDueDate"], message: d.futureDue })
+        } else if (!onOrAfter(data.date, review.newDueDate)) {
+          ctx.addIssue({ code: "custom", path: ["reviews", i, "newDueDate"], message: d.notBeforeDaily })
         }
       } else {
         if (review.replacementTitle.length < 3) {

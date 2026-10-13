@@ -69,6 +69,9 @@ export function ProfileHeader({ profile, actions }: { profile: MemberProfile; ac
               <span aria-hidden>·</span>
               <span>{profile.seniorityLabel}</span>
               {profile.status !== "ACTIVE" ? <Badge>{enumLabel("memberStatus", profile.status)}</Badge> : null}
+              {profile.vacationUntil ? (
+                <Badge>{fill(labels.vacations.until, { date: formatDate(profile.vacationUntil, "business") })}</Badge>
+              ) : null}
             </p>
           </div>
         </div>

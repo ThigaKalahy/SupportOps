@@ -28,6 +28,8 @@ export interface WhatsAppReview {
 }
 
 export interface WhatsAppDaily {
+  /** Nome do time da daily (multi-time): entra no título. */
+  teamName?: string
   /** Data de negócio da daily. */
   date: Date
   reviewed: WhatsAppReview[]
@@ -66,7 +68,8 @@ function createdLine(dailyDate: Date) {
 const MARK = { DONE: "✅", PARTIAL: "⚠️", NOT_DONE: "⚠️" } as const
 
 export function buildDailyWhatsApp(daily: WhatsAppDaily): string {
-  const sections: string[] = [`*Daily — ${fullDate(daily.date)}*`]
+  const team = daily.teamName ? ` · ${clean(daily.teamName)}` : ""
+  const sections: string[] = [`*Daily${team} — ${fullDate(daily.date)}*`]
 
   if (daily.reviewed.length) {
     const lines = ["*Combinados de ontem*"]

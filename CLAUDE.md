@@ -215,6 +215,8 @@ A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, i
 - Nenhuma query `$queryRaw` sem filtro explícito de `teamId` no WHERE.
 - Toda escrita grava `teamId` explicitamente a partir do contexto, nunca derivando do registro pai.
 - `TeamAccess` revogado preenche `revokedAt` e nunca é apagado — é registro de quem pôde ver o quê.
+- Transferir combinado (C4, decisão do usuário em 13/10/2026): o MESMO combinado muda de `memberId`, com motivo obrigatório em `AgreementTransfer`. O cumprimento passa inteiro para quem recebe (sai da conta de quem passou). Prazo original e atual não mudam (D17; o atual só se move na daily). A linha AGREEMENT da timeline acompanha o dono; cada pessoa ganha uma linha AGREEMENT_TRANSFER, que não sangra.
+- Férias (C4): `MemberVacation` com início e fim. "De férias no dia D" é DERIVADO (`vacationCovering` em `src/lib/vacations.ts`), nunca persistido nem trocado por cron (D9). De férias = tratado como afastado: fora da presença da daily, sem cadência de 1:1 nem silêncio. Os combinados continuam com a pessoa até alguém transferir.
 
 ## Métricas e score
 
@@ -511,6 +513,17 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - README: seção "Abrir um time novo" (comandos, o que é e o que não é semeado, o passo manual do ALLOWED_EMAILS na Vercel).
 - `tests/provisioning.test.ts`: organização própria (`prov_`) com Suporte, Extra, um VIEWER de todos e um VIEWER de um só; confere a transação inteira, o mínimo semeado, nenhum módulo, o Suporte intacto, o reaproveitamento do gestor, as recusas e conceder/mudar/revogar sem apagar.
 
+**C3 — Revisão da daily (13/10/2026)**
+- Reagendar na Seção 1 aceita o próprio dia da daily (antes exigia o dia seguinte, recusando o padrão que a tela propõe — D28); data anterior à daily continua recusada.
+- Cada combinado em revisão mostra a central, quando preenchida e com o módulo ligado no time.
+
+**C4 — Editar observação, transferir combinado, férias (13/10/2026)**
+- Migration aditiva `20261013120000_transfers_and_vacations`: `AgreementTransfer`, `MemberVacation` (CHECK fim >= início; transferência entre pessoas diferentes, motivo não vazio) e o tipo de timeline `AGREEMENT_TRANSFER`.
+- Em observação: clicar no título no painel (ou "Editar" no menu da linha) edita título e contexto da observação ATIVA; a linha de criação da timeline acompanha (`updateWatchItemRecord`, `watch.update`).
+- Combinados: "Transferir" no menu da linha e no detalhe; dialog com novo responsável (pessoas do shell) e motivo, aviso quando já chega vencido. Detalhe mostra o histórico de transferências. `transferAgreementRecord`, `agreement.transfer`.
+- Férias: bloco "Férias" no perfil (registrar com antecedência, cancelar com confirmação, últimas três que terminaram); "Férias até DD/MM" no cabeçalho do perfil e na coluna de status de /team; "N de férias" na composição da home. `createVacationRecord`/`cancelVacationRecord`, `member.vacation.*`.
+- Testes: `tests/c4.test.ts` (as três, sobre o seed) e as funções novas nas tabelas de `tests/isolation.test.ts`; `db:verify-teams` conta as tabelas novas.
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:
@@ -529,7 +542,7 @@ As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora
 - Uso de ponta a ponta num iPhone (atalho na tela inicial, login, captura de combinado, leitura do perfil).
 
 **Funcionalidade fora do MVP (decisões registradas em PROGRESS.md)**
-- Daily: excluir uma daily e editar revisões/combinados de daily já salva; mudar prazo ou responsável fora da daily (esconderia o arrasto — exige decisão).
+- Daily: excluir uma daily e editar revisões/combinados de daily já salva; mudar prazo fora da daily (esconderia o arrasto — exige decisão). Responsável: decidido no C4 (transferir).
 - Competências: histórico de níveis (o schema guarda um nível por pessoa × competência).
 - Validação de prioridade: telas de relatório (as queries `summaryBy*` já existem).
 - Busca: resumo e decisões da daily, validações, pontos fortes/de desenvolvimento; anotação ainda abre pela timeline filtrada.

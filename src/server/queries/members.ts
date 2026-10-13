@@ -41,6 +41,8 @@ export interface TeamListRow {
   lastOneOnOne: Date | null
   openAgreements: number
   attention: MemberAttention | null
+  /** Último dia das férias em curso (C4, derivado); null fora de férias. */
+  vacationUntil: Date | null
 }
 
 interface RawRow {
@@ -57,6 +59,7 @@ interface RawRow {
   seniorityOrder: number
   lastOneOnOne: Date | null
   openAgreements: number
+  vacationUntil: Date | null
   overdueAgreements: number
   oldestOverdueDue: Date | null
   dueSoonAgreements: number
@@ -102,6 +105,8 @@ export async function listTeamMembers(
         WHERE o."memberId" = m."id" AND ${teamSql(ctx, "o")} AND o."deletedAt" IS NULL ${visibilitySql(ctx, "o")}) AS "lastOneOnOne",
       (SELECT count(*)::int FROM "Agreement" a
         WHERE a."memberId" = m."id" AND a."teamId" = m."teamId" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')) AS "openAgreements",
+      (SELECT max(v."endDate") FROM "MemberVacation" v
+        WHERE v."memberId" = m."id" AND ${teamSql(ctx, "v")} AND v."startDate" <= ${today} AND v."endDate" >= ${today}) AS "vacationUntil",
       (SELECT count(*)::int FROM "Agreement" a
         WHERE a."memberId" = m."id" AND a."teamId" = m."teamId" AND a."deletedAt" IS NULL AND a."status" IN ('OPEN', 'IN_PROGRESS')
           AND a."dueDate" < ${today}) AS "overdueAgreements",
@@ -152,6 +157,7 @@ export async function listTeamMembers(
               dueSoonAgreements: row.dueSoonAgreements,
               chronicAgreements: row.chronicAgreements,
               oldestPlanReview: row.oldestPlanReview,
+              away: row.status === "ON_LEAVE" || row.vacationUntil !== null,
               adherenceWindows: {
                 current: { due: row.dueCurrent, onTime: row.onTimeCurrent },
                 previous: { due: row.duePrevious, onTime: row.onTimePrevious },
@@ -173,6 +179,7 @@ export async function listTeamMembers(
       seniorityLabel: row.seniorityLabel,
       seniorityOrder: row.seniorityOrder,
       lastOneOnOne: row.lastOneOnOne,
+      vacationUntil: row.vacationUntil,
       openAgreements: row.openAgreements,
       attention,
     }

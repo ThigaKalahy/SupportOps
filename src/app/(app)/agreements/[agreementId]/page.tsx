@@ -77,6 +77,7 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
           />
           <AgreementActions
             open={agreement.open}
+            transfer={{ member: { id: agreement.member.id, preferredName: agreement.member.preferredName }, dueDate: agreement.dueDate }}
             agreement={{
               id: agreement.id,
               title: agreement.title,
@@ -156,6 +157,21 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
             </Section>
           ) : null}
         </div>
+      ) : null}
+
+      {agreement.transfers.length > 0 ? (
+        <Section title={D.transfers} count={agreement.transfers.length}>
+          <ol className="flex flex-col rounded-lg border border-line bg-surface">
+            {agreement.transfers.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-line px-3 py-2.5 last:border-b-0">
+                <DateStamp date={t.at} display="datetime" className="text-ink-secondary" />
+                <span className="text-sm font-medium text-ink">{fill(D.transferLine, { from: t.from, to: t.to })}</span>
+                <span className="min-w-0 flex-1 text-sm text-ink">{t.reason}</span>
+                <span className="text-xs text-ink-secondary">{t.author}</span>
+              </li>
+            ))}
+          </ol>
+        </Section>
       ) : null}
 
       <Section

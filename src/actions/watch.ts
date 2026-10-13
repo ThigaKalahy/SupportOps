@@ -12,6 +12,7 @@ import {
   resolveWatchItemRecord,
   reviewWatchItemRecord,
   setWatchVisibilityRecord,
+  updateWatchItemRecord,
 } from "@/server/watch"
 
 /**
@@ -44,6 +45,11 @@ export async function resolveWatch(input: unknown): Promise<ActionResult> {
 
 export async function archiveWatch(input: unknown): Promise<ActionResult> {
   return runAction("watch", async () => archiveWatchItemRecord(await requireWriteContext(), input), PATHS)
+}
+
+/** Editar título e contexto (C4). */
+export async function updateWatch(input: unknown): Promise<ActionResult> {
+  return runAction("watch", async () => updateWatchItemRecord(await requireWriteContext(), input), PATHS)
 }
 
 export async function setWatchVisibility(input: unknown): Promise<ActionResult> {

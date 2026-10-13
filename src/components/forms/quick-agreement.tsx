@@ -17,7 +17,11 @@ interface OpenOptions {
   origin?: Origin
 }
 
-const QuickAgreementContext = React.createContext<{ open: (options?: OpenOptions) => void } | null>(null)
+const QuickAgreementContext = React.createContext<{
+  open: (options?: OpenOptions) => void
+  /** Pessoas ativas do time — também usadas na transferência de combinado (C4). */
+  members: { id: string; preferredName: string }[]
+} | null>(null)
 
 /** Origem pelo contexto: aberto numa daily é DAILY; no resto, combinado do gestor. */
 function originFor(pathname: string): Origin {
@@ -57,7 +61,10 @@ export function QuickAgreementProvider({
 }) {
   const pathname = usePathname()
   const [options, setOptions] = React.useState<OpenOptions | null>(null)
-  const context = React.useMemo(() => ({ open: (opts: OpenOptions = {}) => setOptions(opts) }), [])
+  const context = React.useMemo(
+    () => ({ open: (opts: OpenOptions = {}) => setOptions(opts), members: members ?? [] }),
+    [members],
+  )
 
   React.useEffect(() => {
     if (!members) return

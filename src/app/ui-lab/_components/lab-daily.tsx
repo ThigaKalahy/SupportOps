@@ -25,8 +25,8 @@ const reasons = [
   { id: "r2", label: "Aguardando cliente" },
 ]
 
-function item(id: string, title: string, dueOffset: number, reschedules: number, fromPreviousDaily = false): ReviewItem {
-  return { id, title, dueDate: day(dueOffset), reschedules, fromPreviousDaily, deadline: deadlineSeverity(day(dueOffset)) }
+function item(id: string, title: string, dueOffset: number, reschedules: number, fromPreviousDaily = false, centralName: string | null = null): ReviewItem {
+  return { id, title, dueDate: day(dueOffset), reschedules, fromPreviousDaily, centralName, deadline: deadlineSeverity(day(dueOffset)) }
 }
 
 const ITEMS: { item: ReviewItem; state: ReviewState; errors?: Record<string, string> }[] = [
@@ -35,7 +35,7 @@ const ITEMS: { item: ReviewItem; state: ReviewState; errors?: Record<string, str
     state: { outcome: null, blockerText: "", blockerReasonId: "", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next },
   },
   {
-    item: item("l2", "Validar com o fornecedor do ERP o retorno da API", -3, 4),
+    item: item("l2", "Validar com o fornecedor do ERP o retorno da API", -3, 4, false, "Central Alfa"),
     state: { outcome: "NOT_DONE", blockerText: "", blockerReasonId: "r1", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next },
     errors: { blockerText: "Descreva o impeditivo." },
   },

@@ -10,6 +10,7 @@ import { describe, test } from "node:test"
 
 import { buildDailyPdf, dailyPdfFilename, type DailyReportInput, type DailyReportWatch } from "../src/lib/daily-report.ts"
 import { textWidth, toWinAnsi } from "../src/lib/pdf.ts"
+import { buildDailyWhatsApp } from "../src/server/whatsapp.ts"
 
 const day = new Date(Date.UTC(2026, 9, 8))
 const daily: DailyReportInput = {
@@ -18,6 +19,7 @@ const daily: DailyReportInput = {
   summary: "Fila estável; foco em fechar as esteiras de capacitação paradas.",
   decisions: null,
   author: "Thiago",
+  teamName: "Treinamento",
   present: [
     { memberId: "p", name: "Pedro", note: "Construtor de BI na Track Land: vai acompanhar a montagem do BI personalizado.", blocker: null },
     { memberId: "c", name: "Clarice", note: null, blocker: "Eventos da Smarttrucks parados: Hardware acionou a Hikvision, sem SLA." },
@@ -86,7 +88,19 @@ describe("PDF da daily", () => {
     assert.ok(text.includes(`(${pages})`) || text.includes(`de ${pages})`))
   })
 
-  test("nome do arquivo em DD-MM-AAAA", () => {
+  test("título com o nome do time da daily, nunca um time fixo", () => {
+    assert.ok(raw.includes("(Treinamento)"))
+    assert.ok(!raw.includes("(Suporte)"))
+  })
+
+  test("nome do arquivo com o time e DD-MM-AAAA", () => {
     assert.equal(dailyPdfFilename(day), "daily-08-10-2026.pdf")
+    assert.equal(dailyPdfFilename(day, "Treinamento"), "daily-treinamento-08-10-2026.pdf")
+    assert.equal(dailyPdfFilename(day, "Implantação Sul"), "daily-implantacao-sul-08-10-2026.pdf")
+  })
+
+  test("WhatsApp: título com o nome do time", () => {
+    const text = buildDailyWhatsApp({ teamName: "Hardware", date: day, reviewed: [], created: [], blockers: [] })
+    assert.equal(text, "*Daily · Hardware — 08/10/2026*")
   })
 })

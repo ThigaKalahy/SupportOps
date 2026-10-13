@@ -8,6 +8,7 @@ import { listActiveCentrals } from "./centrals.ts"
 import { activeWatchByLink } from "./watch.ts"
 import { hasModule, teamScope, type TeamContext } from "../scope.ts"
 import type { WhatsAppDaily } from "../whatsapp.ts"
+import { vacationCovering } from "../../lib/vacations.ts"
 
 /**
  * Leituras de dailies. Daily e combinado não têm visibilidade própria (não são
@@ -16,7 +17,7 @@ import type { WhatsAppDaily } from "../whatsapp.ts"
 
 /** O time da daily é sempre o do contexto (P22): nunca "o primeiro da organização". */
 export async function teamFor(ctx: TeamContext) {
-  return db.team.findFirst({ where: { id: ctx.teamId, isActive: true }, select: { id: true } })
+  return db.team.findFirst({ where: { id: ctx.teamId, isActive: true }, select: { id: true, name: true } })
 }
 
 export interface ReviewItem {
@@ -27,6 +28,8 @@ export interface ReviewItem {
   deadline: DeadlineSeverity
   /** Criado na daily anterior (e não só vencido). */
   fromPreviousDaily: boolean
+  /** Central do combinado (P19), quando preenchida; null também com o módulo desligado (D32). */
+  centralName: string | null
 }
 
 export interface ReviewGroup {
@@ -66,11 +69,13 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
         dueDate: true,
         sourceDailyId: true,
         member: { select: { id: true, preferredName: true } },
+        central: { select: { name: true } },
         _count: { select: { checkins: { where: { newDueDate: { not: null } } } } },
       },
     }),
     db.teamMember.findMany({
-      where: { ...scope, status: { in: ["ACTIVE", "OFFBOARDING"] } },
+      // C4: de férias na data da daily não entra na presença (os combinados dela continuam na revisão).
+      where: { ...scope, status: { in: ["ACTIVE", "OFFBOARDING"] }, vacations: { none: vacationCovering(ctx.teamId, date) } },
       orderBy: { preferredName: "asc" },
       select: { id: true, preferredName: true },
     }),
@@ -99,12 +104,15 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
       reschedules: a._count.checkins,
       deadline: deadlineSeverity(a.dueDate, { today: date }),
       fromPreviousDaily: previous !== null && a.sourceDailyId === previous.id,
+      centralName: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.name ?? null) : null,
     })
     groups.set(a.member.id, group)
   }
 
   return {
     teamId: team.id,
+    /** Nome do time ativo: título do texto do WhatsApp (nunca fixo — multi-time). */
+    teamName: team.name,
     date,
     previousDaily: previous?.date ?? null,
     review: [...groups.values()].sort((a, b) => a.member.preferredName.localeCompare(b.member.preferredName)),
@@ -122,6 +130,7 @@ export type DailyForm = NonNullable<Awaited<ReturnType<typeof getDailyForm>>>
 
 const detailInclude = {
   author: { select: { name: true } },
+  team: { select: { name: true } },
   participants: {
     select: {
       memberId: true,
@@ -181,6 +190,8 @@ export interface DailyDetail {
   summary: string | null
   decisions: string | null
   author: string
+  /** Nome do time da daily: título do PDF e do WhatsApp. */
+  teamName: string
   present: { memberId: string; name: string; note: string | null; blocker: string | null }[]
   absent: { memberId: string; name: string }[]
   reviewed: {
@@ -236,11 +247,13 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
     summary: daily.summary,
     decisions: daily.decisions,
     author: daily.author.name,
+    teamName: daily.team.name,
     present,
     absent,
     reviewed,
     created,
     whatsapp: {
+      teamName: daily.team.name,
       date: daily.date,
       reviewed: reviewed.map((r) => ({
         name: r.name,

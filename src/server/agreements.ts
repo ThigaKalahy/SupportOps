@@ -7,13 +7,14 @@ import {
   completeAgreementSchema,
   createAgreementSchema,
   editAgreementSchema,
+  transferAgreementSchema,
 } from "../lib/validators/agreement.ts"
 
 import { auditOf, writeAudit } from "./audit.ts"
 import { resolveCentralId } from "./centrals.ts"
 import { linkPendingWatchItems } from "./watch.ts"
 import { db } from "./db.ts"
-import { recordTimelineEvents, syncTimelineContent, timelineEventFor } from "./timeline.ts"
+import { moveAgreementEvents, recordTimelineEvents, syncTimelineContent, timelineEventFor } from "./timeline.ts"
 import { requireManager, teamScope, type TeamContext } from "./scope.ts"
 
 /**
@@ -24,6 +25,9 @@ import { requireManager, teamScope, type TeamContext } from "./scope.ts"
  * detalhes e prioridade (e o texto das linhas da timeline); cancelar grava
  * CANCELLED com o motivo no resultado. Reagendamento e substituição acontecem
  * na daily (P10), com AgreementCheckin — prazo nunca muda fora dela.
+ * Transferir (C4) troca o responsável de um combinado em aberto: grava o
+ * AgreementTransfer, leva a linha de criação para o novo dono e escreve uma linha
+ * de transferência para cada pessoa. O prazo não muda.
  */
 
 export async function createAgreementRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
@@ -184,3 +188,64 @@ export async function cancelAgreementRecord(ctx: TeamContext, input: unknown): P
   })
   return { ok: true }
 }
+
+export async function transferAgreementRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  const parsed = transferAgreementSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  }
+  const { id, memberId, reason } = parsed.data
+  const before = await db.agreement.findFirst({
+    where: { id, ...teamScope(ctx) },
+    select: { id: true, status: true, title: true, member: { select: { id: true, preferredName: true } } },
+  })
+  if (!before) return { ok: false, error: labels.validation.generic }
+  if (before.status === "DONE" || before.status === "CANCELLED") {
+    return { ok: false, error: labels.agreements.alreadyClosed }
+  }
+  const T = labels.agreements.transferErrors
+  if (memberId === before.member.id) return { ok: false, error: T.sameMember, fieldErrors: { memberId: T.sameMember } }
+  const to = await db.teamMember.findFirst({
+    where: { id: memberId, ...teamScope(ctx), status: { not: "INACTIVE" } },
+    select: { id: true, preferredName: true },
+  })
+  if (!to) return { ok: false, error: T.memberUnavailable, fieldErrors: { memberId: T.memberUnavailable } }
+
+  await db.$transaction(async (tx) => {
+    const moved = await tx.agreement.updateMany({
+      where: { ...teamScope(ctx), id: before.id, memberId: before.member.id, status: { in: ["OPEN", "IN_PROGRESS"] } },
+      data: { memberId: to.id },
+    })
+    if (moved.count !== 1) throw new Error("Combinado alterado durante a transferência")
+    const transfer = await tx.agreementTransfer.create({
+      data: { ...teamScope(ctx), agreementId: before.id, fromMemberId: before.member.id, toMemberId: to.id, reason, authorUserId: ctx.userId },
+    })
+    await moveAgreementEvents(tx, ctx, before.id, to.id)
+    await recordTimelineEvents(
+      tx,
+      ctx,
+      timelineEventFor.agreementTransfer({
+        agreementId: before.id,
+        title: before.title,
+        from: before.member,
+        to,
+        reason,
+        at: transfer.transferredAt,
+        authorUserId: ctx.userId,
+      }),
+    )
+    await writeAudit(
+      {
+        action: "agreement.transfer",
+        entity: "Agreement",
+        entityId: before.id,
+        before: { memberId: before.member.id },
+        after: { memberId: to.id, reason },
+      },
+      auditOf(ctx, tx),
+    )
+  })
+  return { ok: true }
+}
+

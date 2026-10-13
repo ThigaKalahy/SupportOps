@@ -57,3 +57,10 @@ export const cancelAgreementSchema = z.object({
 })
 
 export type CancelAgreementInput = z.infer<typeof cancelAgreementSchema>
+
+/** Trocar o responsável (C4). O motivo é obrigatório: é o que explica o buraco no cumprimento de quem passou. */
+export const transferAgreementSchema = z.object({
+  id: z.string().min(1),
+  memberId: z.string().min(1, v.required),
+  reason: z.string().trim().min(3, v.tooShort).max(300, v.tooLong),
+})

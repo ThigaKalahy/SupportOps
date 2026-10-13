@@ -17,7 +17,7 @@ const TABLES = [
   "WatchItem", "AlertThreshold", "Agreement", "OneOnOne", "Feedback", "Note", "TimelineEvent", "DevelopmentPlan",
   "MemberChange", "MentorshipLink", "MemberCompetency", "AgreementCheckin", "PriorityValidation", "DevReturn",
   "MemberTrait", "MemberResponsibility", "DailyParticipant", "AgreementParticipant", "WatchReview", "DevelopmentAction",
-  "ScoreComponent", "MetricResult", "ScoreResult", "ScoreResultComponent",
+  "ScoreComponent", "MetricResult", "ScoreResult", "ScoreResultComponent", "AgreementTransfer", "MemberVacation",
 ]
 
 async function main() {

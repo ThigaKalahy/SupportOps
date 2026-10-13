@@ -44,6 +44,8 @@ export interface MemberFacts {
   chronicAgreements: number
   /** Data do acompanhamento mais antigo entre os PDIs ativos (ou início, se nunca acompanhado). */
   oldestPlanReview: Date | null
+  /** Afastado ou de férias hoje (C4): sem cobrança de cadência de 1:1, como na home. */
+  away?: boolean
   /** Combinados devidos e cumpridos no prazo nas duas janelas de 30 dias (tendência). */
   adherenceWindows?: {
     current: { due: number; onTime: number }
@@ -145,7 +147,9 @@ export function memberAttention(facts: MemberFacts, today: Date, t: AlertThresho
     })
   }
 
-  if (facts.lastOneOnOne === null) {
+  if (facts.away) {
+    // Afastado ou de férias: a cadência de 1:1 não corre (o mesmo que a home faz).
+  } else if (facts.lastOneOnOne === null) {
     const days = businessDaysBetween(facts.joinedAt, today)
     if (days > oneOnOneCadence(facts.seniorityKey, days, t).limit) {
       reasons.push({ severity: "attention", strong: true, text: fill(labels.attention.noOneOnOne, { days }) })

@@ -21,6 +21,7 @@ import { avatarColors, initials } from "@/lib/people"
 import type { AgreementRow } from "@/server/queries/agreements"
 
 import { CancelAgreementDialog } from "./cancel-agreement-dialog"
+import { TransferAgreementDialog } from "./transfer-agreement-dialog"
 import { CompleteAgreementDialog } from "./complete-agreement-dialog"
 
 const A = labels.agreements
@@ -75,6 +76,7 @@ export function AgreementsTable({
 }) {
   const [completing, setCompleting] = React.useState<AgreementRow | null>(null)
   const [cancelling, setCancelling] = React.useState<AgreementRow | null>(null)
+  const [transferring, setTransferring] = React.useState<AgreementRow | null>(null)
   const [limit, setLimit] = React.useState(AGREEMENTS_PAGE_SIZE)
   // Outra aba ou outro filtro: volta para a primeira página.
   React.useEffect(() => setLimit(AGREEMENTS_PAGE_SIZE), [rows])
@@ -179,6 +181,7 @@ export function AgreementsTable({
               <DropdownMenuItem asChild>
                 <Link href={`/agreements/${r.id}`}>{A.open}</Link>
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTransferring(r)}>{A.transfer}</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setCancelling(r)} className="text-overdue focus:text-overdue">
                 {A.cancel}
               </DropdownMenuItem>
@@ -214,6 +217,7 @@ export function AgreementsTable({
       ) : null}
       <CompleteAgreementDialog agreement={completing} onOpenChange={(open) => !open && setCompleting(null)} />
       <CancelAgreementDialog agreement={cancelling} onOpenChange={(open) => !open && setCancelling(null)} />
+      <TransferAgreementDialog agreement={transferring} onOpenChange={(open) => !open && setTransferring(null)} />
     </>
   )
 }

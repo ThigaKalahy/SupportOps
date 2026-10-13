@@ -44,6 +44,13 @@ export const resolveWatchSchema = z.object({
   note: z.string().trim().min(3, W.resolveForm.required).max(1000, v.tooLong),
 })
 
+/** Editar o texto de uma observação ativa (C4): título e contexto. Grau, vínculos e visibilidade têm ações próprias. */
+export const editWatchSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().trim().min(1, W.validation.title).max(160, v.tooLong),
+  context: optionalText(1000).default(""),
+})
+
 export const visibilityWatchSchema = z.object({ id: z.string().min(1), visibility: z.enum(["PRIVATE", "SHARED"]) })
 
 /** Observações criadas num formulário ainda não salvo (daily, 1:1, feedback, combinado): ligadas ao salvar. */

@@ -38,6 +38,8 @@ export interface MemberProfile {
   lastOneOnOne: Date | null
   nextFollowUp: NextFollowUp | null
   attention: MemberAttention | null
+  /** Último dia das férias em curso (C4, derivado); null fora de férias. */
+  vacationUntil: Date | null
 }
 
 export async function getMemberProfile(ctx: TeamContext, memberId: string): Promise<MemberProfile | null> {
@@ -98,6 +100,7 @@ export async function getMemberProfile(ctx: TeamContext, memberId: string): Prom
     lastOneOnOne: lastOneOnOne?.date ?? null,
     nextFollowUp: candidates[0] ?? null,
     attention: summaryRows[0]?.attention ?? null,
+    vacationUntil: summaryRows[0]?.vacationUntil ?? null,
   }
 }
 

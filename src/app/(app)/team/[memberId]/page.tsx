@@ -4,6 +4,7 @@ import { AdherenceSummary } from "@/components/adherence/adherence-summary"
 import { SummaryEditor } from "@/components/member/summary-editor"
 import { ProfileDevReturnBlock } from "@/components/dev-returns/profile-dev-return-block"
 import { ProfileValidationBlock } from "@/components/priority-validations/profile-validation-block"
+import { VacationBlock } from "@/components/member/vacation-block"
 import { ProfileWatchBlock } from "@/components/watch/profile-watch-block"
 import { todayBusinessDate } from "@/lib/dates"
 import { DEV_RETURN_PARAMS } from "@/lib/dev-return-filters"
@@ -15,6 +16,7 @@ import { getMemberDevReturnProfile } from "@/server/queries/dev-returns"
 import { memberValidationSummary } from "@/server/queries/priority-validations"
 import { getMemberOverview } from "@/server/queries/profile"
 import { getThresholds } from "@/server/queries/thresholds"
+import { listMemberVacations } from "@/server/queries/vacations"
 import { memberWatchItems } from "@/server/queries/watch"
 
 import {
@@ -42,12 +44,13 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
   // Módulos opcionais desligados no time (D32): o bloco não existe e a query não roda.
   const withValidations = hasModule(ctx, MODULES.PRIORITY_VALIDATION)
   const withDevReturns = hasModule(ctx, MODULES.DEV_RETURNS)
-  const [overview, validations, adherence, thresholds, devReturns] = await Promise.all([
+  const [overview, validations, adherence, thresholds, devReturns, vacations] = await Promise.all([
     getMemberOverview(ctx, profile.id),
     withValidations ? memberValidationSummary(ctx, profile.id, today) : null,
     getMemberAdherenceProfile(ctx, profile.id, today),
     getThresholds(ctx),
     withDevReturns ? getMemberDevReturnProfile(ctx, profile.id, today) : null,
+    listMemberVacations(ctx, profile.id, today),
   ])
   const watching = await memberWatchItems(ctx, profile.id, thresholds)
   const base = `/team/${profile.id}`
@@ -82,6 +85,11 @@ export default async function MemberOverviewPage({ params }: { params: Promise<{
 
       <div className="flex min-w-0 flex-col gap-8 lg:border-l lg:border-line lg:pl-8">
         <OpenAgreements agreements={overview.agreements} href={`${base}/agreements`} thresholds={thresholds} />
+        <VacationBlock
+          member={{ id: profile.id, preferredName: profile.preferredName }}
+          vacations={vacations}
+          canWrite={canWrite(ctx) && profile.status !== "INACTIVE"}
+        />
         <ProfileWatchBlock items={watching} member={{ id: profile.id, preferredName: profile.preferredName }} />
         <AdherenceSummary
           adherence={adherence.adherence}

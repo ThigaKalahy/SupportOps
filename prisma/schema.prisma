@@ -150,6 +150,8 @@ enum TimelineEventType {
   NOTE
   /// Em observação (P21): criação e resolução, só quando há pessoa (D26).
   WATCH
+  /// Combinado transferido entre pessoas (C4): uma linha para quem passou e uma para quem recebeu.
+  AGREEMENT_TRANSFER
 }
 
 // ═══════════════════════ TENANCY E ACESSO ═══════════════════════
@@ -215,6 +217,8 @@ model User {
   teamAccesses        TeamAccess[]         @relation("TeamAccessUser")
   grantedTeamAccesses TeamAccess[]         @relation("TeamAccessGrantedBy")
   teamModuleChanges   TeamModule[]
+  agreementTransfers  AgreementTransfer[]
+  memberVacations     MemberVacation[]
   auditLogs           AuditLog[]
   memberChanges       MemberChange[]
   dailies             Daily[]
@@ -289,6 +293,8 @@ model Team {
   metricResults           MetricResult[]
   scoreResults            ScoreResult[]
   scoreResultComponents   ScoreResultComponent[]
+  agreementTransfers      AgreementTransfer[]
+  memberVacations         MemberVacation[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -453,6 +459,10 @@ model TeamMember {
   timelineEvents         TimelineEvent[]
 
   watchItems WatchItem[]
+
+  transfersOut AgreementTransfer[] @relation("TransferFrom")
+  transfersIn  AgreementTransfer[] @relation("TransferTo")
+  vacations    MemberVacation[]
 
   @@index([teamId, status])
   @@index([seniorityId])
@@ -650,6 +660,7 @@ model Agreement {
 
   participants   AgreementParticipant[]
   checkins       AgreementCheckin[]
+  transfers      AgreementTransfer[]
   timelineEvents TimelineEvent[]
 
   watchItems WatchItem[]
@@ -1455,4 +1466,47 @@ model WatchReview {
   team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@index([teamId, watchItemId, reviewedAt])
+}
+
+/// Troca de responsável de um combinado (C4). O combinado muda de dono e o histórico
+/// fica aqui: quem passou, quem recebeu, por quê e quando. O prazo não muda — o
+/// prazo original é imutável (D17) e o atual só se ajusta na daily (checkin).
+model AgreementTransfer {
+  id            String   @id @default(cuid())
+  teamId        String
+  agreementId   String
+  fromMemberId  String
+  toMemberId    String
+  reason        String
+  transferredAt DateTime @default(now()) @db.Timestamptz
+  authorUserId  String
+
+  agreement  Agreement  @relation(fields: [agreementId], references: [id])
+  fromMember TeamMember @relation("TransferFrom", fields: [fromMemberId], references: [id])
+  toMember   TeamMember @relation("TransferTo", fields: [toMemberId], references: [id])
+  author     User       @relation(fields: [authorUserId], references: [id])
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, agreementId, transferredAt])
+}
+
+/// Férias de uma pessoa (C4), com início e fim. "De férias hoje" é DERIVADO em query
+/// (início <= hoje <= fim), nunca persistido nem trocado por cron (D9): no dia seguinte
+/// ao fim a pessoa volta a ficar disponível sozinha. Pode ser registrada com antecedência.
+model MemberVacation {
+  id              String   @id @default(cuid())
+  teamId          String
+  memberId        String
+  startDate       DateTime @db.Date
+  endDate         DateTime @db.Date
+  note            String?
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  createdByUserId String
+
+  member    TeamMember @relation(fields: [memberId], references: [id])
+  createdBy User       @relation(fields: [createdByUserId], references: [id])
+  team      Team       @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId, startDate])
+  @@index([teamId, endDate])
 }

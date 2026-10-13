@@ -3,13 +3,15 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { ArrowDownIcon, ArrowUpIcon, EllipsisIcon } from "lucide-react"
+import { ArrowDownIcon, ArrowUpIcon, EllipsisIcon, PencilIcon } from "lucide-react"
 
-import { archiveWatch, changeWatchHeat, loadWatchItem, resolveWatch, reviewWatch, setWatchVisibility } from "@/actions/watch"
+import { archiveWatch, changeWatchHeat, loadWatchItem, resolveWatch, reviewWatch, setWatchVisibility, updateWatch } from "@/actions/watch"
 import { Button } from "@/components/ui/button"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { EmptyState } from "@/components/ui/empty-state"
+import { FieldGroup } from "@/components/ui/field-group"
+import { Input } from "@/components/ui/input"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SeverityDot } from "@/components/ui/severity-dot"
@@ -50,8 +52,11 @@ export function WatchList({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  // "Editar" no menu da linha abre o painel já no formulário (C4).
+  const [editOnOpen, setEditOnOpen] = React.useState(false)
 
-  function setOpen(id: string | null) {
+  function setOpen(id: string | null, edit = false) {
+    setEditOnOpen(edit)
     const params = new URLSearchParams(searchParams.toString())
     if (id) params.set(WATCH_PARAMS.open, id)
     else params.delete(WATCH_PARAMS.open)
@@ -65,7 +70,7 @@ export function WatchList({
         <div className="rounded-lg border border-line bg-surface">
           <EmptyState title={empty.title} direction={empty.direction} />
         </div>
-        <WatchDetailSheet id={openId} canWrite={canWrite} onClose={() => setOpen(null)} />
+        <WatchDetailSheet id={openId} canWrite={canWrite} startEditing={editOnOpen} onClose={() => setOpen(null)} />
       </>
     )
   }
@@ -85,12 +90,12 @@ export function WatchList({
           ) : null}
           <ul className="flex flex-col divide-y divide-line rounded-lg border border-line bg-surface">
             {group.rows.map((row) => (
-              <WatchLine key={row.id} row={row} canWrite={canWrite} onOpen={() => setOpen(row.id)} />
+              <WatchLine key={row.id} row={row} canWrite={canWrite} onOpen={() => setOpen(row.id)} onEdit={() => setOpen(row.id, true)} />
             ))}
           </ul>
         </section>
       ))}
-      <WatchDetailSheet id={openId} canWrite={canWrite} onClose={() => setOpen(null)} />
+      <WatchDetailSheet id={openId} canWrite={canWrite} startEditing={editOnOpen} onClose={() => setOpen(null)} />
     </div>
   )
 }
@@ -125,7 +130,7 @@ function WatchLinks({ row }: { row: WatchRow }) {
   )
 }
 
-function WatchLine({ row, canWrite, onOpen }: { row: WatchRow; canWrite: boolean; onOpen: () => void }) {
+function WatchLine({ row, canWrite, onOpen, onEdit }: { row: WatchRow; canWrite: boolean; onOpen: () => void; onEdit: () => void }) {
   const toast = useToast()
   const [pending, startTransition] = React.useTransition()
   const [error, setError] = React.useState<string | null>(null)
@@ -200,6 +205,7 @@ function WatchLine({ row, canWrite, onOpen }: { row: WatchRow; canWrite: boolean
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={onOpen}>{W.actions.open}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={onEdit}>{W.edit.action}</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => run(() => archiveWatch({ id: row.id }), W.archivedToast)}>{W.actions.archive}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -290,12 +296,26 @@ function ResolvePopover({ id }: { id: string }) {
 }
 
 /** Painel da observação: contexto, vínculos, visibilidade e o histórico completo de revisões, em ordem cronológica. */
-function WatchDetailSheet({ id, canWrite, onClose }: { id: string | null; canWrite: boolean; onClose: () => void }) {
+function WatchDetailSheet({
+  id,
+  canWrite,
+  startEditing = false,
+  onClose,
+}: {
+  id: string | null
+  canWrite: boolean
+  /** Abrir já no formulário de edição (menu "Editar" da linha). */
+  startEditing?: boolean
+  onClose: () => void
+}) {
   const D = W.detail
   const [detail, setDetail] = React.useState<WatchDetail | null>(null)
+  const [editing, setEditing] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
+  const editable = canWrite && detail?.status === "ACTIVE"
 
   React.useEffect(() => {
+    setEditing(startEditing)
     if (!id) return setDetail(null)
     let cancelled = false
     void loadWatchItem(id).then((d) => {
@@ -304,7 +324,7 @@ function WatchDetailSheet({ id, canWrite, onClose }: { id: string | null; canWri
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, startEditing])
 
   function toggleVisibility() {
     if (!detail) return
@@ -323,13 +343,36 @@ function WatchDetailSheet({ id, canWrite, onClose }: { id: string | null; canWri
             <SheetHeader className="p-0">
               <SheetTitle className="flex flex-wrap items-center gap-2">
                 <StatusPill severity={HEAT_SEVERITY[detail.heat]} label={W.heat[detail.heat]} />
-                <span>{detail.title}</span>
+                {editable && !editing ? (
+                  // Clicar no título edita (C4): título e contexto, no próprio painel.
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    title={W.edit.titleHint}
+                    className="group inline-flex min-w-0 items-center gap-1.5 rounded-sm text-left hover:underline"
+                  >
+                    <span>{detail.title}</span>
+                    <PencilIcon className="size-3.5 shrink-0 text-ink-tertiary group-hover:text-ink-secondary" aria-hidden />
+                    <span className="sr-only">{W.edit.titleHint}</span>
+                  </button>
+                ) : (
+                  <span>{detail.title}</span>
+                )}
               </SheetTitle>
               <SheetDescription>{fill(D.created, { date: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(detail.createdAt) })} · {detail.createdBy}</SheetDescription>
             </SheetHeader>
             <WatchLinks row={detail} />
             {detail.coldHighDays !== null ? <p className="text-sm text-overdue">{fill(W.coldHigh, { days: detail.coldHighDays })}</p> : null}
-            {detail.context ? (
+            {editing && editable ? (
+              <WatchEditForm
+                detail={detail}
+                onCancel={() => setEditing(false)}
+                onSaved={(title, context) => {
+                  setDetail({ ...detail, title, context })
+                  setEditing(false)
+                }}
+              />
+            ) : detail.context ? (
               <div className="flex flex-col gap-1">
                 <MetaLabel>{D.context}</MetaLabel>
                 <p className="text-sm whitespace-pre-line text-ink">{detail.context}</p>
@@ -380,5 +423,73 @@ function WatchDetailSheet({ id, canWrite, onClose }: { id: string | null; canWri
         ) : null}
       </SheetContent>
     </Sheet>
+  )
+}
+
+/** Formulário de edição da observação (C4): título e contexto. Ctrl/⌘+Enter salva, Esc cancela. */
+function WatchEditForm({
+  detail,
+  onCancel,
+  onSaved,
+}: {
+  detail: WatchDetail
+  onCancel: () => void
+  onSaved: (title: string, context: string | null) => void
+}) {
+  const E = W.edit
+  const toast = useToast()
+  const [title, setTitle] = React.useState(detail.title)
+  const [context, setContext] = React.useState(detail.context ?? "")
+  const [errors, setErrors] = React.useState<Record<string, string>>({})
+  const [error, setError] = React.useState<string | null>(null)
+  const [pending, startTransition] = React.useTransition()
+
+  function submit(event?: React.FormEvent) {
+    event?.preventDefault()
+    setError(null)
+    startTransition(async () => {
+      const result = await updateWatch({ id: detail.id, title, context })
+      if (!result.ok) {
+        setErrors(result.fieldErrors ?? {})
+        return setError(result.error)
+      }
+      toast.show(E.saved, { tone: "calm" })
+      onSaved(title.trim(), context.trim() || null)
+    })
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit(event)
+        if (event.key === "Escape") {
+          event.stopPropagation()
+          onCancel()
+        }
+      }}
+      className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3"
+      noValidate
+    >
+      <FieldGroup label={E.titleField} required error={errors.title}>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={160} autoFocus />
+      </FieldGroup>
+      <FieldGroup label={E.contextField} optional error={errors.context}>
+        <Textarea value={context} onChange={(e) => setContext(e.target.value)} rows={4} maxLength={1000} />
+      </FieldGroup>
+      {error ? (
+        <p role="alert" className="text-sm text-overdue">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={onCancel} disabled={pending}>
+          {labels.common.cancel}
+        </Button>
+        <Button type="submit" size="sm" loading={pending}>
+          {labels.common.save}
+        </Button>
+      </div>
+    </form>
   )
 }

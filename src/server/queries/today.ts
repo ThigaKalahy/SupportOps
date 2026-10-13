@@ -5,6 +5,7 @@ import { isDue, isOnTime, makeRate, monthStart, type Rate } from "../../lib/adhe
 import { db } from "../db.ts"
 import { teamScope, type TeamContext } from "../scope.ts"
 import { visibilityFilter } from "../visibility.ts"
+import { vacationCovering } from "../../lib/vacations.ts"
 
 /**
  * Coluna lateral da home: composição do time, ritmo de gestão do mês,
@@ -39,6 +40,8 @@ export interface TodayPanel {
   composition: { seniorityKey: string; label: string; count: number }[]
   total: number
   onLeave: number
+  /** De férias hoje (C4, derivado). */
+  onVacation: number
   rhythm: {
     lastDaily: Date | null
     oneOnOnes: number
@@ -77,7 +80,10 @@ export async function getTodayPanel(ctx: TeamContext, today: Date): Promise<Toda
     actions,
     recent,
   ] = await Promise.all([
-    db.teamMember.findMany({ where: { ...scope, ...people }, select: { status: true, seniorityId: true } }),
+    db.teamMember.findMany({
+      where: { ...scope, ...people },
+      select: { status: true, seniorityId: true, vacations: { where: vacationCovering(ctx.teamId, today), select: { id: true }, take: 1 } },
+    }),
     db.seniority.findMany({ where: scope, orderBy: { order: "desc" } }),
     db.daily.findFirst({ where: scope, orderBy: { date: "desc" }, select: { date: true } }),
     db.oneOnOne.count({ where: { ...scope, member: people, ...visibilityFilter(ctx), date: { gte: month, lte: today } } }),
@@ -165,7 +171,8 @@ export async function getTodayPanel(ctx: TeamContext, today: Date): Promise<Toda
       .map((s) => ({ seniorityKey: s.key, label: s.label, count: bySeniority.get(s.id) ?? 0 }))
       .filter((s) => s.count > 0),
     total: members.length,
-    onLeave: members.filter((m) => m.status === "ON_LEAVE").length,
+    onLeave: members.filter((m) => m.status === "ON_LEAVE" && m.vacations.length === 0).length,
+    onVacation: members.filter((m) => m.vacations.length > 0).length,
     rhythm: {
       lastDaily: lastDaily?.date ?? null,
       oneOnOnes,

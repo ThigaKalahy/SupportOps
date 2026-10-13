@@ -11,6 +11,7 @@ import { hasModule, teamScope, type TeamContext } from "../scope.ts"
 import { visibilityFilter } from "../visibility.ts"
 
 import { getReadinessRows, type ReadinessRow } from "./development.ts"
+import { vacationCovering } from "../../lib/vacations.ts"
 
 /**
  * Fatos do motor de alertas (src/server/alerts.ts), lidos de uma vez para o
@@ -131,6 +132,8 @@ export async function getAlertFacts(ctx: TeamContext, today: Date, t: AlertThres
           status: true,
           joinedAt: true,
           seniority: { select: { key: true, label: true } },
+          // C4: férias cobrindo hoje → tratado como afastado (derivado, D9).
+          vacations: { where: vacationCovering(ctx.teamId, today), select: { id: true }, take: 1 },
         },
       }),
       db.oneOnOne.groupBy({ by: ["memberId"], where: { ...scope, member: people, ...visibilityFilter(ctx) }, _max: { date: true } }),
@@ -229,7 +232,7 @@ export async function getAlertFacts(ctx: TeamContext, today: Date, t: AlertThres
       id: m.id,
       preferredName: m.preferredName,
       fullName: m.fullName,
-      status: m.status,
+      status: m.vacations.length > 0 ? ("ON_LEAVE" as const) : m.status,
       joinedAt: m.joinedAt,
       seniorityKey: m.seniority.key,
       seniorityLabel: m.seniority.label,

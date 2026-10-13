@@ -7,6 +7,7 @@ import {
   cancelAgreementRecord,
   completeAgreementRecord,
   createAgreementRecord,
+  transferAgreementRecord,
   updateAgreementRecord,
 } from "@/server/agreements"
 
@@ -47,5 +48,15 @@ export async function cancelAgreement(input: unknown): Promise<ActionResult> {
     "/agreements",
     `/agreements/${id}`,
     ["/team", "layout"],
+  ])
+}
+
+/** Trocar o responsável (C4): mexe nas duas pessoas — o shell inteiro revalida. */
+export async function transferAgreement(input: unknown): Promise<ActionResult> {
+  const id = memberIdOf(input, "id")
+  return runAction("agreements", async () => transferAgreementRecord(await requireWriteContext(), input), [
+    "/agreements",
+    `/agreements/${id}`,
+    ["/", "layout"],
   ])
 }

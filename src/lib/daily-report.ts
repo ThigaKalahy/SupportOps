@@ -4,6 +4,7 @@ import { formatDate, formatDateTime, formatDayMonth } from "./dates.ts"
 import { enumLabel, fill, labels, plural } from "./labels.ts"
 import { PdfDocument, type PdfRun } from "./pdf.ts"
 import { WATCH_HEATS } from "./watch.ts"
+import { centralSlug } from "./centrals.ts"
 
 /**
  * PDF da daily, no modelo que o time de treinamento já usa (uma seção por
@@ -29,6 +30,8 @@ export interface DailyReportInput {
   summary: string | null
   decisions: string | null
   author: string
+  /** Nome do time da daily (multi-time): entra no título e no nome do arquivo. */
+  teamName: string
   present: { memberId: string; name: string; note: string | null; blocker: string | null }[]
   absent: { memberId: string; name: string }[]
   reviewed: {
@@ -71,13 +74,15 @@ function clip(text: string, max: number): string {
 }
 
 /** Nome do arquivo em DD-MM-AAAA (padrão brasileiro também no nome). */
-export function dailyPdfFilename(date: Date): string {
-  return `daily-${formatDate(date, "business").replaceAll("/", "-")}.pdf`
+/** daily-<time>-DD-MM-AAAA.pdf — o time no nome, para arquivos de times diferentes não se confundirem. */
+export function dailyPdfFilename(date: Date, teamName?: string): string {
+  const team = teamName ? `${centralSlug(teamName)}-` : ""
+  return `daily-${team}${formatDate(date, "business").replaceAll("/", "-")}.pdf`
 }
 
 export function buildDailyPdf(daily: DailyReportInput, watch: DailyReportWatch[], generatedAt = new Date()): Uint8Array {
   const date = formatDate(daily.date, "business")
-  const doc = new PdfDocument(fill(P.title, { date }))
+  const doc = new PdfDocument(fill(P.title, { team: daily.teamName, date }))
 
   // Observações que já aparecem nesta daily: por combinado e pela nota da pessoa.
   const agreementIds = new Set([...daily.reviewed.map((r) => r.agreementId), ...daily.created.map((c) => c.id)])
@@ -91,7 +96,7 @@ export function buildDailyPdf(daily: DailyReportInput, watch: DailyReportWatch[]
     item ? [{ text: ` · ${fill(P.watching, { heat: labels.watch.heat[item.heat].toLowerCase() })}`, font: "italic", gray: 0.35 }] : []
 
   // Cabeçalho
-  doc.paragraph([{ text: fill(P.title, { date }), font: "bold" }], { size: 18, after: 4 })
+  doc.paragraph([{ text: fill(P.title, { team: daily.teamName, date }), font: "bold" }], { size: 18, after: 4 })
   const meta = [fill(P.author, { name: daily.author }), plural(P.present, daily.present.length)]
   if (daily.absent.length) meta.push(fill(P.absent, { names: daily.absent.map((a) => a.name).join(", ") }))
   doc.paragraph([{ text: meta.join(" · "), gray: 0.4 }], { size: 9 })

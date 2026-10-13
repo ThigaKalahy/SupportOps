@@ -36,7 +36,7 @@ import { parseTimelineFilters } from "../src/lib/timeline-filters.ts"
 import { parseValidationFilters } from "../src/lib/validation-filters.ts"
 import { parseWatchFilters } from "../src/lib/watch-filters.ts"
 import { getAlerts } from "../src/server/alerts.ts"
-import { createAgreementRecord, completeAgreementRecord, cancelAgreementRecord, updateAgreementRecord } from "../src/server/agreements.ts"
+import { createAgreementRecord, completeAgreementRecord, cancelAgreementRecord, transferAgreementRecord, updateAgreementRecord } from "../src/server/agreements.ts"
 import { ensureCentralRecord, importCentralsRecord } from "../src/server/centrals.ts"
 import { createDailyRecord, updateDailyRecord } from "../src/server/dailies.ts"
 import { db, dbIncludingDeleted } from "../src/server/db.ts"
@@ -80,6 +80,7 @@ import * as thresholds from "../src/server/queries/thresholds.ts"
 import * as timeline from "../src/server/queries/timeline.ts"
 import * as today from "../src/server/queries/today.ts"
 import * as teamsQ from "../src/server/queries/teams.ts"
+import * as vacations from "../src/server/queries/vacations.ts"
 import * as watch from "../src/server/queries/watch.ts"
 import {
   createFeedbackRecord,
@@ -117,7 +118,9 @@ import {
   resolveWatchItemRecord,
   reviewWatchItemRecord,
   setWatchVisibilityRecord,
+  updateWatchItemRecord,
 } from "../src/server/watch.ts"
+import { cancelVacationRecord, createVacationRecord } from "../src/server/vacations.ts"
 
 const SRC = join(import.meta.dirname, "..", "src")
 
@@ -151,6 +154,8 @@ const SCOPED_MODELS = [
   "developmentPlan", "memberChange", "mentorshipLink", "memberCompetency", "agreementCheckin", "priorityValidation",
   "devReturn", "memberTrait", "memberResponsibility", "dailyParticipant", "agreementParticipant", "watchReview",
   "developmentAction", "scoreComponent", "metricResult", "scoreResult", "scoreResultComponent",
+  // C4
+  "agreementTransfer", "memberVacation",
 ]
 const GUARDED_METHODS = ["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "update", "updateMany", "delete", "deleteMany"]
 const CALL = new RegExp(`\\b(?:db|tx|dbIncludingDeleted)\\.(${SCOPED_MODELS.join("|")})\\.(${GUARDED_METHODS.join("|")})\\(`, "g")
@@ -369,6 +374,8 @@ async function cleanup() {
   const d = dbIncludingDeleted
   const inTeams = { teamId: { in: TEAMS } }
   await d.timelineEvent.deleteMany({ where: inTeams })
+  await d.agreementTransfer.deleteMany({ where: inTeams })
+  await d.memberVacation.deleteMany({ where: inTeams })
   await d.watchReview.deleteMany({ where: inTeams })
   await d.watchItem.deleteMany({ where: inTeams })
   await d.devReturn.deleteMany({ where: inTeams })
@@ -645,6 +652,8 @@ const QUERIES: Record<string, Invoke> = {
   },
   watchFilterOptions: (c) => watch.watchFilterOptions(c),
   activeWatchForReport: async (c) => watch.activeWatchForReport(c, await thresholds.getThresholds(c)),
+  // vacations.ts (C4) — inclusive pedindo a pessoa do outro time.
+  listMemberVacations: async (c, own, other) => [...(await vacations.listMemberVacations(c, own.member)), ...(await vacations.listMemberVacations(c, other.member))],
 }
 
 /** Exportações de src/server/queries que NÃO leem dado de time (puras). Cada uma com o motivo. */
@@ -667,6 +676,10 @@ const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unk
   completeAgreementRecord: (c, o) => completeAgreementRecord(c, { id: o.agreement, outcome: "" }),
   updateAgreementRecord: (c, o) => updateAgreementRecord(c, { id: o.agreement, title: "x" }),
   cancelAgreementRecord: (c, o) => cancelAgreementRecord(c, { id: o.agreement, reason: "x" }),
+  transferAgreementRecord: (c, o) => transferAgreementRecord(c, { id: o.agreement, memberId: o.member, reason: "férias" }),
+  updateWatchItemRecord: (c, o) => updateWatchItemRecord(c, { id: o.watch, title: "x" }),
+  createVacationRecord: (c, o) => createVacationRecord(c, { memberId: o.member, startDate: "01/01/2030", endDate: "05/01/2030" }),
+  cancelVacationRecord: (c) => cancelVacationRecord(c, { id: "qualquer" }),
   ensureCentralRecord: (c) => ensureCentralRecord(c, { name: "x" }),
   importCentralsRecord: (c) => importCentralsRecord(c, { text: "x" }),
   createDailyRecord: (c) => createDailyRecord(c, {}),

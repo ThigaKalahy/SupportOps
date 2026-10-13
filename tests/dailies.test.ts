@@ -205,11 +205,11 @@ describe("registro de daily", () => {
     await assert.rejects(createDailyRecord(viewerOnly, { ...base(), reviews: [] }), { name: "ForbiddenError" })
   })
 
-  test("parcial sem impeditivo e reagendamento para a própria data são recusados, sem gravar nada", async () => {
+  test("parcial sem impeditivo e reagendamento para antes da daily são recusados, sem gravar nada", async () => {
     const before = await db.daily.count()
     const result = await createDailyRecord(ownerViewer, {
       ...base(),
-      reviews: [review(rescheduleId, { outcome: "PARTIAL", newDueDate: display(0) })],
+      reviews: [review(rescheduleId, { outcome: "PARTIAL", newDueDate: display(-1) })],
     })
     assert.ok(!result.ok)
     assert.ok(result.fieldErrors?.["reviews.0.blockerText"])
@@ -225,7 +225,7 @@ describe("registro de daily", () => {
       summary: "Fila sob controle",
       reviews: [
         review(doneId),
-        review(rescheduleId, { outcome: "PARTIAL", blockerText: "Aguardando o fornecedor", blockerReasonId: reason.id, newDueDate: display(3) }),
+        review(rescheduleId, { outcome: "PARTIAL", blockerText: "Aguardando o fornecedor", blockerReasonId: reason.id, newDueDate: display(0) }),
         review(replaceId, {
           outcome: "NOT_DONE",
           blockerText: "Escopo mudou",
@@ -245,7 +245,8 @@ describe("registro de daily", () => {
 
     const moved = await db.agreement.findUniqueOrThrow({ where: { id: rescheduleId } })
     assert.equal(moved.status, "OPEN", "reagendar não muda status (D12)")
-    assert.equal(formatDate(moved.dueDate, "business"), display(3))
+    // Reagendar para o próprio dia da daily é o padrão da tela (D28) e é aceito.
+    assert.equal(formatDate(moved.dueDate, "business"), display(0))
     assert.equal(moved.originalDueDate.getTime(), originalDue.getTime(), "prazo original intacto (D17)")
 
     const old = await db.agreement.findUniqueOrThrow({ where: { id: replaceId } })

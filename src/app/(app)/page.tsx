@@ -70,6 +70,7 @@ export default async function TodayPage() {
               segments={panel.composition.map((c) => ({ id: c.seniorityKey, label: c.label, value: c.count }))}
             />
             {panel.onLeave > 0 ? <p className="text-xs text-ink-secondary">{plural(T.onLeave, panel.onLeave)}</p> : null}
+            {panel.onVacation > 0 ? <p className="text-xs text-ink-secondary">{plural(labels.vacations.onVacation, panel.onVacation)}</p> : null}
           </Section>
 
           <Section title={T.rhythm}>

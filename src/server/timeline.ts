@@ -40,7 +40,7 @@ import { fill, labels, plural } from "../lib/labels.ts"
 type Tx = {
   timelineEvent: {
     createMany(args: { data: Prisma.TimelineEventCreateManyInput[] }): Promise<unknown>
-    updateMany(args: { where: Prisma.TimelineEventWhereInput; data: Prisma.TimelineEventUpdateManyMutationInput }): Promise<unknown>
+    updateMany(args: { where: Prisma.TimelineEventWhereInput; data: Prisma.TimelineEventUncheckedUpdateManyInput }): Promise<unknown>
     deleteMany(args: { where: Prisma.TimelineEventWhereInput }): Promise<unknown>
   }
 }
@@ -110,6 +110,18 @@ function toRow(scope: TimelineScope, input: TimelineEventInput): Prisma.Timeline
 export async function recordTimelineEvents(tx: Tx, scope: TimelineScope, inputs: TimelineEventInput[]): Promise<void> {
   if (inputs.length === 0) return
   await tx.timelineEvent.createMany({ data: inputs.map((input) => toRow(scope, input)) })
+}
+
+/**
+ * Transferência de combinado (C4): a linha de criação (AGREEMENT) acompanha o dono
+ * atual — senão a sangria de prazo dele apareceria na timeline de quem não responde
+ * mais. As linhas de transferência ficam com cada pessoa.
+ */
+export async function moveAgreementEvents(tx: Tx, scope: TimelineScope, agreementId: string, memberId: string): Promise<void> {
+  await tx.timelineEvent.updateMany({
+    where: { teamId: scope.teamId, agreementId, type: { in: ["AGREEMENT", "AGREEMENT_DONE"] } },
+    data: { memberId },
+  })
 }
 
 /** Propaga a visibilidade do registro de origem para todas as linhas dele. */
@@ -309,6 +321,32 @@ export const timelineEventFor = {
       tags: [a.origin.toLowerCase()],
       source: { kind: "agreement", id: a.id },
     }
+  },
+
+  /** Transferência (C4): uma linha para quem passou e uma para quem recebeu, com o motivo. */
+  agreementTransfer(t: {
+    agreementId: string
+    title: string
+    from: { id: string; preferredName: string }
+    to: { id: string; preferredName: string }
+    reason: string
+    at: Date
+    authorUserId: string
+  }): TimelineEventInput[] {
+    const T = labels.agreements.timelineTransfer
+    const base = {
+      occurredAt: t.at,
+      type: "AGREEMENT_TRANSFER" as const,
+      summary: t.reason,
+      authorUserId: t.authorUserId,
+      visibility: "SHARED" as const,
+      tags: ["transfer"],
+      source: { kind: "agreement" as const, id: t.agreementId },
+    }
+    return [
+      { ...base, memberId: t.from.id, title: fill(T.out, { name: t.to.preferredName, title: t.title }) },
+      { ...base, memberId: t.to.id, title: fill(T.in, { name: t.from.preferredName, title: t.title }) },
+    ]
   },
 
   /** Só para combinado com completedAt (data de negócio da conclusão). */

@@ -6,6 +6,7 @@ import { CheckIcon, EllipsisIcon, PencilIcon } from "lucide-react"
 import { CancelAgreementDialog } from "@/components/agreements/cancel-agreement-dialog"
 import { CompleteAgreementDialog } from "@/components/agreements/complete-agreement-dialog"
 import { EditAgreementDialog } from "@/components/agreements/edit-agreement-dialog"
+import { TransferAgreementDialog, type TransferTarget } from "@/components/agreements/transfer-agreement-dialog"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { labels } from "@/lib/labels"
@@ -15,10 +16,19 @@ const A = labels.agreements
 
 /**
  * Ações do detalhe de um combinado. Aberto: concluir é a ação primária;
- * editar e cancelar ficam no menu. Encerrado: só editar o texto.
+ * editar, transferir e cancelar ficam no menu. Encerrado: só editar o texto.
  */
-export function AgreementActions({ agreement, open }: { agreement: EditAgreementInput; open: boolean }) {
-  const [dialog, setDialog] = React.useState<"complete" | "edit" | "cancel" | null>(null)
+export function AgreementActions({
+  agreement,
+  open,
+  transfer,
+}: {
+  agreement: EditAgreementInput
+  open: boolean
+  /** Dono e prazo atuais, para transferir (C4). */
+  transfer: Omit<TransferTarget, "id" | "title">
+}) {
+  const [dialog, setDialog] = React.useState<"complete" | "edit" | "cancel" | "transfer" | null>(null)
   const target = { id: agreement.id, title: agreement.title }
   const close = (next: boolean) => !next && setDialog(null)
 
@@ -34,6 +44,7 @@ export function AgreementActions({ agreement, open }: { agreement: EditAgreement
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setDialog("edit")}>{A.edit}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setDialog("transfer")}>{A.transfer}</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setDialog("cancel")} className="text-overdue focus:text-overdue">
                 {A.cancel}
               </DropdownMenuItem>
@@ -52,6 +63,7 @@ export function AgreementActions({ agreement, open }: { agreement: EditAgreement
       )}
       <CompleteAgreementDialog agreement={dialog === "complete" ? target : null} onOpenChange={close} />
       <CancelAgreementDialog agreement={dialog === "cancel" ? target : null} onOpenChange={close} />
+      <TransferAgreementDialog agreement={dialog === "transfer" ? { ...target, ...transfer } : null} onOpenChange={close} />
       <EditAgreementDialog agreement={agreement} open={dialog === "edit"} onOpenChange={close} />
     </>
   )
