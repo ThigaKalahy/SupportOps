@@ -31,8 +31,11 @@ import { CopyWhatsAppButton } from "./copy-whatsapp-button"
 import { ReviewRow, type ReviewState } from "./review-row"
 
 const L = labels.dailies
-const DRAFT_KEY = "prontuario.daily-draft"
-const DRAFT_EVERY_MS = 10_000
+/** Rascunho por time (multi-time). A chave antiga, única, ainda é lida uma vez para não perder o que já estava salvo. */
+const LEGACY_DRAFT_KEY = "prontuario.daily-draft"
+const draftKey = (teamId: string) => `${LEGACY_DRAFT_KEY}:${teamId}`
+/** Grava pouco depois de cada alteração (antes: a cada 10 s, e os últimos segundos se perdiam). */
+const DRAFT_DEBOUNCE_MS = 600
 
 interface ParticipantState {
   present: boolean
@@ -110,9 +113,9 @@ function restore(base: FormState, draft: Draft): FormState {
   }
 }
 
-function readDraft(date: string): Draft | null {
+function readDraft(teamId: string, date: string): Draft | null {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY)
+    const raw = localStorage.getItem(draftKey(teamId)) ?? localStorage.getItem(LEGACY_DRAFT_KEY)
     if (!raw) return null
     const draft = JSON.parse(raw) as Draft
     return draft.version === 1 && draft.date === date ? draft : null
@@ -121,17 +124,18 @@ function readDraft(date: string): Draft | null {
   }
 }
 
-function writeDraft(draft: Draft) {
+function writeDraft(teamId: string, draft: Draft) {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    localStorage.setItem(draftKey(teamId), JSON.stringify(draft))
   } catch {
     // armazenamento indisponível (janela privada, cota): o formulário segue sem rascunho
   }
 }
 
-function clearDraft() {
+function clearDraft(teamId: string) {
   try {
-    localStorage.removeItem(DRAFT_KEY)
+    localStorage.removeItem(draftKey(teamId))
+    localStorage.removeItem(LEGACY_DRAFT_KEY)
   } catch {
     // idem
   }
@@ -142,7 +146,9 @@ function clearDraft() {
  * e notas, combinados de hoje — mais resumo e decisões recolhidos. Pensado
  * para teclado: foco começa no primeiro combinado, F/P/N decidem, Tab anda
  * pessoa a pessoa, Enter acrescenta combinado, Ctrl/⌘+Enter salva tudo.
- * Rascunho no localStorage a cada 10 segundos (só neste navegador).
+ * Rascunho no localStorage pouco depois de cada alteração e no instante de salvar
+ * (só neste navegador, por time). Se a chamada ao servidor falhar — rede, ou um
+ * deploy no meio do preenchimento —, o formulário avisa e nada se perde.
  */
 export function DailyForm({ form }: { form: DailyFormData }) {
   const router = useRouter()
@@ -179,7 +185,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
 
   // Restaura o rascunho depois de montar (localStorage não existe no servidor).
   React.useEffect(() => {
-    const draft = readDraft(dateText)
+    const draft = readDraft(form.teamId, dateText)
     if (draft) {
       setState(restore(initialState(form, dateText), draft))
       setRestoredAt(formatTime(new Date(draft.savedAt)))
@@ -190,12 +196,20 @@ export function DailyForm({ form }: { form: DailyFormData }) {
     else noteRefs.current[form.members[0]?.id ?? ""]?.focus()
   }, [dateText, form])
 
+  const persistDraft = React.useCallback(
+    () => writeDraft(form.teamId, { ...stateRef.current, version: 1, date: dateText, savedAt: new Date().toISOString() }),
+    [form.teamId, dateText],
+  )
+  // A cada alteração (com um respiro curto para não gravar a cada tecla).
+  const touched = React.useRef(false)
   React.useEffect(() => {
-    const timer = setInterval(() => {
-      writeDraft({ ...stateRef.current, version: 1, date: dateText, savedAt: new Date().toISOString() })
-    }, DRAFT_EVERY_MS)
-    return () => clearInterval(timer)
-  }, [dateText])
+    if (!touched.current) {
+      touched.current = true
+      return
+    }
+    const timer = setTimeout(persistDraft, DRAFT_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [state, persistDraft])
 
   const patchReview = (id: string, patch: Partial<ReviewState>) =>
     setState((s) => ({ ...s, reviews: { ...s.reviews, [id]: { ...s.reviews[id]!, ...patch } } }))
@@ -277,10 +291,18 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       return
     }
     setErrors({})
+    persistDraft()
     startTransition(async () => {
-      const result = await createDaily(parsed.data)
+      let result: Awaited<ReturnType<typeof createDaily>>
+      try {
+        result = await createDaily(parsed.data)
+      } catch {
+        // Rede ou deploy no meio do caminho: a página não cai, o rascunho já está gravado.
+        setFormError(L.saveFailed)
+        return
+      }
       if (result.ok) {
-        clearDraft()
+        clearDraft(form.teamId)
         router.push(`/dailies/${result.id}`)
         return
       }
@@ -350,7 +372,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             variant="ghost"
             size="sm"
             onClick={() => {
-              clearDraft()
+              clearDraft(form.teamId)
               setState(initialState(form, dateText))
               setRestoredAt(null)
             }}

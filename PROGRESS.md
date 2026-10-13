@@ -30,7 +30,8 @@
 | P24 Provisionamento de time   | concluída — Treinamento e Hardware criados em produção | cf0bdb4 | 09/10/2026 |
 | C3 Revisão da daily (central e reagendar no dia) | concluída — suíte com banco não rodou (branch de teste expirou) | | 13/10/2026 |
 | C4 Editar observação, transferir combinado, férias | código pronto — migration e testes com banco aguardam banco de teste | | 13/10/2026 |
-| C5 Revisão de observação com atualização | código pronto — sem commit | | 13/10/2026 |
+| C5 Revisão de observação com atualização | publicada | c0f8d85 | 13/10/2026 |
+| C6 Daily resistente a falha de salvamento | publicada | | 13/10/2026 |
 
 ## Notas de handoff
 
@@ -449,4 +450,10 @@
 
 - "Revisado hoje" abre um campo de texto (na lista de /watch e no botão de observação das outras telas); a atualização é obrigatória (zod no cliente e no servidor, 3 a 1000 caracteres) e aparece no histórico do painel. Esfriar/esquentar continua sem texto.
 - Verificado: typecheck, lint, build, `tests/watch.test.ts` (sem banco), estruturais de isolamento. Testes com banco não rodaram (sem banco de teste).
+
+### C6 — Daily resistente a falha de salvamento (13/10/2026)
+
+- Causa provável do erro do Jeff (13/10, nenhuma daily gravada no Treinamento): página aberta antes de um deploy (15:20 e 16:27) — o Next 15 troca os ids das Server Actions a cada build e a chamada antiga falha no transporte, sem tratamento, derrubando a página ("Application error").
+- Correção: rascunho gravado ~0,6 s depois de cada alteração e no instante de salvar (antes: a cada 10 s), com chave por time (a chave antiga ainda é lida para recuperar o que já estava salvo); falha na chamada vira mensagem no formulário ("recarregue; o que você preencheu está guardado"); `src/app/(app)/error.tsx` substitui o "Application error" do navegador em qualquer tela.
+- Não verificado no navegador. Outras telas (dialogs de 1:1, feedback) não guardam rascunho: numa falha igual, mostram a tela de erro do app, mas o texto digitado se perde.
 

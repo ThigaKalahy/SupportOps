@@ -133,6 +133,14 @@ export const labels = {
       overlap: "Já existem férias registradas que se sobrepõem a este período.",
     },
   },
+  /** Tela de erro do app (no lugar do "Application error" do navegador). */
+  appError: {
+    title: "Algo deu errado nesta tela",
+    direction:
+      "O sistema pode ter sido atualizado enquanto a página estava aberta. Recarregue para continuar — rascunhos de daily ficam guardados neste navegador.",
+    reload: "Recarregar a página",
+    home: "Ir para Hoje",
+  },
   /** Times: seleção, troca e o indicador do time ativo (P23). */
   teams: {
     selectTitle: "Escolher time",
@@ -1036,6 +1044,9 @@ export const labels = {
       discard: "Descartar rascunho",
       saved: "Rascunho salvo às {time}",
     },
+    /** A chamada ao servidor falhou (rede ou deploy no meio do preenchimento): nada se perde. */
+    saveFailed:
+      "Não foi possível falar com o servidor — o sistema pode ter sido atualizado agora. Recarregue a página: o que você preencheu está guardado neste navegador e volta sozinho.",
     validation: {
       blockerRequired: "Descreva o impeditivo.",
       notBeforeDaily: "O prazo não pode ser antes da daily.",
