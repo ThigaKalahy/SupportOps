@@ -54,6 +54,8 @@ export const editWatchSchema = z.object({
   id: z.string().min(1),
   title: z.string().trim().min(1, W.validation.title).max(160, v.tooLong),
   context: optionalText(1000).default(""),
+  /** Central/cliente (C7): ausente = não mexe; "" = tira; id = troca. */
+  centralId: z.string().max(40).optional(),
 })
 
 export const visibilityWatchSchema = z.object({ id: z.string().min(1), visibility: z.enum(["PRIVATE", "SHARED"]) })

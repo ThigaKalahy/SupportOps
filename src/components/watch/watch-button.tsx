@@ -5,7 +5,9 @@ import Link from "next/link"
 import { FlameIcon } from "lucide-react"
 
 import { createWatch, reviewWatch } from "@/actions/watch"
+import { useQuickAgreement } from "@/components/forms/quick-agreement"
 import { Button } from "@/components/ui/button"
+import { CentralCombobox } from "@/components/ui/CentralCombobox"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StatusPill } from "@/components/ui/status-pill"
@@ -85,6 +87,10 @@ export function WatchButton({
   const [title, setTitle] = React.useState(defaults.title)
   const [context, setContext] = React.useState(defaults.context ?? "")
   const [heat, setHeat] = React.useState<WatchHeat>(defaults.heat ?? "MEDIUM")
+  // C7: cliente (central). Sem escolher, o servidor herda a central do registro de origem.
+  const centrals = useQuickAgreement()?.centrals ?? null
+  const [centralId, setCentralId] = React.useState(link.centralId ?? "")
+  const [extraCentrals, setExtraCentrals] = React.useState<{ id: string; name: string }[]>([])
   const [error, setError] = React.useState<string | null>(null)
   // C5: a atualização é obrigatória para revisar.
   const [reviewNote, setReviewNote] = React.useState("")
@@ -119,12 +125,13 @@ export function WatchButton({
     }
     setError(null)
     startTransition(async () => {
-      const result = await createAction({ title, heat, context, origin, ...link })
+      const result = await createAction({ title, heat, context, origin, ...link, ...(centralId ? { centralId } : {}) })
       if (!result.ok) return setError(result.error)
       if (repeatable) {
         setTitle(defaults.title)
         setContext(defaults.context ?? "")
         setHeat(defaults.heat ?? "MEDIUM")
+        setCentralId(link.centralId ?? "")
       } else setExisting({ id: result.id, heat })
       onCreated?.(result.id, heat)
       setOpen(false)
@@ -253,6 +260,18 @@ export function WatchButton({
                   ))}
                 </div>
               </fieldset>
+              {centrals ? (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-ink">{W.central}</span>
+                  <CentralCombobox
+                    aria-label={W.central}
+                    options={[...centrals, ...extraCentrals]}
+                    value={centralId || null}
+                    onValueChange={(id) => setCentralId(id ?? "")}
+                    onCreate={(option) => setExtraCentrals((list) => [...list, option])}
+                  />
+                </div>
+              ) : null}
               <label className="flex flex-col gap-1.5 text-sm font-medium text-ink">
                 {B.context}
                 <Input value={context} maxLength={1000} autoComplete="off" placeholder={B.contextPlaceholder} onChange={(e) => setContext(e.target.value)} />

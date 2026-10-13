@@ -41,6 +41,8 @@ function row(id: string, title: string, heat: WatchHeat, reviewedDaysAgo: number
     resolvedAt: null,
     resolutionNote: null,
     updatedAt: daysAgo(reviewedDaysAgo),
+    agreementCount: 0,
+    openAgreementCount: 0,
     ...patch,
   }
   const now = new Date()
@@ -51,6 +53,8 @@ const ROWS: WatchRow[] = [
   row("w1", "Diego travado na integração fiscal do cliente Nbusiness", "HIGH", 6, 35, {
     link: { kind: "agreement", label: "Validar retorno da API do ERP", href: "/agreements" },
     origin: "AGREEMENT",
+    agreementCount: 5,
+    openAgreementCount: 3,
   }),
   row("w2", "Escalonamentos da Central Alfa voltando sem diagnóstico", "HIGH", 1, 3, { member: null, central: { id: "c1", name: "Central Alfa" }, origin: "MANUAL" }),
   row("w3", "Larissa insegura com chamados de hardware", "MEDIUM", 9, 9, { member: { id: "m1", preferredName: "Larissa" }, reviewCount: 0 }),

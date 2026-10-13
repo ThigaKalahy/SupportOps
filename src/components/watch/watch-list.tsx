@@ -6,7 +6,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { ArrowDownIcon, ArrowUpIcon, EllipsisIcon, PencilIcon } from "lucide-react"
 
 import { archiveWatch, changeWatchHeat, loadWatchItem, resolveWatch, reviewWatch, setWatchVisibility, updateWatch } from "@/actions/watch"
+import { DueCell } from "@/components/agreements/agreements-table"
+import { useQuickAgreement } from "@/components/forms/quick-agreement"
 import { Button } from "@/components/ui/button"
+import { CentralCombobox } from "@/components/ui/CentralCombobox"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -170,6 +173,11 @@ function WatchLine({ row, canWrite, onOpen, onEdit }: { row: WatchRow; canWrite:
             {daysText(row.review.daysSinceReview)}
           </span>
           <span className="font-mono">{row.reviewCount === 0 ? W.review.none : plural(W.review.count, row.reviewCount)}</span>
+          {row.agreementCount > 0 ? (
+            <span className="font-mono" title={plural(W.agreements.open, row.openAgreementCount)}>
+              {plural(W.agreements.count, row.agreementCount)}
+            </span>
+          ) : null}
         </div>
         {canWrite && active ? (
           <div className="flex shrink-0 items-center gap-1">
@@ -335,9 +343,15 @@ function WatchDetailSheet({
   const [editing, setEditing] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
   const editable = canWrite && detail?.status === "ACTIVE"
+  const quick = useQuickAgreement()
+  const router = useRouter()
+  const [version, setVersion] = React.useState(0)
 
   React.useEffect(() => {
     setEditing(startEditing)
+  }, [id, startEditing])
+
+  React.useEffect(() => {
     if (!id) return setDetail(null)
     let cancelled = false
     void loadWatchItem(id).then((d) => {
@@ -346,7 +360,21 @@ function WatchDetailSheet({
     return () => {
       cancelled = true
     }
-  }, [id, startEditing])
+  }, [id, version])
+
+  // C7: combinado novo já ligado à observação, com a pessoa e o cliente dela sugeridos (trocáveis).
+  function newAgreement() {
+    if (!detail || !quick) return
+    quick.open({
+      watchItem: { id: detail.id, title: detail.title },
+      defaultMemberId: detail.member?.id,
+      defaultCentralId: detail.central?.id,
+      onSaved: () => {
+        setVersion((v) => v + 1)
+        router.refresh()
+      },
+    })
+  }
 
   function toggleVisibility() {
     if (!detail) return
@@ -389,8 +417,8 @@ function WatchDetailSheet({
               <WatchEditForm
                 detail={detail}
                 onCancel={() => setEditing(false)}
-                onSaved={(title, context) => {
-                  setDetail({ ...detail, title, context })
+                onSaved={(title, context, central) => {
+                  setDetail({ ...detail, title, context, central })
                   setEditing(false)
                 }}
               />
@@ -406,6 +434,36 @@ function WatchDetailSheet({
                 <p className="text-sm whitespace-pre-line text-ink">{detail.resolutionNote}</p>
               </div>
             ) : null}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <MetaLabel>{plural(W.agreements.count, detail.agreements.length)}</MetaLabel>
+                {editable && quick ? (
+                  <Button size="sm" variant="secondary" onClick={newAgreement}>
+                    {W.agreements.new}
+                  </Button>
+                ) : null}
+              </div>
+              {detail.agreements.length === 0 ? (
+                <p className="text-sm text-ink-secondary">{W.agreements.empty}</p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
+                  {detail.agreements.map((a) => (
+                    <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                      <Link href={`/agreements/${a.id}`} className="min-w-0 flex-[1_1_12rem] text-ink hover:underline">
+                        {a.title}
+                      </Link>
+                      <span className="text-xs text-ink-secondary">{a.member}</span>
+                      {a.open ? (
+                        <DueCell row={{ dueDate: a.dueDate, open: true, deadline: a.deadline }} />
+                      ) : (
+                        <StatusPill severity={a.status === "DONE" ? "calm" : "neutral"} label={enumLabel("agreementStatus", a.status)} />
+                      )}
+                      {a.origin ? <MetaLabel>{W.agreements.origin}</MetaLabel> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div className="flex flex-col gap-2">
               <MetaLabel>{D.history}</MetaLabel>
               {detail.reviews.length === 0 ? (
@@ -456,12 +514,20 @@ function WatchEditForm({
 }: {
   detail: WatchDetail
   onCancel: () => void
-  onSaved: (title: string, context: string | null) => void
+  onSaved: (title: string, context: string | null, central: WatchDetail["central"]) => void
 }) {
   const E = W.edit
   const toast = useToast()
+  const centrals = useQuickAgreement()?.centrals ?? null
   const [title, setTitle] = React.useState(detail.title)
   const [context, setContext] = React.useState(detail.context ?? "")
+  const [centralId, setCentralId] = React.useState(detail.central?.id ?? "")
+  const [extraCentrals, setExtraCentrals] = React.useState<{ id: string; name: string }[]>([])
+  const options = React.useMemo(() => {
+    const all = [...(centrals ?? []), ...extraCentrals]
+    if (detail.central && !all.some((c) => c.id === detail.central!.id)) all.push(detail.central)
+    return all
+  }, [centrals, extraCentrals, detail.central])
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
@@ -470,13 +536,14 @@ function WatchEditForm({
     event?.preventDefault()
     setError(null)
     startTransition(async () => {
-      const result = await updateWatch({ id: detail.id, title, context })
+      const result = await updateWatch({ id: detail.id, title, context, ...(centrals ? { centralId } : {}) })
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {})
         return setError(result.error)
       }
       toast.show(E.saved, { tone: "calm" })
-      onSaved(title.trim(), context.trim() || null)
+      const central = centrals ? (options.find((c) => c.id === centralId) ?? null) : detail.central
+      onSaved(title.trim(), context.trim() || null, central)
     })
   }
 
@@ -496,6 +563,19 @@ function WatchEditForm({
       <FieldGroup label={E.titleField} required error={errors.title}>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={160} autoFocus />
       </FieldGroup>
+      {centrals ? (
+        <FieldGroup label={W.central} optional error={errors.centralId}>
+          {(control) => (
+            <CentralCombobox
+              {...control}
+              options={options}
+              value={centralId || null}
+              onValueChange={(id) => setCentralId(id ?? "")}
+              onCreate={(option) => setExtraCentrals((list) => [...list, option])}
+            />
+          )}
+        </FieldGroup>
+      ) : null}
       <FieldGroup label={E.contextField} optional error={errors.context}>
         <Textarea value={context} onChange={(e) => setContext(e.target.value)} rows={4} maxLength={1000} />
       </FieldGroup>

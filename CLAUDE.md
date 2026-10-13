@@ -203,6 +203,7 @@ A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, i
 - `DevReturn.priorityValidationId` é preenchido automaticamente por `ticketRef` quando existe validação para o mesmo chamado; nulo é normal.
 - `DevReturn.reasonId` é obrigatório no zod e NOT NULL no banco.
 - `WatchItem` tem todos os vínculos opcionais; só `title` e `heat` são obrigatórios.
+- Cliente da observação é a `Central` (C7, decisão do usuário em 13/10/2026): `WatchItem.centralId`, escolhido na criação/edição ou herdado do combinado de origem. Uma observação pode ter vários combinados (`Agreement.watchItemId`, C7); `WatchItem.agreementId` continua sendo só o de origem.
 - Estado de revisão e "fogo alto frio" são DERIVADOS em query a partir de `lastReviewedAt`, `heatChangedAt` e das cadências de Settings. Nunca persistidos (D9).
 - `WatchReview` registra cada revisão, com grau antes e depois. Revisão não escreve em `TimelineEvent`.
 - "Revisado hoje" exige a atualização em texto (C5, decisão do usuário em 13/10/2026): a nota de cada revisão é o histórico da evolução do tema, lido no painel da observação. Mudar o grau (esfriar/esquentar) continua sem texto.

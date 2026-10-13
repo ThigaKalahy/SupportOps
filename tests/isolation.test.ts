@@ -825,6 +825,8 @@ describe("banco: dois times isolados (T1, T2) — critério de aceite do P22", a
       await deleteRecordRecord(m1, { kind: "feedback", id: t2.feedbackShared }),
       await resolveDevReturnRecord(m1, { id: t2.devReturn, resolvedAt: "01/01/2026", resolutionNote: "" }),
       await deleteValidationRecord(m1, { id: t2.validation }),
+      // C7: combinado do próprio time ligado a observação do outro.
+      await createAgreementRecord(m1, { memberId: t1.member, title: "invasão por observação", dueDate: "01/01/2030", priority: "NORMAL", origin: "MANAGER", watchItemId: t2.watch }),
     ]
     assert.ok(results.every((r) => !(r as { ok: boolean }).ok), "toda escrita cruzada é recusada")
     const after = await dbIncludingDeleted.agreement.findUniqueOrThrow({ where: { id: t2.agreement } })

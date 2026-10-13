@@ -43,7 +43,18 @@ export function AgreementDialog({
   members = [],
   centrals = [],
   origin = "MANAGER",
+  watchItem,
+  defaultMemberId,
+  defaultCentralId,
+  onSaved,
 }: {
+  /** Observação que o combinado trata (C7): o combinado nasce ligado a ela. */
+  watchItem?: { id: string; title: string }
+  /** Sugestões trocáveis (C7: abrir da observação sugere a pessoa e a central dela). */
+  defaultMemberId?: string
+  defaultCentralId?: string
+  /** Depois de gravar (C7: o painel da observação recarrega a lista). */
+  onSaved?: () => void
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Responsável fixo (perfil). Sem ele, o dialog oferece `members`. */
@@ -56,16 +67,17 @@ export function AgreementDialog({
 }) {
   const defaults = React.useCallback(
     (): CreateAgreementInput => ({
-      memberId: member?.id ?? "",
+      memberId: member?.id ?? defaultMemberId ?? "",
       title: "",
       // Prazo nasce HOJE (D28); calculado a cada abertura, não na montagem.
       dueDate: formatDate(todayBusinessDate(), "business"),
       description: "",
       priority: "NORMAL",
       origin,
-      centralId: "",
+      centralId: defaultCentralId ?? "",
+      watchItemId: watchItem?.id ?? "",
     }),
-    [member?.id, origin],
+    [member?.id, origin, defaultMemberId, defaultCentralId, watchItem?.id],
   )
   const form = useForm<CreateAgreementInput>({ resolver: zodResolver(createAgreementSchema), defaultValues: defaults() })
   const [showDetails, setShowDetails] = React.useState(false)
@@ -92,6 +104,7 @@ export function AgreementDialog({
     startTransition(async () => {
       const result = await createAgreement({ ...values, watchIds })
       if (result.ok) {
+        onSaved?.()
         if (!keepOpen) return onOpenChange(false)
         form.reset(defaults())
         setSavedNotice(true)
@@ -129,6 +142,7 @@ export function AgreementDialog({
           <DialogTitle>{L.title}</DialogTitle>
           <DialogDescription>
             {member ? fill(L.description, { name: member.preferredName }) : L.descriptionGeneral}
+            {watchItem ? <span className="block">{fill(labels.watch.agreements.linked, { title: watchItem.title })}</span> : null}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} onKeyDown={onKeyDown} className="flex flex-col gap-4" noValidate>

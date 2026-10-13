@@ -13,6 +13,7 @@ import {
 import { auditOf, writeAudit } from "./audit.ts"
 import { resolveCentralId } from "./centrals.ts"
 import { linkPendingWatchItems } from "./watch.ts"
+import { findWatchForWrite } from "./queries/watch.ts"
 import { db } from "./db.ts"
 import { moveAgreementEvents, recordTimelineEvents, syncTimelineContent, timelineEventFor } from "./timeline.ts"
 import { requireManager, teamScope, type TeamContext } from "./scope.ts"
@@ -43,6 +44,9 @@ export async function createAgreementRecord(ctx: TeamContext, input: unknown): P
   if (!due) return { ok: false, error: labels.validation.date, fieldErrors: { dueDate: labels.validation.date } }
   const centralId = await resolveCentralId(ctx, data.centralId)
   if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
+  // C7: a observação precisa ser do time (e legível por quem escreve) e estar ativa.
+  const watch = data.watchItemId ? await findWatchForWrite(ctx, data.watchItemId) : null
+  if (data.watchItemId && (!watch || watch.status !== "ACTIVE")) return { ok: false, error: labels.watch.agreements.notActive }
 
   await db.$transaction(async (tx) => {
     const created = await tx.agreement.create({
@@ -50,6 +54,7 @@ export async function createAgreementRecord(ctx: TeamContext, input: unknown): P
         ...teamScope(ctx),
         memberId: member.id,
         centralId,
+        watchItemId: watch?.id ?? null,
         title: data.title,
         description: textOrNull(data.description),
         origin: data.origin,
@@ -61,7 +66,7 @@ export async function createAgreementRecord(ctx: TeamContext, input: unknown): P
     })
     await recordTimelineEvents(tx, ctx, [timelineEventFor.agreementCreated(created)])
     // P21: observação marcada no dialog antes de salvar passa a apontar para o combinado.
-    await linkPendingWatchItems(tx, ctx, pendingWatchIdsOf(input), { agreementId: created.id })
+    await linkPendingWatchItems(tx, ctx, pendingWatchIdsOf(input), { agreementId: created.id }, { centralId: created.centralId })
     await writeAudit(
       {
         action: "agreement.create",
@@ -74,6 +79,7 @@ export async function createAgreementRecord(ctx: TeamContext, input: unknown): P
           priority: created.priority,
           dueDate: data.dueDate,
           centralId,
+          watchItemId: watch?.id ?? null,
         },
       },
       auditOf(ctx, tx),

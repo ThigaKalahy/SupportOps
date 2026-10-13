@@ -1347,6 +1347,18 @@ export const labels = {
   /** P21 — Em observação (D24–D27). */
   watch: {
     title: "Em observação",
+    /** Combinados que tratam a observação (C7). */
+    agreements: {
+      title: "Combinados",
+      new: "Novo combinado",
+      empty: "Nenhum combinado ligado a esta observação.",
+      count: { one: "1 combinado", other: "{count} combinados" },
+      open: { one: "1 aberto", other: "{count} abertos" },
+      origin: "origem",
+      linked: "Ligado à observação: {title}",
+      notActive: "A observação não está ativa: não dá para ligar combinado novo a ela.",
+    },
+    central: "Cliente (central)",
     /** Editar título e contexto (C4). */
     edit: {
       action: "Editar",

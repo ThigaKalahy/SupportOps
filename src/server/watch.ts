@@ -14,6 +14,7 @@ import {
 import { cooler, hotter } from "../lib/watch.ts"
 
 import { auditOf, writeAudit } from "./audit.ts"
+import { resolveCentralId } from "./centrals.ts"
 import { db } from "./db.ts"
 import { recordTimelineEvents, syncTimelineContent, syncTimelineVisibility, timelineEventFor } from "./timeline.ts"
 import { findActiveWatchForLink, findWatchForWrite, resolveWatchLinks, WATCH_LINKS } from "./queries/watch.ts"
@@ -204,8 +205,11 @@ export async function updateWatchItemRecord(ctx: TeamContext, input: unknown): P
   if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.watch.edit.notActive }
   const title = parsed.data.title
   const context = textOrNull(parsed.data.context)
+  // C7: central (cliente) — ausente não mexe; vazio tira; id precisa ser do time, ativa, com o módulo ligado.
+  const centralId = parsed.data.centralId === undefined ? item.centralId : await resolveCentralId(ctx, parsed.data.centralId)
+  if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
   await db.$transaction(async (tx) => {
-    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { title, context } })
+    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { title, context, centralId } })
     if (item.memberId) {
       // O grau do título da timeline é o de quando a observação nasceu.
       const first = await tx.watchReview.findFirst({
@@ -223,7 +227,7 @@ export async function updateWatchItemRecord(ctx: TeamContext, input: unknown): P
       })
       await syncTimelineContent(tx, ctx, { kind: "watchItem", id: item.id }, { title: createdRow.title, summary: context }, "WATCH")
     }
-    await audit(ctx, "update", item.id, { title: item.title, context: item.context }, { title, context }, tx)
+    await audit(ctx, "update", item.id, { title: item.title, context: item.context, centralId: item.centralId }, { title, context, centralId }, tx)
   })
   return { ok: true }
 }
@@ -238,6 +242,8 @@ export async function linkPendingWatchItems(
   ctx: Pick<TeamContext, "teamId">,
   ids: string[],
   link: Partial<Record<(typeof LINKS)[number], string>>,
+  /** C7: a central do registro (cliente) entra na observação que ainda não tem uma. */
+  inherit: { centralId?: string | null } = {},
 ): Promise<void> {
   if (ids.length === 0) return
   const [key, value] = Object.entries(link)[0] ?? []
@@ -246,4 +252,10 @@ export async function linkPendingWatchItems(
     where: { ...teamScope(ctx), id: { in: ids }, [key]: null },
     data: { [key]: value },
   })
+  if (inherit.centralId) {
+    await tx.watchItem.updateMany({
+      where: { ...teamScope(ctx), id: { in: ids }, centralId: null },
+      data: { centralId: inherit.centralId },
+    })
+  }
 }

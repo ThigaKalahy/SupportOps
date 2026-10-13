@@ -640,6 +640,8 @@ model Agreement {
   replacesAgreementId String?                  @unique
   /// Central de atendimento do combinado (P19). Opcional: registros anteriores ficam sem (D23).
   centralId           String?
+  /// Observação que este combinado trata (C7): uma observação pode ter vários combinados.
+  watchItemId         String?
   authorUserId        String
   updatedAt           DateTime                 @updatedAt @db.Timestamptz
   deletedAt           DateTime?                @db.Timestamptz
@@ -663,7 +665,8 @@ model Agreement {
   transfers      AgreementTransfer[]
   timelineEvents TimelineEvent[]
 
-  watchItems WatchItem[]
+  watchItems WatchItem[] @relation("WatchOrigin")
+  watchItem  WatchItem?  @relation("WatchAgreements", fields: [watchItemId], references: [id], onDelete: SetNull)
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
@@ -671,6 +674,7 @@ model Agreement {
   @@index([teamId, status, dueDate])
   @@index([sourceDailyId])
   @@index([centralId, createdAt])
+  @@index([teamId, watchItemId])
   @@index([searchVector], type: Gin, map: "Agreement_searchVector_idx")
 }
 
@@ -1430,7 +1434,7 @@ model WatchItem {
   createdBy          User                @relation(fields: [createdByUserId], references: [id])
   member             TeamMember?         @relation(fields: [memberId], references: [id])
   central            Central?            @relation(fields: [centralId], references: [id], onDelete: SetNull)
-  agreement          Agreement?          @relation(fields: [agreementId], references: [id], onDelete: SetNull)
+  agreement          Agreement?          @relation("WatchOrigin", fields: [agreementId], references: [id], onDelete: SetNull)
   daily              Daily?              @relation(fields: [dailyId], references: [id], onDelete: SetNull)
   priorityValidation PriorityValidation? @relation(fields: [priorityValidationId], references: [id], onDelete: SetNull)
   devReturn          DevReturn?          @relation(fields: [devReturnId], references: [id], onDelete: SetNull)
@@ -1438,6 +1442,8 @@ model WatchItem {
   feedback           Feedback?           @relation(fields: [feedbackId], references: [id], onDelete: SetNull)
 
   reviews        WatchReview[]
+  /// Combinados que tratam esta observação (C7). `agreementId` continua sendo o de origem.
+  agreements     Agreement[]     @relation("WatchAgreements")
   timelineEvents TimelineEvent[]
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)

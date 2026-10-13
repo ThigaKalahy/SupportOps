@@ -15,12 +15,19 @@ interface OpenOptions {
   member?: RecordTarget
   /** Sobrepõe a origem deduzida da página. */
   origin?: Origin
+  /** C7: aberto de uma observação — o combinado nasce ligado a ela, com pessoa e central sugeridas (trocáveis). */
+  watchItem?: { id: string; title: string }
+  defaultMemberId?: string
+  defaultCentralId?: string
+  onSaved?: () => void
 }
 
 const QuickAgreementContext = React.createContext<{
   open: (options?: OpenOptions) => void
   /** Pessoas ativas do time — também usadas na transferência de combinado (C4). */
   members: { id: string; preferredName: string }[]
+  /** Centrais ativas; null com o módulo desligado (D32). Também usadas na observação (C7). */
+  centrals: { id: string; name: string }[] | null
 } | null>(null)
 
 /** Origem pelo contexto: aberto numa daily é DAILY; no resto, combinado do gestor. */
@@ -62,8 +69,8 @@ export function QuickAgreementProvider({
   const pathname = usePathname()
   const [options, setOptions] = React.useState<OpenOptions | null>(null)
   const context = React.useMemo(
-    () => ({ open: (opts: OpenOptions = {}) => setOptions(opts), members: members ?? [] }),
-    [members],
+    () => ({ open: (opts: OpenOptions = {}) => setOptions(opts), members: members ?? [], centrals }),
+    [members, centrals],
   )
 
   React.useEffect(() => {
@@ -89,6 +96,10 @@ export function QuickAgreementProvider({
         members={members}
         centrals={centrals}
         origin={options?.origin ?? originFor(pathname)}
+        watchItem={options?.watchItem}
+        defaultMemberId={options?.defaultMemberId}
+        defaultCentralId={options?.defaultCentralId}
+        onSaved={options?.onSaved}
       />
     </QuickAgreementContext>
   )

@@ -1,9 +1,11 @@
-import type { Prisma, WatchHeat, WatchOrigin, WatchStatus, Visibility } from "@prisma/client"
+import type { AgreementStatus, Prisma, WatchHeat, WatchOrigin, WatchStatus, Visibility } from "@prisma/client"
 
 import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
 import type { DailyReportWatch } from "../../lib/daily-report.ts"
 import { MODULES } from "../../lib/modules.ts"
 import type { WatchFilters, WatchTab } from "../../lib/watch-filters.ts"
+import { todayBusinessDate } from "../../lib/dates.ts"
+import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { coldHighDays, compareWatch, reviewState, type ReviewState } from "../../lib/watch.ts"
 import { db } from "../db.ts"
 import { hasModule, teamScope, type TeamContext } from "../scope.ts"
@@ -107,6 +109,9 @@ export interface WatchRow {
   review: ReviewState
   /** Dias em fogo alto sem mudar de grau, quando passou do limiar. */
   coldHighDays: number | null
+  /** Combinados que tratam a observação (C7), contando o de origem; e quantos estão abertos. */
+  agreementCount: number
+  openAgreementCount: number
 }
 
 const rowSelect = {
@@ -132,6 +137,8 @@ const rowSelect = {
   devReturn: { select: { id: true, ticketRef: true, deletedAt: true } },
   oneOnOne: { select: { id: true, date: true, memberId: true, visibility: true, deletedAt: true } },
   feedback: { select: { id: true, date: true, memberId: true, visibility: true, deletedAt: true } },
+  // C7: combinados ligados (o de origem vem em `agreement`).
+  agreements: { where: { deletedAt: null }, select: { id: true, status: true } },
 } satisfies Prisma.WatchItemSelect
 
 type RawRow = Prisma.WatchItemGetPayload<{ select: typeof rowSelect }>
@@ -181,7 +188,15 @@ function toRow(r: RawRow, ctx: TeamContext, now: Date, t: AlertThresholds): Watc
     link: linkOf(r, ctx),
     review: reviewState(r, now, t),
     coldHighDays: coldHighDays(r, now, t),
+    ...agreementCounts(r),
   }
+}
+
+/** Combinados da observação: os ligados mais o de origem (sem contar duas vezes). */
+function agreementCounts(r: RawRow): { agreementCount: number; openAgreementCount: number } {
+  const linked = r.agreements.filter((a) => a.id !== r.agreement?.id)
+  const open = linked.filter((a) => a.status === "OPEN" || a.status === "IN_PROGRESS").length
+  return { agreementCount: linked.length + (r.agreement ? 1 : 0), openAgreementCount: open }
 }
 
 function filterWhere(filters: Pick<WatchFilters, "heat" | "memberId" | "central" | "origin">): Prisma.WatchItemWhereInput {
@@ -223,9 +238,23 @@ export async function listWatchItems(ctx: TeamContext, filters: WatchFilters, t:
   return { rows: list, counts }
 }
 
+export interface WatchAgreement {
+  id: string
+  title: string
+  status: AgreementStatus
+  dueDate: Date
+  member: string
+  open: boolean
+  deadline: DeadlineSeverity
+  /** O combinado de onde a observação nasceu. */
+  origin: boolean
+}
+
 export interface WatchDetail extends WatchRow {
   createdBy: string
   reviews: { id: string; reviewedAt: Date; note: string | null; heatBefore: WatchHeat; heatAfter: WatchHeat; author: string }[]
+  /** C7: combinados que tratam a observação — abertos primeiro, por prazo. */
+  agreements: WatchAgreement[]
 }
 
 /** Uma observação com o histórico completo de revisões, em ordem cronológica. */
@@ -243,10 +272,32 @@ export async function getWatchItem(ctx: TeamContext, id: string, t: AlertThresho
   })
   if (!r) return null
   const { createdBy, reviews, ...raw } = r
+  const originId = raw.agreement?.id ?? null
+  const today = todayBusinessDate()
+  const rows = await db.agreement.findMany({
+    where: { ...teamScope(ctx), deletedAt: null, OR: [{ watchItemId: id }, ...(originId ? [{ id: originId }] : [])] },
+    select: { id: true, title: true, status: true, dueDate: true, member: { select: { preferredName: true } } },
+  })
+  const agreements = rows
+    .map((a) => {
+      const open = a.status === "OPEN" || a.status === "IN_PROGRESS"
+      return {
+        id: a.id,
+        title: a.title,
+        status: a.status,
+        dueDate: a.dueDate,
+        member: a.member.preferredName,
+        open,
+        deadline: open ? deadlineSeverity(a.dueDate, { today }) : deadlineSeverity(a.dueDate, { today, resolved: true }),
+        origin: a.id === originId,
+      }
+    })
+    .sort((a, b) => Number(b.open) - Number(a.open) || a.dueDate.getTime() - b.dueDate.getTime())
   return {
     ...toRow(raw, ctx, now, t),
     createdBy: createdBy.name,
     reviews: reviews.map(({ author, ...rv }) => ({ ...rv, author: author.name })),
+    agreements,
   }
 }
 

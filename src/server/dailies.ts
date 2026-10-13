@@ -198,7 +198,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
           })
           timeline.push(timelineEventFor.agreementCreated(created))
           // P21: observação marcada na linha antes de salvar passa a apontar para o combinado.
-          await linkPendingWatchItems(tx, ctx, row.watchIds, { agreementId: created.id })
+          await linkPendingWatchItems(tx, ctx, row.watchIds, { agreementId: created.id }, { centralId: created.centralId })
         }
         // P21: observações marcadas nas notas e nas linhas desta daily passam a apontar para ela.
         await linkPendingWatchItems(

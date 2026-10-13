@@ -32,6 +32,7 @@
 | C4 Editar observação, transferir combinado, férias | código pronto — migration e testes com banco aguardam banco de teste | | 13/10/2026 |
 | C5 Revisão de observação com atualização | publicada | c0f8d85 | 13/10/2026 |
 | C6 Daily resistente a falha de salvamento | publicada | | 13/10/2026 |
+| C7 Cliente e vários combinados por observação | código pronto — migration aditiva, testes com banco não rodaram | | 13/10/2026 |
 
 ## Notas de handoff
 
@@ -456,4 +457,10 @@
 - Causa provável do erro do Jeff (13/10, nenhuma daily gravada no Treinamento): página aberta antes de um deploy (15:20 e 16:27) — o Next 15 troca os ids das Server Actions a cada build e a chamada antiga falha no transporte, sem tratamento, derrubando a página ("Application error").
 - Correção: rascunho gravado ~0,6 s depois de cada alteração e no instante de salvar (antes: a cada 10 s), com chave por time (a chave antiga ainda é lida para recuperar o que já estava salvo); falha na chamada vira mensagem no formulário ("recarregue; o que você preencheu está guardado"); `src/app/(app)/error.tsx` substitui o "Application error" do navegador em qualquer tela.
 - Não verificado no navegador. Outras telas (dialogs de 1:1, feedback) não guardam rascunho: numa falha igual, mostram a tela de erro do app, mas o texto digitado se perde.
+
+### C7 — Cliente e vários combinados por observação (branch `fase/c7-watch-client-agreements`)
+
+- Cliente = Central (decisão do usuário). Campo "Cliente (central)" ao criar a observação (ícone em todas as telas e "Nova observação") e ao editar; sem escolher, herda a central do combinado de origem (também quando o combinado é salvo depois — `linkPendingWatchItems`). Filtro por central em /watch já existia.
+- Vários combinados: migration aditiva `20261013180000_watch_agreements` (`Agreement.watchItemId`, nula, FK SET NULL). Painel da observação lista os combinados (abertos primeiro, por prazo, com pessoa, prazo/status e a marca "origem") e "Novo combinado" abre a criação rápida já ligada, com pessoa e cliente sugeridos e trocáveis. A linha de /watch mostra "N combinados". Observação resolvida/arquivada não recebe combinado novo.
+- Testes: `tests/c7.test.ts` e um caso novo na suíte de isolamento (ligar a observação de outro time é recusado) — escritos, não rodados (sem banco de teste). Typecheck, lint, build, estruturais e testes puros passam. Nada visto no navegador (em especial: o dialog de combinado abrindo por cima do painel lateral).
 
