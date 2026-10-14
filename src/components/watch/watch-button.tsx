@@ -87,7 +87,7 @@ export function WatchButton({
   const [title, setTitle] = React.useState(defaults.title)
   const [context, setContext] = React.useState(defaults.context ?? "")
   const [heat, setHeat] = React.useState<WatchHeat>(defaults.heat ?? "MEDIUM")
-  // C7: cliente (central). Sem escolher, o servidor herda a central do registro de origem.
+  // C7: cliente (central), pré-preenchido com a do registro de origem (combinado, validação...).
   const centrals = useQuickAgreement()?.centrals ?? null
   const [centralId, setCentralId] = React.useState(link.centralId ?? "")
   const [extraCentrals, setExtraCentrals] = React.useState<{ id: string; name: string }[]>([])
@@ -110,6 +110,12 @@ export function WatchButton({
     setTitle(defaults.title)
     setContext(defaults.context ?? "")
   }, [defaults.title, defaults.context, open])
+
+  // A central escolhida no formulário de origem (ex.: dialog de combinado) acompanha até abrir.
+  React.useEffect(() => {
+    if (open) return
+    setCentralId(link.centralId ?? "")
+  }, [link.centralId, open])
 
   React.useEffect(() => {
     if (!confirmed) return

@@ -153,7 +153,7 @@ export function DevReturnsTable({
           <WatchButton
             origin="DEV_RETURN"
             defaults={{ title: fill(labels.watch.links.devReturn, { ref: r.ticketRef }), context: r.reason.label, heat: "MEDIUM" }}
-            link={{ devReturnId: r.id }}
+            link={{ devReturnId: r.id, ...(r.central ? { centralId: r.central.id } : {}) }}
             existing={watching[r.id] ?? null}
           />
           <DropdownMenu modal={false}>

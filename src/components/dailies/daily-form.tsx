@@ -411,7 +411,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                           <WatchButton
                             origin="AGREEMENT"
                             defaults={{ title: item.title, context: blockerText, heat: "HIGH" }}
-                            link={{ agreementId: item.id }}
+                            link={{ agreementId: item.id, ...(item.centralId ? { centralId: item.centralId } : {}) }}
                             existing={form.watching[item.id] ?? null}
                             skipTab
                           />
@@ -614,7 +614,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                   <WatchButton
                     origin="AGREEMENT"
                     defaults={{ title: row.title, heat: "MEDIUM" }}
-                    link={row.memberId ? { memberId: row.memberId } : {}}
+                    link={{ ...(row.memberId ? { memberId: row.memberId } : {}), ...(row.centralId ? { centralId: row.centralId } : {}) }}
                     existing={row.watchIds?.length ? { id: row.watchIds.at(-1)!, heat: row.watchHeat ?? "MEDIUM" } : null}
                     pendingHint={labels.watch.button.pending}
                     onCreated={(id, heat) => patchRow(row.key, { watchIds: [...(row.watchIds ?? []), id], watchHeat: heat })}

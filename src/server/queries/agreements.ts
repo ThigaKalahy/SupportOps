@@ -205,6 +205,7 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
     title: agreement.title,
     description: agreement.description,
     member: agreement.member,
+    centralId: agreement.centralId,
     origin: agreement.origin,
     sourceDaily: agreement.sourceDaily,
     createdAt: agreement.createdAt,

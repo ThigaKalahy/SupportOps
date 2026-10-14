@@ -30,6 +30,7 @@ export interface ReviewItem {
   fromPreviousDaily: boolean
   /** Central do combinado (P19), quando preenchida; null também com o módulo desligado (D32). */
   centralName: string | null
+  centralId: string | null
 }
 
 export interface ReviewGroup {
@@ -69,7 +70,7 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
         dueDate: true,
         sourceDailyId: true,
         member: { select: { id: true, preferredName: true } },
-        central: { select: { name: true } },
+        central: { select: { id: true, name: true } },
         _count: { select: { checkins: { where: { newDueDate: { not: null } } } } },
       },
     }),
@@ -105,6 +106,7 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
       deadline: deadlineSeverity(a.dueDate, { today: date }),
       fromPreviousDaily: previous !== null && a.sourceDailyId === previous.id,
       centralName: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.name ?? null) : null,
+      centralId: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.id ?? null) : null,
     })
     groups.set(a.member.id, group)
   }

@@ -255,7 +255,10 @@ export function AgreementDialog({
               className="mr-auto"
               origin="AGREEMENT"
               defaults={{ title: form.watch("title"), heat: "MEDIUM" }}
-              link={member ? { memberId: member.id } : form.watch("memberId") ? { memberId: form.watch("memberId") } : {}}
+              link={{
+                ...(member ? { memberId: member.id } : form.watch("memberId") ? { memberId: form.watch("memberId") } : {}),
+                ...(form.watch("centralId") ? { centralId: form.watch("centralId") } : {}),
+              }}
               pendingHint={labels.watch.button.pendingRecord}
               onCreated={(id) => setWatchIds((ids) => [...ids, id])}
             />

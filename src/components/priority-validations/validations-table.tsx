@@ -150,7 +150,7 @@ export function ValidationsTable({
           <WatchButton
             origin="PRIORITY_VALIDATION"
             defaults={{ title: fill(labels.watch.links.validation, { ref: r.ticketRef }), heat: "MEDIUM" }}
-            link={{ priorityValidationId: r.id }}
+            link={{ priorityValidationId: r.id, ...(r.central ? { centralId: r.central.id } : {}) }}
             existing={watching[r.id] ?? null}
           />
           <DropdownMenu modal={false}>

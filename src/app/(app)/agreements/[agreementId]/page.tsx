@@ -72,7 +72,7 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
           <WatchButton
             origin="AGREEMENT"
             defaults={{ title: agreement.title, heat: "MEDIUM" }}
-            link={{ agreementId: agreement.id }}
+            link={{ agreementId: agreement.id, ...(agreement.centralId ? { centralId: agreement.centralId } : {}) }}
             existing={watching}
           />
           <AgreementActions
