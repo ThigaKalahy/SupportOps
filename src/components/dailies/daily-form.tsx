@@ -19,7 +19,7 @@ import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { DesktopHint } from "@/components/ui/desktop-hint"
-import { formatDate, formatTime, maskDateInput, parseDisplayDate } from "@/lib/dates"
+import { formatDate, formatTime, maskDateInput, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { fieldErrorsOf } from "@/lib/validators/fields"
@@ -125,10 +125,31 @@ function readDraft(teamId: string, date: string): Draft | null {
     const raw = localStorage.getItem(draftKey(teamId)) ?? localStorage.getItem(LEGACY_DRAFT_KEY)
     if (!raw) return null
     const draft = JSON.parse(raw) as Draft
-    return draft.version === 1 && draft.date === date ? draft : null
+    if (draft.version !== 1) return null
+    if (draft.date === date) return draft
+    // C10: página aberta desde outro dia e recarregada — o rascunho vem para a daily de hoje,
+    // com os prazos que eram "o dia da daily" trocados para o dia novo.
+    const today = formatDate(todayBusinessDate(), "business")
+    const older = parseDisplayDate(draft.date)
+    if (date !== today || !older || older >= todayBusinessDate()) return null
+    return retarget(draft, date)
   } catch {
     return null
   }
+}
+
+function retarget(draft: Draft, date: string): Draft {
+  const swap = (value: string) => (value === draft.date ? date : value)
+  const reviews: Record<string, ReviewState> = {}
+  for (const [id, r] of Object.entries(draft.reviews ?? {})) {
+    reviews[id] = {
+      ...r,
+      newDueDate: swap(r.newDueDate),
+      replacementDueDate: swap(r.replacementDueDate),
+      nextDueDate: swap(r.nextDueDate ?? date),
+    }
+  }
+  return { ...draft, date, reviews, rows: (draft.rows ?? []).map((r) => ({ ...r, dueDate: swap(r.dueDate) })) }
 }
 
 function writeDraft(teamId: string, draft: Draft) {
@@ -277,7 +298,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
           centralId: r.centralId,
           watchIds: r.watchIds ?? [],
           title: r.title,
-          why: r.why ?? "",
+          why: form.whyEnabled ? (r.why ?? "") : "",
           dueDate: r.dueDate,
         })),
       },
@@ -362,13 +383,13 @@ export function DailyForm({ form }: { form: DailyFormData }) {
           const due = parseDisplayDate(r.nextDueDate)
           const owner = reviewOwner.get(r.agreementId)
           return r.outcome === "DONE" && r.nextTitle.trim() && due && owner
-            ? [{ name: owner.name, central: owner.central, title: r.nextTitle, dueDate: due, why: r.nextNote || null }]
+            ? [{ name: owner.name, central: owner.central, title: r.nextTitle, dueDate: due, why: form.whyEnabled ? r.nextNote || null : null }]
             : []
         }),
         ...input.newAgreements.flatMap((a) => {
           const due = parseDisplayDate(a.dueDate)
           return a.memberId && a.title.trim() && due
-            ? [{ name: memberName.get(a.memberId) ?? "", central: centralName.get(a.centralId) ?? null, title: a.title, dueDate: due, why: a.why || null }]
+            ? [{ name: memberName.get(a.memberId) ?? "", central: centralName.get(a.centralId) ?? null, title: a.title, dueDate: due, why: form.whyEnabled ? a.why || null : null }]
             : []
         }),
       ],
@@ -667,7 +688,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                     <XIcon />
                   </Button>
                 </div>
-                {row.title.trim() || row.why ? (
+                {form.whyEnabled && (row.title.trim() || row.why) ? (
                   <Input
                     aria-label={`${L.newAgreements.why} ${i + 1}`}
                     value={row.why ?? ""}

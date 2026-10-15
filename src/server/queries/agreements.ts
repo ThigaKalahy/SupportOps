@@ -10,7 +10,8 @@ import { centralWhere } from "../../lib/centrals.ts"
 import { businessDaysBetween, todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
-import { teamScope, type TeamContext } from "../scope.ts"
+import { MODULES } from "../../lib/modules.ts"
+import { hasModule, teamScope, type TeamContext } from "../scope.ts"
 import { visibilityFilter } from "../visibility.ts"
 
 /**
@@ -191,7 +192,7 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
   })
   if (!agreement) return null
   // O caso por trás: a observação ligada (C7) ou a que nasceu deste combinado.
-  const watch = await db.watchItem.findFirst({
+  const watch = !hasModule(ctx, MODULES.AGREEMENT_WHY) ? null : await db.watchItem.findFirst({
     where: {
       ...teamScope(ctx),
       deletedAt: null,

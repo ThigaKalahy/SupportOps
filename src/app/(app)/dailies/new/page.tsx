@@ -5,8 +5,8 @@ import { DailyForm } from "@/components/dailies/daily-form"
 import { DailyDatePicker } from "@/components/dailies/daily-date-picker"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageHeader } from "@/components/ui/page-header"
-import { formatDate, formatTime, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
-import { fill, labels, plural } from "@/lib/labels"
+import { formatDate, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
+import { fill, labels } from "@/lib/labels"
 import { canWrite, requireTeamContext } from "@/server/scope"
 import { getDailyForm } from "@/server/queries/dailies"
 
@@ -61,22 +61,27 @@ export default async function NewDailyPage({
         subtitle={L.newSubtitle}
         actions={<DailyDatePicker value={dateText} retroactive={retroactive} />}
       />
-      {first || retroactive ? (
-        <div className="flex flex-col gap-1 rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink">
-          {first ? (
-            <p role="status">
-              {plural(L.sameDay.notice, form.sameDay.length, { date: dateText, time: formatTime(first.createdAt) })}{" "}
-              <Link href={`/dailies/${first.id}`} className="font-medium text-accent hover:underline">
-                {L.sameDay.open}
-              </Link>
-              <span className="text-ink-secondary"> · {L.sameDay.hint}</span>
-            </p>
-          ) : null}
-          {retroactive ? <p className="text-ink-secondary">{fill(L.otherDate.retroactive, { date: dateText })}</p> : null}
+      {first ? (
+        // C10: uma daily por data — a registrada se edita; não há segunda.
+        <div className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink">
+          <p role="status">
+            {fill(L.sameDay.blocked, { date: dateText })}{" "}
+            <Link href={`/dailies/${first.id}`} className="font-medium text-accent hover:underline">
+              {L.sameDay.open}
+            </Link>
+          </p>
         </div>
-      ) : null}
-      {/* key: trocar a data recomeça o formulário (e o rascunho, que é guardado por data). */}
-      <DailyForm key={dateText} form={form} />
+      ) : (
+        <>
+          {retroactive ? (
+            <div className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">
+              {fill(L.otherDate.retroactive, { date: dateText })}
+            </div>
+          ) : null}
+          {/* key: trocar a data recomeça o formulário (e o rascunho, que é guardado por data). */}
+          <DailyForm key={dateText} form={form} />
+        </>
+      )}
     </div>
   )
 }

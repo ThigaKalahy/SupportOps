@@ -193,7 +193,8 @@ A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, i
 - Soft delete (`deletedAt`) apenas onde há valor histórico: `TeamMember`, `Agreement`, registros. Não em tabelas de junção (D10).
 - `tags` em `TimelineEvent` é `text[]` nativo do Postgres com índice GIN — não criar tabela de tags separada.
 - A daily do dia D puxa os combinados criados na daily anterior mais os em aberto com `dueDate <= hoje`. Revisar grava `AgreementCheckin` (D11).
-- Reagendar estende `dueDate` do mesmo `Agreement` e grava checkin com `newDueDate`. `originalDueDate` permanece intocado (D12, D17). Substituir: o antigo vai para CANCELLED, o novo nasce com `replacesAgreementId`.
+- Reagendar estende `dueDate` do mesmo `Agreement` e grava checkin com `newDueDate`. `originalDueDate` permanece intocado (D12, D17). Única exceção (C10, decisão do usuário em 15/10/2026): trocar a data de uma daily já salva leva junto o prazo original dos combinados criados nela que nasceram com a data da daily — o trigger só aceita com `prontuario.daily_date_change` ligado na transação da troca, auditada.
+- Uma daily por data por time (C10, decisão do usuário em 15/10/2026): criar recusa data que já tem daily; a registrada se edita, inclusive a data. Substituir: o antigo vai para CANCELLED, o novo nasce com `replacesAgreementId`.
 - `PriorityValidation.outcome` é calculado na escrita e nunca recalculado (D14). `RETURNED` é ação explícita, não derivável de ranks.
 - `reasonId` é obrigatório quando `outcome != MAINTAINED`, validado no zod e no banco.
 - Métricas de cumprimento são calculadas em query sobre `originalDueDate`, `completedAt` e `AgreementCheckin`. Nenhuma taxa é persistida (D19).
@@ -535,6 +536,11 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 **C9 — Porquê do combinado e próximo passo (15/10/2026)**
 - Porquê: a linha da Seção 3 ganha "Por quê (opcional)", gravado em `Agreement.description`. A primeira linha dos detalhes aparece na revisão da daily, no PDF (revisados e de hoje) e no WhatsApp (combinados de hoje, em itálico). A revisão e o detalhe do combinado mostram o caso por trás ("Em observação: …", observação ativa ligada ou de origem, com `visibilityFilter`). O WhatsApp nunca lê observação (D25): o porquê vem só dos detalhes do combinado.
 - Próximo passo: depois de "Feito", a linha da revisão oferece "Próximo passo" — título, prazo (padrão: a data da daily) e "o que mudou" (obrigatório). O combinado é cumprido (sem passar por Parcial); nasce outro da mesma pessoa, central, prioridade e observação, com origem DAILY e o que mudou como porquê; a observação ativa do caso ganha uma revisão com esse texto (`recordWatchReview`). Não usa `replacesAgreementId` (substituir é outra coisa).
+
+**C10 — Porquê só no Suporte; uma daily por data; editar a data (15/10/2026)**
+- Módulo `AGREEMENT_WHY` ("Porquê do combinado"), ligado só no Suporte: campo "Por quê" da Seção 3, porquê e caso por trás na revisão, no detalhe do combinado, no PDF e no WhatsApp. O "Próximo passo" é core (todos os times); sem o módulo, "o que mudou" é gravado nos detalhes do combinado novo mas não aparece como porquê.
+- Uma daily por data: `/dailies/new` numa data que já tem daily mostra o aviso com o link da registrada, sem formulário; o servidor recusa (pega também a página aberta desde outro dia). Recarregar traz o rascunho para a daily de hoje, com os prazos "dia da daily" trocados.
+- "Editar daily" ganhou a data. Mudar a data move a conclusão dos combinados feitos nela, o prazo (original e atual) dos criados nela e dos reagendados nela para o próprio dia, as linhas DAILY e AGREEMENT_DONE da timeline; data de outra daily é recusada. Migration `20261015120000_daily_date_change` (só a função do trigger da D17).
 
 ## Backlog de curto prazo
 

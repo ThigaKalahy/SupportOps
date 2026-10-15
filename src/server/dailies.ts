@@ -1,7 +1,7 @@
 import type { WatchHeat } from "@prisma/client"
 
 import { parseDisplayDate } from "../lib/dates.ts"
-import { labels } from "../lib/labels.ts"
+import { fill, labels } from "../lib/labels.ts"
 import { MODULES } from "../lib/modules.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import { dailySchema, editDailySchema } from "../lib/validators/daily.ts"
@@ -11,8 +11,16 @@ import { linkPendingWatchItems, recordWatchReview } from "./watch.ts"
 import { db } from "./db.ts"
 import { teamFor } from "./queries/dailies.ts"
 import { findActiveWatchForLink, findWatchForWrite } from "./queries/watch.ts"
-import { recordTimelineEvents, replaceTimelineEvents, timelineEventFor, type TimelineEventInput } from "./timeline.ts"
+import {
+  moveAgreementDoneEvents,
+  recordTimelineEvents,
+  replaceTimelineEvents,
+  timelineEventFor,
+  type TimelineEventInput,
+} from "./timeline.ts"
 import { hasModule, requireManager, teamScope, type TeamContext } from "./scope.ts"
+
+type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0]
 
 /**
  * Registro de daily (núcleo da Server Action de src/actions/dailies.ts). Tudo
@@ -52,6 +60,9 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
 
   const team = await teamFor(ctx)
   if (!team) return { ok: false, error: labels.validation.generic }
+  // C10: uma daily por data. Pega também a página aberta desde outro dia.
+  const taken = await db.daily.findFirst({ where: { ...teamScope(ctx), date: day }, select: { id: true } })
+  if (taken) return { ok: false, error: fill(labels.dailies.sameDay.taken, { date: data.date }) }
 
   // Tudo o que o formulário referencia precisa existir no time e no escopo de quem escreve.
   const memberIds = new Set([...data.participants.map((p) => p.memberId), ...data.newAgreements.map((a) => a.memberId)])
@@ -235,7 +246,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
               memberId: row.memberId,
               centralId: row.centralId || null,
               title: row.title,
-              description: textOrNull(row.why),
+              description: hasModule(ctx, MODULES.AGREEMENT_WHY) ? textOrNull(row.why) : null,
               origin: "DAILY",
               sourceDailyId: daily.id,
               originalDueDate: due,
@@ -328,16 +339,27 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
       decisions: true,
       authorUserId: true,
       participants: { select: { memberId: true, present: true, note: true, blocker: true } },
-      checkins: { select: { outcome: true, agreement: { select: { memberId: true } } } },
+      checkins: { select: { outcome: true, agreementId: true, newDueDate: true, agreement: { select: { memberId: true } } } },
     },
   })
   if (!daily) return { ok: false, error: labels.validation.generic }
+  // C10: nova data. Uma daily por data: a data de outra daily do time é recusada.
+  const day = data.date ? date(data.date) : daily.date
+  const moved = day.getTime() !== daily.date.getTime()
+  if (moved) {
+    const taken = await db.daily.findFirst({ where: { ...teamScope(ctx), date: day, id: { not: daily.id } }, select: { id: true } })
+    if (taken) {
+      const message = fill(labels.dailies.sameDay.taken, { date: data.date! })
+      return { ok: false, error: message, fieldErrors: { date: message } }
+    }
+  }
   const known = new Set(daily.participants.map((p) => p.memberId))
   const sent = new Set(data.participants.map((p) => p.memberId))
   if (sent.size !== data.participants.length || sent.size !== known.size || [...sent].some((id) => !known.has(id))) {
     return { ok: false, error: labels.validation.generic }
   }
 
+  let changes: Awaited<ReturnType<typeof moveDailyDate>> | null = null
   const reviewedBy = new Map<string, Record<Outcome, number>>()
   for (const c of daily.checkins) {
     const counts = reviewedBy.get(c.agreement.memberId) ?? { DONE: 0, PARTIAL: 0, NOT_DONE: 0 }
@@ -349,8 +371,9 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
     async (tx) => {
       await tx.daily.update({
         where: { id: daily.id, ...teamScope(ctx) },
-        data: { summary: textOrNull(data.summary), decisions: textOrNull(data.decisions) },
+        data: { date: day, summary: textOrNull(data.summary), decisions: textOrNull(data.decisions) },
       })
+      if (moved) changes = await moveDailyDate(tx, ctx, daily, day)
       const timeline: TimelineEventInput[] = []
       for (const p of data.participants) {
         const text = textOrNull(p.note)
@@ -363,7 +386,7 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
         const line = timelineEventFor.dailyParticipation({
           dailyId: daily.id,
           memberId: p.memberId,
-          date: daily.date,
+          date: day,
           note,
           blocker,
           authorUserId: daily.authorUserId,
@@ -377,7 +400,7 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
         const line = timelineEventFor.dailyParticipation({
           dailyId: daily.id,
           memberId,
-          date: daily.date,
+          date: day,
           note: null,
           blocker: null,
           authorUserId: daily.authorUserId,
@@ -391,8 +414,10 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
           action: "daily.update",
           entity: "Daily",
           entityId: daily.id,
-          before: { summary: daily.summary, decisions: daily.decisions, participants: daily.participants },
+          before: { date: daily.date, summary: daily.summary, decisions: daily.decisions, participants: daily.participants },
           after: {
+            date: day,
+            ...(changes ? { dateChange: changes } : {}),
             summary: textOrNull(data.summary),
             decisions: textOrNull(data.decisions),
             participants: data.participants.map((p) => ({
@@ -409,6 +434,43 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
     { maxWait: 10_000, timeout: 30_000 },
   )
   return { ok: true }
+}
+
+/**
+ * C10: a daily muda de data e leva junto o que gravou COM a data dela — conclusão
+ * dos combinados feitos nela, prazo dos combinados criados nela e dos reagendados
+ * nela para o próprio dia. Prazo diferente da data da daily foi escolhido e fica.
+ * O prazo original (D17) só muda aqui, com a exceção ligada nesta transação.
+ */
+async function moveDailyDate(
+  tx: Tx,
+  ctx: TeamContext,
+  daily: { id: string; date: Date; checkins: { outcome: Outcome; agreementId: string; newDueDate: Date | null }[] },
+  day: Date,
+) {
+  const old = daily.date
+  await tx.$queryRaw`SELECT set_config('prontuario.daily_date_change', 'on', true)`
+  const doneIds = daily.checkins.filter((c) => c.outcome === "DONE").map((c) => c.agreementId)
+  const completed = await tx.agreement.findMany({
+    where: { ...teamScope(ctx), id: { in: doneIds }, status: "DONE", completedAt: old },
+    select: { id: true },
+  })
+  const completedIds = completed.map((a) => a.id)
+  await tx.agreement.updateMany({ where: { ...teamScope(ctx), id: { in: completedIds } }, data: { completedAt: day } })
+  await moveAgreementDoneEvents(tx, ctx, completedIds, day)
+
+  const rescheduledIds = daily.checkins.filter((c) => c.newDueDate?.getTime() === old.getTime()).map((c) => c.agreementId)
+  await tx.agreementCheckin.updateMany({ where: { ...teamScope(ctx), dailyId: daily.id, newDueDate: old }, data: { newDueDate: day } })
+  const rescheduled = await tx.agreement.updateMany({
+    where: { ...teamScope(ctx), id: { in: rescheduledIds }, dueDate: old },
+    data: { dueDate: day },
+  })
+  const due = await tx.agreement.updateMany({ where: { ...teamScope(ctx), sourceDailyId: daily.id, dueDate: old }, data: { dueDate: day } })
+  const original = await tx.agreement.updateMany({
+    where: { ...teamScope(ctx), sourceDailyId: daily.id, originalDueDate: old },
+    data: { originalDueDate: day },
+  })
+  return { completed: completedIds.length, rescheduled: rescheduled.count, dueDate: due.count, originalDueDate: original.count }
 }
 
 export class ClosedAgreementError extends Error {

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/toast"
+import { formatDate, maskDateInput } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { editDailySchema, type EditDailyInput } from "@/lib/validators/daily"
@@ -23,7 +24,7 @@ const E = L.edit
 
 type Participant = Omit<EditDailyInput["participants"][number], "watchIds"> & { name: string }
 
-function initial(daily: DailyDetail): { summary: string; decisions: string; participants: Participant[] } {
+function initial(daily: DailyDetail): { date: string; summary: string; decisions: string; participants: Participant[] } {
   const present = daily.present.map((p) => ({
     memberId: p.memberId,
     name: p.name,
@@ -33,6 +34,7 @@ function initial(daily: DailyDetail): { summary: string; decisions: string; part
   }))
   const absent = daily.absent.map((p) => ({ memberId: p.memberId, name: p.name, present: false, note: "", isBlocker: false }))
   return {
+    date: formatDate(daily.date, "business"),
     summary: daily.summary ?? "",
     decisions: daily.decisions ?? "",
     participants: [...present, ...absent].sort((a, b) => a.name.localeCompare(b.name)),
@@ -47,6 +49,8 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
   const [open, setOpen] = React.useState(false)
   const [state, setState] = React.useState(() => initial(daily))
   const [error, setError] = React.useState<string | null>(null)
+  const [dateError, setDateError] = React.useState<string | null>(null)
+  const dateChanged = state.date !== formatDate(daily.date, "business")
   const [pending, startTransition] = React.useTransition()
   const toast = useToast()
   const summaryRef = React.useRef<HTMLTextAreaElement>(null)
@@ -55,6 +59,7 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
     if (!open) return
     setState(initial(daily))
     setError(null)
+    setDateError(null)
   }, [open, daily])
 
   function patch(memberId: string, change: Partial<Participant>) {
@@ -65,12 +70,18 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
     event?.preventDefault()
     const input: EditDailyInput = {
       id: daily.id,
+      date: state.date,
       summary: state.summary,
       decisions: state.decisions,
       participants: state.participants.map(({ memberId, present, note, isBlocker }) => ({ memberId, present, note, isBlocker, watchIds: [] })),
     }
     const parsed = editDailySchema.safeParse(input)
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? labels.validation.generic)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      if (issue?.path[0] === "date") setDateError(issue.message)
+      return setError(issue?.message ?? labels.validation.generic)
+    }
+    setDateError(null)
     setError(null)
     startTransition(async () => {
       const result = await updateDaily(parsed.data)
@@ -78,7 +89,10 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
         toast.show(labels.toast.dailyUpdated)
         setOpen(false)
       }
-      else setError(result.error)
+      else {
+        setError(result.error)
+        setDateError(result.fieldErrors?.date ?? null)
+      }
     })
   }
 
@@ -111,6 +125,17 @@ export function EditDailyButton({ daily }: { daily: DailyDetail }) {
             className="flex flex-col gap-4"
             noValidate
           >
+            <FieldGroup label={E.date} error={dateError ?? undefined} required>
+              <Input
+                value={state.date}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder={labels.forms.datePlaceholder}
+                className="w-36 font-mono"
+                onChange={(e) => setState((s) => ({ ...s, date: maskDateInput(e.target.value) }))}
+              />
+            </FieldGroup>
+            {dateChanged ? <p className="-mt-2 text-xs text-ink-secondary">{E.dateHint}</p> : null}
             <FieldGroup label={L.extra.summary} optional>
               <Textarea
                 ref={summaryRef}

@@ -979,11 +979,17 @@ export const labels = {
       },
       open: "Abrir a daily registrada",
       hint: "Registrar outra continua possível.",
+      blocked: "Já existe a daily de {date}. Cada data tem uma daily só: abra a registrada para editar, ou escolha outra data.",
+      taken:
+        "Já existe uma daily em {date}. Cada data tem uma daily só: edite a registrada. Se esta página ficou aberta desde outro dia, recarregue — o que você preencheu volta do rascunho.",
     },
     edit: {
       button: "Editar",
       title: "Editar daily",
-      description: "Resumo, decisões, presença e notas. As linhas da timeline de cada pessoa acompanham a edição.",
+      description: "Data, resumo, decisões, presença e notas. As linhas da timeline de cada pessoa acompanham a edição.",
+      date: "Data da daily",
+      dateHint:
+        "Mudar a data leva junto o que a daily gravou com ela: a conclusão dos combinados feitos e o prazo (original e atual) dos combinados criados ou reagendados para o dia da daily.",
       notEditable:
         "Revisões e combinados criados não se editam aqui: eles já mudaram os combinados. Corrija pelo próprio combinado.",
       shortcut: "Ctrl+Enter salva",
@@ -1783,11 +1789,13 @@ export const labels = {
         PRIORITY_VALIDATION: "Validação de prioridade",
         DEV_RETURNS: "Devolução do desenvolvimento",
         CENTRALS: "Central de atendimento",
+        AGREEMENT_WHY: "Porquê do combinado",
       },
       moduleHelp: {
         PRIORITY_VALIDATION: "Tela de validação, níveis de prioridade, motivos de reclassificação.",
         DEV_RETURNS: "Aba de devoluções, motivos de devolução e seus alertas.",
         CENTRALS: "Campo de central nos combinados e validações, e o cadastro de centrais.",
+        AGREEMENT_WHY: "Campo \"Por quê\" nos combinados da daily e o caso em observação na revisão, no PDF e no WhatsApp.",
       },
       on: "Ligado",
       off: "Desligado",

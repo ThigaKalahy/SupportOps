@@ -14,6 +14,8 @@ export const MODULES = {
   DEV_RETURNS: "DEV_RETURNS",
   /** O campo central em combinados e validações, e /settings/centrals. */
   CENTRALS: "CENTRALS",
+  /** C9: "Por quê" do combinado (campo na daily, na revisão, no PDF e no WhatsApp) e o caso por trás. */
+  AGREEMENT_WHY: "AGREEMENT_WHY",
 } as const
 
 export type ModuleKey = (typeof MODULES)[keyof typeof MODULES]

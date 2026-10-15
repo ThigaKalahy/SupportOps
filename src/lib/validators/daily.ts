@@ -137,6 +137,8 @@ export type DailyNewAgreementInput = z.infer<typeof dailyNewAgreementSchema>
  */
 export const editDailySchema = z.object({
   id: z.string().min(1),
+  /** C10: corrigir a data (ex.: tela aberta desde o dia anterior). Ausente = não muda. */
+  date: pastDisplayDate.optional(),
   summary: optionalText(4000),
   decisions: optionalText(4000),
   participants: z.array(dailyParticipantSchema),

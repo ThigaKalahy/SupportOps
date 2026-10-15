@@ -107,8 +107,9 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
     hasModule(ctx, MODULES.CENTRALS) ? listActiveCentrals(ctx) : Promise.resolve([]),
   ])
 
-  // O caso por trás de cada combinado: a observação ligada (C7) ou a que nasceu dele.
-  const watchRows = agreements.length
+  // O caso por trás de cada combinado: a observação ligada (C7) ou a que nasceu dele. Só com o módulo do porquê.
+  const whyOn = hasModule(ctx, MODULES.AGREEMENT_WHY)
+  const watchRows = whyOn && agreements.length
     ? await db.watchItem.findMany({
         where: {
           ...scope,
@@ -139,8 +140,8 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
       fromPreviousDaily: previous !== null && a.sourceDailyId === previous.id,
       centralName: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.name ?? null) : null,
       centralId: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.id ?? null) : null,
-      why: firstLine(a.description),
-      watch: ((w) => (w ? { id: w.id, title: w.title } : null))(watchFor(a)),
+      why: whyOn ? firstLine(a.description) : null,
+      watch: whyOn ? ((w) => (w ? { id: w.id, title: w.title } : null))(watchFor(a)) : null,
     })
     groups.set(a.member.id, group)
   }
@@ -157,6 +158,7 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
     sameDay,
     centrals,
     centralsEnabled: hasModule(ctx, MODULES.CENTRALS),
+    whyEnabled: hasModule(ctx, MODULES.AGREEMENT_WHY),
     // P21: observação ativa já ligada a cada combinado a revisar (o botão abre a existente).
     watching: await activeWatchByLink(ctx, "agreementId", agreements.map((a) => a.id)),
   }
@@ -316,7 +318,8 @@ async function lateAgreementsByDaily(ctx: TeamContext, dailies: DailyWithDetail[
   return out
 }
 
-function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDetail {
+function toDetail(daily: DailyWithDetail, late: LateAgreement[] = [], whyOn = false): DailyDetail {
+  const why = (text: string | null) => (whyOn ? firstLine(text) : null)
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)
   const present = daily.participants
     .filter((p) => p.present)
@@ -337,7 +340,7 @@ function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDeta
     reason: c.blockerReason?.label ?? null,
     newDueDate: c.newDueDate,
     replacement: c.outcome !== "DONE" && !c.newDueDate ? c.agreement.replacedBy : null,
-    why: firstLine(c.agreement.description),
+    why: why(c.agreement.description),
   }))
   const created = daily.sourcedAgreements.map((a) => ({
     id: a.id,
@@ -347,7 +350,7 @@ function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDeta
     dueDate: a.dueDate,
     central: a.central?.name ?? null,
     isReplacement: a.replacesAgreementId !== null,
-    why: firstLine(a.description),
+    why: why(a.description),
     addedAt: null as Date | null,
   }))
   for (const a of late) {
@@ -359,7 +362,7 @@ function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDeta
       dueDate: a.dueDate,
       central: a.central?.name ?? null,
       isReplacement: false,
-      why: firstLine(a.description),
+      why: why(a.description),
       addedAt: a.createdAt,
     })
   }
@@ -397,7 +400,7 @@ export async function getDailyDetail(ctx: TeamContext, id: string): Promise<Dail
   const daily = await findDaily(id, ctx)
   if (!daily) return null
   const late = await lateAgreementsByDaily(ctx, [daily])
-  return toDetail(daily, late.get(daily.id))
+  return toDetail(daily, late.get(daily.id), hasModule(ctx, MODULES.AGREEMENT_WHY))
 }
 
 /** Histórico: todas as dailies do time, da mais recente para a mais antiga, já com o detalhe. */
@@ -408,5 +411,5 @@ export async function listDailies(ctx: TeamContext): Promise<DailyDetail[]> {
     include: detailInclude,
   })
   const late = await lateAgreementsByDaily(ctx, dailies)
-  return dailies.map((d) => toDetail(d, late.get(d.id)))
+  return dailies.map((d) => toDetail(d, late.get(d.id), hasModule(ctx, MODULES.AGREEMENT_WHY)))
 }

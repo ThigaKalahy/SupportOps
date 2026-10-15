@@ -124,6 +124,18 @@ export async function moveAgreementEvents(tx: Tx, scope: TimelineScope, agreemen
   })
 }
 
+/**
+ * Troca de data de uma daily (C10): as conclusões registradas nela vão para o dia
+ * novo. As linhas DAILY são refeitas por `replaceTimelineEvents`.
+ */
+export async function moveAgreementDoneEvents(tx: Tx, scope: TimelineScope, agreementIds: string[], completedAt: Date): Promise<void> {
+  if (agreementIds.length === 0) return
+  await tx.timelineEvent.updateMany({
+    where: { teamId: scope.teamId, agreementId: { in: agreementIds }, type: "AGREEMENT_DONE" },
+    data: { occurredAt: businessDateAtNoon(completedAt) },
+  })
+}
+
 /** Propaga a visibilidade do registro de origem para todas as linhas dele. */
 export async function syncTimelineVisibility(tx: Tx, scope: TimelineScope, source: TimelineSource, visibility: Visibility): Promise<void> {
   await tx.timelineEvent.updateMany({
