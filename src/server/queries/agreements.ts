@@ -11,6 +11,7 @@ import { businessDaysBetween, todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
 import { teamScope, type TeamContext } from "../scope.ts"
+import { visibilityFilter } from "../visibility.ts"
 
 /**
  * Leituras de combinados. Combinado não tem visibilidade própria (não é
@@ -189,6 +190,17 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
     },
   })
   if (!agreement) return null
+  // O caso por trás: a observação ligada (C7) ou a que nasceu deste combinado.
+  const watch = await db.watchItem.findFirst({
+    where: {
+      ...teamScope(ctx),
+      deletedAt: null,
+      ...visibilityFilter(ctx),
+      OR: [...(agreement.watchItemId ? [{ id: agreement.watchItemId }] : []), { agreementId: agreement.id }],
+    },
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    select: { id: true, title: true, status: true },
+  })
   const open = agreement.status === "OPEN" || agreement.status === "IN_PROGRESS"
   const today = todayBusinessDate()
   const checkins: AgreementCheckinRow[] = agreement.checkins.map((c) => ({
@@ -206,6 +218,7 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
     description: agreement.description,
     member: agreement.member,
     centralId: agreement.centralId,
+    watch,
     origin: agreement.origin,
     sourceDaily: agreement.sourceDaily,
     createdAt: agreement.createdAt,

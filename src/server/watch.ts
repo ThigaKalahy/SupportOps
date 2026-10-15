@@ -101,15 +101,26 @@ export async function reviewWatchItemRecord(ctx: TeamContext, input: unknown): P
   if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   const item = await findOwned(ctx, parsed.data.id)
   if (!item || item.status !== "ACTIVE") return { ok: false, error: labels.validation.generic }
-  const now = new Date()
-  await db.$transaction(async (tx) => {
-    await tx.watchReview.create({
-      data: { ...teamScope(ctx), watchItemId: item.id, reviewedAt: now, note: parsed.data.note, heatBefore: item.heat, heatAfter: item.heat, authorUserId: ctx.userId },
-    })
-    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { lastReviewedAt: now, reviewCount: { increment: 1 } } })
-    await audit(ctx, "review", item.id, { lastReviewedAt: item.lastReviewedAt }, { lastReviewedAt: now, note: parsed.data.note }, tx)
-  })
+  await db.$transaction((tx) => recordWatchReview(tx, ctx, item, parsed.data.note))
   return { ok: true }
+}
+
+/**
+ * "Revisado hoje" dentro de uma transação já aberta (C5: a nota é o histórico).
+ * Usado também pelo "Próximo passo" da daily, que revisa a observação do caso.
+ */
+export async function recordWatchReview(
+  tx: Tx,
+  ctx: TeamContext,
+  item: { id: string; heat: WatchHeat; lastReviewedAt: Date },
+  note: string,
+) {
+  const now = new Date()
+  await tx.watchReview.create({
+    data: { ...teamScope(ctx), watchItemId: item.id, reviewedAt: now, note, heatBefore: item.heat, heatAfter: item.heat, authorUserId: ctx.userId },
+  })
+  await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { lastReviewedAt: now, reviewCount: { increment: 1 } } })
+  await audit(ctx, "review", item.id, { lastReviewedAt: item.lastReviewedAt }, { lastReviewedAt: now, note }, tx)
 }
 
 /** Esfriar / Esquentar: um grau, com WatchReview (antes → depois); conta como revisão. */

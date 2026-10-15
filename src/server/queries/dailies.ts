@@ -7,6 +7,7 @@ import { db } from "../db.ts"
 import { listActiveCentrals } from "./centrals.ts"
 import { activeWatchByLink } from "./watch.ts"
 import { hasModule, teamScope, type TeamContext } from "../scope.ts"
+import { visibilityFilter } from "../visibility.ts"
 import type { WhatsAppDaily } from "../whatsapp.ts"
 import { vacationCovering } from "../../lib/vacations.ts"
 
@@ -31,6 +32,15 @@ export interface ReviewItem {
   /** Central do combinado (P19), quando preenchida; null também com o módulo desligado (D32). */
   centralName: string | null
   centralId: string | null
+  /** O porquê do combinado: primeira linha dos detalhes. */
+  why: string | null
+  /** O caso por trás (observação ATIVA ligada, legível por quem lê). */
+  watch: { id: string; title: string } | null
+}
+
+/** Primeira linha não vazia de um texto (o "porquê" que cabe numa linha). */
+function firstLine(text: string | null | undefined): string | null {
+  return text?.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? null
 }
 
 export interface ReviewGroup {
@@ -69,6 +79,8 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
         title: true,
         dueDate: true,
         sourceDailyId: true,
+        description: true,
+        watchItemId: true,
         member: { select: { id: true, preferredName: true } },
         central: { select: { id: true, name: true } },
         _count: { select: { checkins: { where: { newDueDate: { not: null } } } } },
@@ -95,6 +107,26 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
     hasModule(ctx, MODULES.CENTRALS) ? listActiveCentrals(ctx) : Promise.resolve([]),
   ])
 
+  // O caso por trás de cada combinado: a observação ligada (C7) ou a que nasceu dele.
+  const watchRows = agreements.length
+    ? await db.watchItem.findMany({
+        where: {
+          ...scope,
+          deletedAt: null,
+          status: "ACTIVE",
+          ...visibilityFilter(ctx),
+          OR: [
+            { id: { in: agreements.flatMap((a) => (a.watchItemId ? [a.watchItemId] : [])) } },
+            { agreementId: { in: agreements.map((a) => a.id) } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, title: true, agreementId: true },
+      })
+    : []
+  const watchFor = (a: { id: string; watchItemId: string | null }) =>
+    watchRows.find((w) => w.id === a.watchItemId) ?? watchRows.find((w) => w.agreementId === a.id) ?? null
+
   const groups = new Map<string, ReviewGroup>()
   for (const a of agreements) {
     const group = groups.get(a.member.id) ?? { member: a.member, items: [] }
@@ -107,6 +139,8 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
       fromPreviousDaily: previous !== null && a.sourceDailyId === previous.id,
       centralName: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.name ?? null) : null,
       centralId: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.id ?? null) : null,
+      why: firstLine(a.description),
+      watch: ((w) => (w ? { id: w.id, title: w.title } : null))(watchFor(a)),
     })
     groups.set(a.member.id, group)
   }
@@ -154,6 +188,7 @@ const detailInclude = {
         select: {
           id: true,
           title: true,
+          description: true,
           memberId: true,
           member: { select: { preferredName: true } },
           replacedBy: { select: { id: true, title: true, dueDate: true } },
@@ -170,6 +205,7 @@ const detailInclude = {
       dueDate: true,
       status: true,
       replacesAgreementId: true,
+      description: true,
       memberId: true,
       member: { select: { preferredName: true } },
       central: { select: { name: true } },
@@ -207,6 +243,7 @@ export interface DailyDetail {
     reason: string | null
     newDueDate: Date | null
     replacement: { id: string; title: string; dueDate: Date } | null
+    why: string | null
   }[]
   created: {
     id: string
@@ -216,6 +253,7 @@ export interface DailyDetail {
     dueDate: Date
     central: string | null
     isReplacement: boolean
+    why: string | null
     /** Criado fora da daily, no mesmo dia e depois dela: quando (entra no resumo, no WhatsApp e no PDF). */
     addedAt: Date | null
   }[]
@@ -227,12 +265,22 @@ const lateSelect = {
   title: true,
   dueDate: true,
   createdAt: true,
+  description: true,
   memberId: true,
   member: { select: { preferredName: true } },
   central: { select: { name: true } },
 } as const
 
-type LateAgreement = { id: string; title: string; dueDate: Date; createdAt: Date; memberId: string; member: { preferredName: string }; central: { name: string } | null }
+type LateAgreement = {
+  id: string
+  title: string
+  dueDate: Date
+  createdAt: Date
+  description: string | null
+  memberId: string
+  member: { preferredName: string }
+  central: { name: string } | null
+}
 
 /**
  * Combinados que entraram DEPOIS da daily, no mesmo dia, fora de qualquer daily
@@ -289,6 +337,7 @@ function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDeta
     reason: c.blockerReason?.label ?? null,
     newDueDate: c.newDueDate,
     replacement: c.outcome !== "DONE" && !c.newDueDate ? c.agreement.replacedBy : null,
+    why: firstLine(c.agreement.description),
   }))
   const created = daily.sourcedAgreements.map((a) => ({
     id: a.id,
@@ -298,6 +347,7 @@ function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDeta
     dueDate: a.dueDate,
     central: a.central?.name ?? null,
     isReplacement: a.replacesAgreementId !== null,
+    why: firstLine(a.description),
     addedAt: null as Date | null,
   }))
   for (const a of late) {
@@ -309,6 +359,7 @@ function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDeta
       dueDate: a.dueDate,
       central: a.central?.name ?? null,
       isReplacement: false,
+      why: firstLine(a.description),
       addedAt: a.createdAt,
     })
   }
@@ -336,7 +387,7 @@ function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDeta
       })),
       created: created
         .filter((c) => !c.isReplacement)
-        .map((c) => ({ name: c.name, central: c.central, title: c.title, dueDate: c.dueDate })),
+        .map((c) => ({ name: c.name, central: c.central, title: c.title, dueDate: c.dueDate, why: c.why })),
       blockers: present.flatMap((p) => (p.blocker ? [{ name: p.name, text: p.blocker }] : [])),
     },
   }

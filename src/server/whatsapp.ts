@@ -34,7 +34,7 @@ export interface WhatsAppDaily {
   date: Date
   reviewed: WhatsAppReview[]
   /** `central`: nome da central (P19), quando informada — entra entre a pessoa e o título. */
-  created: { name: string; central?: string | null; title: string; dueDate: Date }[]
+  created: { name: string; central?: string | null; title: string; dueDate: Date; why?: string | null }[]
   blockers: { name: string; text: string }[]
 }
 
@@ -60,8 +60,10 @@ function clean(text: string): string {
  */
 function createdLine(dailyDate: Date) {
   return (c: WhatsAppDaily["created"][number]) => {
-    const line = `- ${clean(c.name)}${c.central ? ` — ${clean(c.central)}` : ""} — ${clean(c.title)}`
-    return c.dueDate.getTime() === dailyDate.getTime() ? line : `${line} — ${dayMonth(c.dueDate)}`
+    const head = `- ${clean(c.name)}${c.central ? ` — ${clean(c.central)}` : ""} — ${clean(c.title)}`
+    const line = c.dueDate.getTime() === dailyDate.getTime() ? head : `${head} — ${dayMonth(c.dueDate)}`
+    // O porquê vem do combinado (detalhes), nunca de observação (D25).
+    return c.why ? `${line}\n  _${clean(c.why)}_` : line
   }
 }
 

@@ -40,6 +40,11 @@ export const dailyReviewSchema = z.object({
   newDueDate: z.string().trim(),
   replacementTitle: z.string().trim().max(160, v.tooLong),
   replacementDueDate: z.string().trim(),
+  /** Feito + próximo passo: o caso seguiu por outro caminho. Vazio = sem próximo passo. */
+  nextTitle: z.string().trim().max(160, v.tooLong).default(""),
+  /** O que mudou: vira o porquê do próximo combinado e a revisão da observação, se houver. */
+  nextNote: z.string().trim().max(300, v.tooLong).default(""),
+  nextDueDate: z.string().trim().default(""),
 })
 
 export const dailyParticipantSchema = z.object({
@@ -58,6 +63,8 @@ export const dailyNewAgreementSchema = z.object({
   /** P21: observações criadas na linha antes de salvar; ganham o vínculo com o combinado criado. */
   watchIds: pendingWatchIds,
   title: z.string().trim().max(160, v.tooLong),
+  /** Por quê (opcional): o problema por trás do combinado; grava em `description`. */
+  why: z.string().trim().max(300, v.tooLong).default(""),
   dueDate: z.string().trim(),
 })
 
@@ -72,7 +79,21 @@ export const dailySchema = z
   })
   .superRefine((data, ctx) => {
     data.reviews.forEach((review, i) => {
-      if (review.outcome === "DONE") return
+      if (review.outcome === "DONE") {
+        if (!review.nextTitle && !review.nextNote) return
+        if (review.nextTitle.length < 3) {
+          ctx.addIssue({ code: "custom", path: ["reviews", i, "nextTitle"], message: d.nextTitleRequired })
+        }
+        if (review.nextNote.length < 3) {
+          ctx.addIssue({ code: "custom", path: ["reviews", i, "nextNote"], message: d.nextNoteRequired })
+        }
+        if (parseDisplayDate(review.nextDueDate) === null) {
+          ctx.addIssue({ code: "custom", path: ["reviews", i, "nextDueDate"], message: v.date })
+        } else if (!onOrAfter(data.date, review.nextDueDate)) {
+          ctx.addIssue({ code: "custom", path: ["reviews", i, "nextDueDate"], message: d.notBeforeDaily })
+        }
+        return
+      }
       if (review.blockerText.length < 3) {
         ctx.addIssue({ code: "custom", path: ["reviews", i, "blockerText"], message: d.blockerRequired })
       }

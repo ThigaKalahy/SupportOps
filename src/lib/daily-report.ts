@@ -44,8 +44,18 @@ export interface DailyReportInput {
     reason: string | null
     newDueDate: Date | null
     replacement: { title: string; dueDate: Date } | null
+    why?: string | null
   }[]
-  created: { id: string; memberId: string; name: string; title: string; dueDate: Date; central: string | null; isReplacement: boolean }[]
+  created: {
+    id: string
+    memberId: string
+    name: string
+    title: string
+    dueDate: Date
+    central: string | null
+    isReplacement: boolean
+    why?: string | null
+  }[]
 }
 
 export interface DailyReportWatch {
@@ -133,11 +143,13 @@ export function buildDailyPdf(daily: DailyReportInput, watch: DailyReportWatch[]
         const runs: PdfRun[] = [{ text: enumLabel("checkinOutcome", r.outcome), font: "bold" }, { text: ` — ${r.title}` }]
         if (r.outcome !== "DONE") {
           const details: string[] = []
+          if (r.why) details.push(fill(P.why, { text: r.why }))
           if (r.blockerText) details.push(fill(P.blockerText, { text: r.reason ? `${r.blockerText} (${r.reason})` : r.blockerText }))
           if (r.replacement) details.push(fill(P.replacedBy, { title: r.replacement.title, date: dayMonth(r.replacement.dueDate) }))
           else if (r.newDueDate) details.push(fill(P.newDue, { date: dayMonth(r.newDueDate) }))
           if (details.length) runs.push({ text: `. ${details.join(". ")}`, gray: 0.25 })
         }
+        if (r.outcome === "DONE" && r.why) runs.push({ text: `. ${fill(P.why, { text: r.why })}`, gray: 0.25 })
         doc.paragraph([...runs, ...watchTag(byAgreement.get(r.agreementId))], { bullet: true, after: 2 })
       }
       doc.space(4)
@@ -160,7 +172,8 @@ export function buildDailyPdf(daily: DailyReportInput, watch: DailyReportWatch[]
         let text = c.title
         if (c.central) text += ` — ${c.central}`
         if (c.dueDate.getTime() !== daily.date.getTime()) text += ` — ${fill(P.due, { date: dayMonth(c.dueDate) })}`
-        doc.paragraph([{ text }, ...watchTag(byAgreement.get(c.id))], { bullet: true, after: 2 })
+        const why: PdfRun[] = c.why ? [{ text: `. ${fill(P.why, { text: c.why })}`, gray: 0.25 }] : []
+        doc.paragraph([{ text }, ...why, ...watchTag(byAgreement.get(c.id))], { bullet: true, after: 2 })
       }
       doc.space(4)
     }

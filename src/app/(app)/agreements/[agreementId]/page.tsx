@@ -135,6 +135,13 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
             </Link>
           </Fact>
         ) : null}
+        {agreement.watch ? (
+          <Fact label={D.watch}>
+            <Link href={`/watch?open=${agreement.watch.id}`} className="text-accent hover:underline">
+              {agreement.watch.title}
+            </Link>
+          </Fact>
+        ) : null}
         {agreement.replacedBy ? (
           <Fact label={D.replacedBy}>
             <Link href={`/agreements/${agreement.replacedBy.id}`} className="text-accent hover:underline">

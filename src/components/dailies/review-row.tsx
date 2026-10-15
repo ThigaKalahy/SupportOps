@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 
 import { DragIndicator, DueCell } from "@/components/agreements/agreements-table"
 import { Button } from "@/components/ui/button"
@@ -9,7 +10,7 @@ import { MetaLabel } from "@/components/ui/meta-label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StatusPill } from "@/components/ui/status-pill"
 import { maskDateInput } from "@/lib/dates"
-import { labels } from "@/lib/labels"
+import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { ReviewItem } from "@/server/queries/dailies"
 
@@ -26,6 +27,26 @@ export interface ReviewState {
   newDueDate: string
   replacementTitle: string
   replacementDueDate: string
+  /** Feito + próximo passo (o caso seguiu por outro caminho). */
+  nextOpen: boolean
+  nextTitle: string
+  nextNote: string
+  nextDueDate: string
+}
+
+/** Porquê e caso por trás do combinado, abaixo do título. */
+function Context({ item }: { item: ReviewItem }) {
+  if (!item.why && !item.watch) return null
+  return (
+    <span className="flex flex-col gap-0.5 text-xs text-ink-secondary">
+      {item.why ? <span>{fill(R.why, { text: item.why })}</span> : null}
+      {item.watch ? (
+        <Link href={`/watch?open=${item.watch.id}`} target="_blank" rel="noopener" className="w-fit hover:text-ink hover:underline">
+          {fill(R.watching, { title: item.watch.title })}
+        </Link>
+      ) : null}
+    </span>
+  )
 }
 
 const OUTCOMES: { value: Outcome; label: string; key: string }[] = [
@@ -69,7 +90,7 @@ export function ReviewRow({
   state: ReviewState
   onChange: (patch: Partial<ReviewState>) => void
   reasons: { id: string; label: string }[]
-  /** Erros por campo (blockerText, newDueDate, replacementTitle, replacementDueDate). */
+  /** Erros por campo (blockerText, newDueDate, replacementTitle, replacementDueDate, next*). */
   errors: Record<string, string | undefined>
   /** Grupo de desfechos, para o formulário mover o foco entre linhas. */
   groupRef: (el: HTMLDivElement | null) => void
@@ -79,6 +100,7 @@ export function ReviewRow({
   watch?: (blockerText: string) => React.ReactNode
 }) {
   const blockerRef = React.useRef<HTMLInputElement>(null)
+  const nextRef = React.useRef<HTMLInputElement>(null)
   const [focusIndex, setFocusIndex] = React.useState(0)
   const buttons = React.useRef<(HTMLButtonElement | null)[]>([])
   const idBase = `review-${item.id}`
@@ -107,14 +129,86 @@ export function ReviewRow({
 
   if (state.outcome === "DONE") {
     return (
-      <li className="flex min-h-10 items-center gap-3 border-b border-line px-3 py-1.5 last:border-b-0">
-        <StatusPill severity="calm" label={R.done} />
-        <span className="min-w-0 flex-1 truncate text-sm text-ink-secondary line-through decoration-line-strong">
-          {item.title}
-        </span>
-        <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ outcome: null })}>
-          {R.undo}
-        </Button>
+      <li className={cn("flex flex-col gap-2 border-b border-line px-3 py-1.5 last:border-b-0", state.nextOpen && "bg-surface-sunken/60 pb-3")}>
+        <div className="flex min-h-10 items-center gap-3">
+          <StatusPill severity="calm" label={R.done} />
+          <span className="min-w-0 flex-1 truncate text-sm text-ink-secondary line-through decoration-line-strong">
+            {item.title}
+          </span>
+          {state.nextOpen ? null : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onChange({ nextOpen: true })
+                requestAnimationFrame(() => nextRef.current?.focus())
+              }}
+            >
+              {R.nextStep}
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ outcome: null, nextOpen: false })}>
+            {R.undo}
+          </Button>
+        </div>
+        {state.nextOpen ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              <div className="flex min-w-48 flex-1 flex-col gap-1">
+                <Input
+                  ref={nextRef}
+                  aria-label={R.nextTitle}
+                  value={state.nextTitle}
+                  maxLength={160}
+                  autoComplete="off"
+                  placeholder={R.nextTitle}
+                  className="h-8"
+                  aria-invalid={Boolean(errors.nextTitle)}
+                  onChange={(e) => onChange({ nextTitle: e.target.value })}
+                />
+                <FieldError id={`${idBase}-ntitle-error`} message={errors.nextTitle} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Input
+                  aria-label={R.nextDueDate}
+                  value={state.nextDueDate}
+                  inputMode="numeric"
+                  placeholder={labels.forms.datePlaceholder}
+                  autoComplete="off"
+                  className="h-8 w-32 font-mono"
+                  aria-invalid={Boolean(errors.nextDueDate)}
+                  onChange={(e) => onChange({ nextDueDate: maskDateInput(e.target.value) })}
+                />
+                <FieldError id={`${idBase}-ndue-error`} message={errors.nextDueDate} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Input
+                aria-label={R.nextNote}
+                value={state.nextNote}
+                maxLength={300}
+                autoComplete="off"
+                placeholder={R.nextNotePlaceholder}
+                className="h-8"
+                aria-invalid={Boolean(errors.nextNote)}
+                onChange={(e) => onChange({ nextNote: e.target.value })}
+              />
+              <FieldError id={`${idBase}-nnote-error`} message={errors.nextNote} />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-ink-secondary">{item.watch ? fill(R.nextNoteWatch, { title: item.watch.title }) : null}</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onChange({ nextOpen: false, nextTitle: "", nextNote: "" })}
+              >
+                {R.nextStepRemove}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </li>
     )
   }
@@ -136,6 +230,7 @@ export function ReviewRow({
             {item.reschedules > 0 ? <DragIndicator reschedules={item.reschedules} /> : null}
             {item.fromPreviousDaily ? <MetaLabel>{R.fromPreviousDaily}</MetaLabel> : null}
           </span>
+          <Context item={item} />
         </div>
         <div
           ref={groupRef}

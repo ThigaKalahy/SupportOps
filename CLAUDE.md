@@ -532,6 +532,10 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Novo combinado com responsável "Todos do time": um combinado por pessoa ativa (ou em desligamento) fora de férias no prazo, cada um com sua linha de timeline e auditoria, cobrados individualmente na daily.
 - Combinado criado fora de daily, no mesmo dia e depois dela, entra nos "Combinados de hoje" daquela daily — tela (marcado "incluído depois da daily, às HH:mm"), WhatsApp e PDF. Vai para a última daily do dia registrada antes dele; daily retroativa não recebe nada. Derivado em query, nada gravado.
 
+**C9 — Porquê do combinado e próximo passo (15/10/2026)**
+- Porquê: a linha da Seção 3 ganha "Por quê (opcional)", gravado em `Agreement.description`. A primeira linha dos detalhes aparece na revisão da daily, no PDF (revisados e de hoje) e no WhatsApp (combinados de hoje, em itálico). A revisão e o detalhe do combinado mostram o caso por trás ("Em observação: …", observação ativa ligada ou de origem, com `visibilityFilter`). O WhatsApp nunca lê observação (D25): o porquê vem só dos detalhes do combinado.
+- Próximo passo: depois de "Feito", a linha da revisão oferece "Próximo passo" — título, prazo (padrão: a data da daily) e "o que mudou" (obrigatório). O combinado é cumprido (sem passar por Parcial); nasce outro da mesma pessoa, central, prioridade e observação, com origem DAILY e o que mudou como porquê; a observação ativa do caso ganha uma revisão com esse texto (`recordWatchReview`). Não usa `replacesAgreementId` (substituir é outra coisa).
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:

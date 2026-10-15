@@ -55,6 +55,8 @@ interface NewRow {
   watchIds?: string[]
   watchHeat?: WatchHeat
   title: string
+  /** Por quê (opcional): o problema por trás do combinado. */
+  why?: string
   dueDate: string
 }
 
@@ -89,6 +91,10 @@ function initialState(form: DailyFormData, dailyDate: string): FormState {
         newDueDate: dailyDate,
         replacementTitle: "",
         replacementDueDate: dailyDate,
+        nextOpen: false,
+        nextTitle: "",
+        nextNote: "",
+        nextDueDate: dailyDate,
       }
     }
   }
@@ -100,7 +106,8 @@ function initialState(form: DailyFormData, dailyDate: string): FormState {
 /** Rascunho só vale para a mesma daily e só para o que ainda existe na tela. */
 function restore(base: FormState, draft: Draft): FormState {
   const reviews = { ...base.reviews }
-  for (const [id, review] of Object.entries(draft.reviews ?? {})) if (id in reviews) reviews[id] = review
+  // Rascunho de antes do "próximo passo" não tem os campos novos: completa com os da tela.
+  for (const [id, review] of Object.entries(draft.reviews ?? {})) if (id in reviews) reviews[id] = { ...reviews[id]!, ...review }
   const participants = { ...base.participants }
   for (const [id, p] of Object.entries(draft.participants ?? {})) if (id in participants) participants[id] = p
   const rows = (draft.rows ?? []).filter((r) => !rowIsEmpty(r) || r === draft.rows?.[draft.rows.length - 1])
@@ -178,8 +185,8 @@ export function DailyForm({ form }: { form: DailyFormData }) {
     [],
   )
   const reviewOwner = React.useMemo(() => {
-    const map = new Map<string, { name: string; title: string }>()
-    for (const g of form.review) for (const i of g.items) map.set(i.id, { name: g.member.preferredName, title: i.title })
+    const map = new Map<string, { name: string; title: string; central: string | null }>()
+    for (const g of form.review) for (const i of g.items) map.set(i.id, { name: g.member.preferredName, title: i.title, central: i.centralName })
     return map
   }, [form.review])
 
@@ -259,10 +266,20 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             newDueDate: r.newDueDate,
             replacementTitle: r.replacementTitle,
             replacementDueDate: r.replacementDueDate,
+            ...(r.outcome === "DONE" && r.nextOpen
+              ? { nextTitle: r.nextTitle, nextNote: r.nextNote, nextDueDate: r.nextDueDate }
+              : { nextTitle: "", nextNote: "", nextDueDate: "" }),
           }
         }),
         participants: form.members.map((m) => ({ memberId: m.id, ...current.participants[m.id]!, watchIds: current.participants[m.id]!.watchIds ?? [] })),
-        newAgreements: rows.map((r) => ({ memberId: r.memberId, centralId: r.centralId, watchIds: r.watchIds ?? [], title: r.title, dueDate: r.dueDate })),
+        newAgreements: rows.map((r) => ({
+          memberId: r.memberId,
+          centralId: r.centralId,
+          watchIds: r.watchIds ?? [],
+          title: r.title,
+          why: r.why ?? "",
+          dueDate: r.dueDate,
+        })),
       },
     }
   }
@@ -339,12 +356,22 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             ? { title: r.replacementTitle, dueDate: parseDisplayDate(r.replacementDueDate)! }
             : null,
       })),
-      created: input.newAgreements.flatMap((a) => {
-        const due = parseDisplayDate(a.dueDate)
-        return a.memberId && a.title.trim() && due
-          ? [{ name: memberName.get(a.memberId) ?? "", central: centralName.get(a.centralId) ?? null, title: a.title, dueDate: due }]
-          : []
-      }),
+      created: [
+        // Próximos passos de combinados feitos: nascem nesta daily, para a mesma pessoa e cliente.
+        ...input.reviews.flatMap((r) => {
+          const due = parseDisplayDate(r.nextDueDate)
+          const owner = reviewOwner.get(r.agreementId)
+          return r.outcome === "DONE" && r.nextTitle.trim() && due && owner
+            ? [{ name: owner.name, central: owner.central, title: r.nextTitle, dueDate: due, why: r.nextNote || null }]
+            : []
+        }),
+        ...input.newAgreements.flatMap((a) => {
+          const due = parseDisplayDate(a.dueDate)
+          return a.memberId && a.title.trim() && due
+            ? [{ name: memberName.get(a.memberId) ?? "", central: centralName.get(a.centralId) ?? null, title: a.title, dueDate: due, why: a.why || null }]
+            : []
+        }),
+      ],
       blockers: input.participants.flatMap((p) =>
         p.isBlocker && p.note.trim() ? [{ name: memberName.get(p.memberId) ?? "", text: p.note }] : [],
       ),
@@ -421,6 +448,9 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                           newDueDate: errors[`review:${item.id}:newDueDate`],
                           replacementTitle: errors[`review:${item.id}:replacementTitle`],
                           replacementDueDate: errors[`review:${item.id}:replacementDueDate`],
+                          nextTitle: errors[`review:${item.id}:nextTitle`],
+                          nextNote: errors[`review:${item.id}:nextNote`],
+                          nextDueDate: errors[`review:${item.id}:nextDueDate`],
                         }}
                         groupRef={(el) => {
                           groups.current[index] = el
@@ -637,6 +667,18 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                     <XIcon />
                   </Button>
                 </div>
+                {row.title.trim() || row.why ? (
+                  <Input
+                    aria-label={`${L.newAgreements.why} ${i + 1}`}
+                    value={row.why ?? ""}
+                    maxLength={300}
+                    autoComplete="off"
+                    placeholder={L.newAgreements.whyPlaceholder}
+                    className="h-7 text-xs"
+                    onChange={(e) => patchRow(row.key, { why: e.target.value })}
+                    onKeyDown={onEnter}
+                  />
+                ) : null}
                 {rowError ? <p className="text-xs text-overdue">{rowError}</p> : null}
               </li>
             )

@@ -1,3 +1,5 @@
+import type { WatchHeat } from "@prisma/client"
+
 import { parseDisplayDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { MODULES } from "../lib/modules.ts"
@@ -5,9 +7,10 @@ import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/
 import { dailySchema, editDailySchema } from "../lib/validators/daily.ts"
 
 import { auditOf, writeAudit } from "./audit.ts"
-import { linkPendingWatchItems } from "./watch.ts"
+import { linkPendingWatchItems, recordWatchReview } from "./watch.ts"
 import { db } from "./db.ts"
 import { teamFor } from "./queries/dailies.ts"
+import { findActiveWatchForLink, findWatchForWrite } from "./queries/watch.ts"
 import { recordTimelineEvents, replaceTimelineEvents, timelineEventFor, type TimelineEventInput } from "./timeline.ts"
 import { hasModule, requireManager, teamScope, type TeamContext } from "./scope.ts"
 
@@ -94,6 +97,17 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
 
   let dailyId: string
   try {
+    // Próximo passo: a observação ATIVA do caso (a ligada ao combinado ou a que nasceu dele), lida antes da transação.
+    const caseWatch = new Map<string, { id: string; heat: WatchHeat; lastReviewedAt: Date }>()
+    for (const review of data.reviews) {
+      const agreement = byId.get(review.agreementId)
+      if (review.outcome !== "DONE" || !review.nextTitle || !agreement) continue
+      const linked = agreement.watchItemId ? await findWatchForWrite(ctx, agreement.watchItemId) : null
+      const origin = linked?.status === "ACTIVE" ? null : await findActiveWatchForLink(ctx, { agreementId: agreement.id })
+      const watch = linked?.status === "ACTIVE" ? linked : origin ? await findWatchForWrite(ctx, origin.id) : null
+      if (watch) caseWatch.set(agreement.id, { id: watch.id, heat: watch.heat, lastReviewedAt: watch.lastReviewedAt })
+    }
+
     dailyId = await db.$transaction(
       async (tx) => {
         const daily = await tx.daily.create({
@@ -124,6 +138,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
         const reviewedBy = new Map<string, Record<Outcome, number>>()
         let rescheduled = 0
         let replaced = 0
+        let nextSteps = 0
 
         for (const review of data.reviews) {
           const agreement = byId.get(review.agreementId)!
@@ -148,6 +163,32 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
             timeline.push(
               timelineEventFor.agreementDone({ ...agreement, completedAt: day, outcome: null, authorUserId: ctx.userId }),
             )
+            // Próximo passo: o combinado foi cumprido, mas o caso seguiu por outro caminho. Nasce um
+            // combinado novo da mesma pessoa, cliente e observação; o que mudou vira o porquê dele
+            // e a revisão da observação (sem passar por "Parcial", que não seria verdade).
+            if (review.nextTitle) {
+              const watch = caseWatch.get(agreement.id) ?? null
+              const nextDue = date(review.nextDueDate)
+              const next = await tx.agreement.create({
+                data: {
+                  ...teamScope(ctx),
+                  memberId: agreement.memberId,
+                  title: review.nextTitle,
+                  description: review.nextNote,
+                  origin: "DAILY",
+                  sourceDailyId: daily.id,
+                  priority: agreement.priority,
+                  centralId: agreement.centralId,
+                  watchItemId: watch?.id ?? agreement.watchItemId,
+                  originalDueDate: nextDue,
+                  dueDate: nextDue,
+                  authorUserId: ctx.userId,
+                },
+              })
+              timeline.push(timelineEventFor.agreementCreated(next))
+              if (watch) await recordWatchReview(tx, ctx, watch, review.nextNote)
+              nextSteps++
+            }
             continue
           }
 
@@ -194,6 +235,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
               memberId: row.memberId,
               centralId: row.centralId || null,
               title: row.title,
+              description: textOrNull(row.why),
               origin: "DAILY",
               sourceDailyId: daily.id,
               originalDueDate: due,
@@ -244,6 +286,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
               done: data.reviews.filter((r) => r.outcome === "DONE").length,
               rescheduled,
               replaced,
+              nextSteps,
               created: data.newAgreements.length,
             },
           },
