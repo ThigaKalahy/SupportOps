@@ -71,6 +71,8 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
         status: true,
         dueDate: true,
         createdAt: true,
+        centralId: true,
+        watchItemId: true,
       },
     }),
     db.blockerReason.count({ where: { ...teamScope(ctx), id: { in: reasonIds } } }),
@@ -170,6 +172,9 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
               origin: "DAILY",
               sourceDailyId: daily.id,
               priority: agreement.priority,
+              // O substituto continua tratando o mesmo cliente e a mesma observação.
+              centralId: agreement.centralId,
+              watchItemId: agreement.watchItemId,
               originalDueDate: due,
               dueDate: due,
               replacesAgreementId: agreement.id,

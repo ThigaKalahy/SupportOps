@@ -526,6 +526,12 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Férias: bloco "Férias" no perfil (registrar com antecedência, cancelar com confirmação, últimas três que terminaram); "Férias até DD/MM" no cabeçalho do perfil e na coluna de status de /team; "N de férias" na composição da home. `createVacationRecord`/`cancelVacationRecord`, `member.vacation.*`.
 - Testes: `tests/c4.test.ts` (as três, sobre o seed) e as funções novas nas tabelas de `tests/isolation.test.ts`; `db:verify-teams` conta as tabelas novas.
 
+**C8 — Central herdada, "Todos do time" e combinado depois da daily (14–15/10/2026)**
+- "Colocar em observação" abre com a central do registro de origem (combinado do dialog, linha da Seção 3, revisão da daily, detalhe do combinado, validação, devolução).
+- Substituir na daily: o combinado novo herda a central e a observação do antigo.
+- Novo combinado com responsável "Todos do time": um combinado por pessoa ativa (ou em desligamento) fora de férias no prazo, cada um com sua linha de timeline e auditoria, cobrados individualmente na daily.
+- Combinado criado fora de daily, no mesmo dia e depois dela, entra nos "Combinados de hoje" daquela daily — tela (marcado "incluído depois da daily, às HH:mm"), WhatsApp e PDF. Vai para a última daily do dia registrada antes dele; daily retroativa não recebe nada. Derivado em query, nada gravado.
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:

@@ -13,7 +13,7 @@ import { ScopeError } from "./scope"
  * `paths`: rota simples ou [rota, "layout"] para revalidar a rota e as filhas
  * (ex.: o perfil e todas as abas dele).
  */
-export async function runAction<R extends ActionResult | { ok: true; id: string }>(
+export async function runAction<R extends ActionResult | { ok: true; id: string } | { ok: true; count: number }>(
   scope: string,
   write: () => Promise<R>,
   paths: (string | [string, "layout"])[],

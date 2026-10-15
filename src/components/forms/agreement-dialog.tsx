@@ -12,9 +12,11 @@ import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import { formatDate, maskDateInput, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import {
+  ALL_MEMBERS,
   AGREEMENT_ORIGINS,
   AGREEMENT_PRIORITIES,
   createAgreementSchema,
@@ -80,6 +82,7 @@ export function AgreementDialog({
     [member?.id, origin, defaultMemberId, defaultCentralId, watchItem?.id],
   )
   const form = useForm<CreateAgreementInput>({ resolver: zodResolver(createAgreementSchema), defaultValues: defaults() })
+  const toast = useToast()
   const [showDetails, setShowDetails] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
   const [savedNotice, setSavedNotice] = React.useState(false)
@@ -105,6 +108,7 @@ export function AgreementDialog({
       const result = await createAgreement({ ...values, watchIds })
       if (result.ok) {
         onSaved?.()
+        if ("count" in result) toast.show(fill(L.savedAll, { count: result.count }))
         if (!keepOpen) return onOpenChange(false)
         form.reset(defaults())
         setSavedNotice(true)
@@ -149,6 +153,7 @@ export function AgreementDialog({
           <FieldGroup label={L.agreementTitle} error={err.title?.message} required>
             <Input autoComplete="off" {...form.register("title", { onChange: () => setSavedNotice(false) })} />
           </FieldGroup>
+          {form.watch("memberId") === ALL_MEMBERS ? <p className="text-xs text-ink-secondary">{L.allMembersHint}</p> : null}
           <div className={member ? "grid gap-4 sm:grid-cols-[1fr_140px]" : "grid gap-4 sm:grid-cols-[1fr_1fr_140px]"}>
             {member ? null : (
               <FieldGroup label={L.member} error={err.memberId?.message} required>
@@ -161,6 +166,7 @@ export function AgreementDialog({
                       <SelectValue placeholder={L.memberPlaceholder} />
                     </SelectTrigger>
                     <SelectContent>
+                      {members.length > 1 ? <SelectItem value={ALL_MEMBERS}>{L.allMembers}</SelectItem> : null}
                       {members.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.preferredName}
@@ -256,7 +262,11 @@ export function AgreementDialog({
               origin="AGREEMENT"
               defaults={{ title: form.watch("title"), heat: "MEDIUM" }}
               link={{
-                ...(member ? { memberId: member.id } : form.watch("memberId") ? { memberId: form.watch("memberId") } : {}),
+                ...(member
+                  ? { memberId: member.id }
+                  : form.watch("memberId") && form.watch("memberId") !== ALL_MEMBERS
+                    ? { memberId: form.watch("memberId") }
+                    : {}),
                 ...(form.watch("centralId") ? { centralId: form.watch("centralId") } : {}),
               }}
               pendingHint={labels.watch.button.pendingRecord}

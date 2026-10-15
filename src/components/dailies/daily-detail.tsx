@@ -4,6 +4,7 @@ import Link from "next/link"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { Section } from "@/components/ui/section"
 import { StatusPill } from "@/components/ui/status-pill"
+import { formatTime } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import type { Severity } from "@/lib/severity"
 import type { DailyDetail as Detail } from "@/server/queries/dailies"
@@ -71,6 +72,7 @@ export function DailyDetail({ daily }: { daily: Detail }) {
                   {c.title}
                 </Link>
                 <DateStamp date={c.dueDate} kind="business" className="text-ink-secondary" />
+                {c.addedAt ? <span className="text-xs text-ink-secondary">{fill(D.afterDaily, { time: formatTime(c.addedAt) })}</span> : null}
               </li>
             ))}
           </ul>

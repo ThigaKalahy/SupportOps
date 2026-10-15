@@ -16,7 +16,7 @@ import {
  * src/server/agreements.ts (zod + transação + timeline + auditoria) → revalidate.
  */
 
-export async function createAgreement(input: unknown): Promise<ActionResult> {
+export async function createAgreement(input: unknown): Promise<ActionResult | { ok: true; count: number }> {
   return runAction("agreements", async () => createAgreementRecord(await requireWriteContext(), input), [
     "/team",
     "/agreements",

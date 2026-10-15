@@ -15,6 +15,9 @@ const v = labels.validation
 export const AGREEMENT_ORIGINS = ["DAILY", "ONE_ON_ONE", "FEEDBACK", "MEETING", "INCIDENT", "MANAGER", "OTHER"] as const
 export const AGREEMENT_PRIORITIES = ["LOW", "NORMAL", "HIGH"] as const
 
+/** Responsável "Todos do time": um combinado por pessoa disponível, cada um cobrado na daily. */
+export const ALL_MEMBERS = "__all__"
+
 export const createAgreementSchema = z.object({
   memberId: z.string().min(1, v.required),
   title: z.string().trim().min(3, v.tooShort).max(160, v.tooLong),

@@ -2,7 +2,9 @@ import { parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import { pendingWatchIdsOf } from "../lib/validators/watch.ts"
+import { vacationCovering } from "../lib/vacations.ts"
 import {
+  ALL_MEMBERS,
   cancelAgreementSchema,
   completeAgreementSchema,
   createAgreementSchema,
@@ -31,17 +33,32 @@ import { requireManager, teamScope, type TeamContext } from "./scope.ts"
  * de transferência para cada pessoa. O prazo não muda.
  */
 
-export async function createAgreementRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+export async function createAgreementRecord(
+  ctx: TeamContext,
+  input: unknown,
+): Promise<ActionResult | { ok: true; count: number }> {
   requireManager(ctx)
   const parsed = createAgreementSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
   }
   const data = parsed.data
-  const member = await db.teamMember.findFirst({ where: { id: data.memberId, ...teamScope(ctx) }, select: { id: true } })
-  if (!member) return { ok: false, error: labels.validation.generic }
   const due = parseDisplayDate(data.dueDate)
   if (!due) return { ok: false, error: labels.validation.date, fieldErrors: { dueDate: labels.validation.date } }
+  // "Todos do time": quem estaria na daily do prazo — ativo (ou em desligamento) e fora de férias.
+  const all = data.memberId === ALL_MEMBERS
+  const members = await db.teamMember.findMany({
+    where: all
+      ? { ...teamScope(ctx), status: { in: ["ACTIVE", "OFFBOARDING"] }, vacations: { none: vacationCovering(ctx.teamId, due) } }
+      : { ...teamScope(ctx), id: data.memberId },
+    select: { id: true },
+    orderBy: { preferredName: "asc" },
+  })
+  if (!members.length) {
+    return all
+      ? { ok: false, error: labels.forms.agreement.noMembersAvailable, fieldErrors: { memberId: labels.forms.agreement.noMembersAvailable } }
+      : { ok: false, error: labels.validation.generic }
+  }
   const centralId = await resolveCentralId(ctx, data.centralId)
   if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
   // C7: a observação precisa ser do time (e legível por quem escreve) e estar ativa.
@@ -49,43 +66,48 @@ export async function createAgreementRecord(ctx: TeamContext, input: unknown): P
   if (data.watchItemId && (!watch || watch.status !== "ACTIVE")) return { ok: false, error: labels.watch.agreements.notActive }
 
   await db.$transaction(async (tx) => {
-    const created = await tx.agreement.create({
-      data: {
-        ...teamScope(ctx),
-        memberId: member.id,
-        centralId,
-        watchItemId: watch?.id ?? null,
-        title: data.title,
-        description: textOrNull(data.description),
-        origin: data.origin,
-        priority: data.priority,
-        originalDueDate: due,
-        dueDate: due,
-        authorUserId: ctx.userId,
-      },
-    })
-    await recordTimelineEvents(tx, ctx, [timelineEventFor.agreementCreated(created)])
-    // P21: observação marcada no dialog antes de salvar passa a apontar para o combinado.
-    await linkPendingWatchItems(tx, ctx, pendingWatchIdsOf(input), { agreementId: created.id }, { centralId: created.centralId })
-    await writeAudit(
-      {
-        action: "agreement.create",
-        entity: "Agreement",
-        entityId: created.id,
-        after: {
-          memberId: created.memberId,
-          title: created.title,
-          origin: created.origin,
-          priority: created.priority,
-          dueDate: data.dueDate,
+    for (const [i, member] of members.entries()) {
+      const created = await tx.agreement.create({
+        data: {
+          ...teamScope(ctx),
+          memberId: member.id,
           centralId,
           watchItemId: watch?.id ?? null,
+          title: data.title,
+          description: textOrNull(data.description),
+          origin: data.origin,
+          priority: data.priority,
+          originalDueDate: due,
+          dueDate: due,
+          authorUserId: ctx.userId,
         },
-      },
-      auditOf(ctx, tx),
-    )
+      })
+      await recordTimelineEvents(tx, ctx, [timelineEventFor.agreementCreated(created)])
+      // P21: observação marcada no dialog antes de salvar passa a apontar para o combinado (o primeiro, com "Todos").
+      if (i === 0) {
+        await linkPendingWatchItems(tx, ctx, pendingWatchIdsOf(input), { agreementId: created.id }, { centralId: created.centralId })
+      }
+      await writeAudit(
+        {
+          action: "agreement.create",
+          entity: "Agreement",
+          entityId: created.id,
+          after: {
+            memberId: created.memberId,
+            title: created.title,
+            origin: created.origin,
+            priority: created.priority,
+            dueDate: data.dueDate,
+            centralId,
+            watchItemId: watch?.id ?? null,
+            ...(all ? { allMembers: true } : {}),
+          },
+        },
+        auditOf(ctx, tx),
+      )
+    }
   })
-  return { ok: true }
+  return all ? { ok: true, count: members.length } : { ok: true }
 }
 
 export async function completeAgreementRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {

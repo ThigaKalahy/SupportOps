@@ -1109,6 +1109,7 @@ export const labels = {
     detail: {
       reviewed: "Combinados revisados",
       created: "Combinados criados",
+      afterDaily: "incluído depois da daily, às {time}",
       notes: "Notas",
       absent: "Ausentes",
       summary: "Resumo geral",
@@ -1223,6 +1224,9 @@ export const labels = {
       agreementTitle: "O que foi combinado",
       member: "Responsável",
       memberPlaceholder: "Selecione a pessoa",
+      allMembers: "Todos do time",
+      allMembersHint: "Cria um combinado para cada pessoa ativa (fora quem está de férias no prazo), cobrado individualmente na daily.",
+      noMembersAvailable: "Ninguém do time está disponível nesse prazo.",
       descriptionGeneral: "Só o que foi combinado, o responsável e o prazo são obrigatórios.",
       dueDate: "Prazo",
       details: "Detalhes",
@@ -1231,6 +1235,7 @@ export const labels = {
       shortcut: "Enter salva · Ctrl+Enter salva e abre outro",
       submit: "Criar combinado",
       savedAnother: "Combinado criado. Pode lançar o próximo.",
+      savedAll: "{count} combinados criados, um por pessoa.",
     },
   },
   priorityValidations: {

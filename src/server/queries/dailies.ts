@@ -1,6 +1,6 @@
 import type { CheckinOutcome } from "@prisma/client"
 
-import { todayBusinessDate } from "../../lib/dates.ts"
+import { businessRangeInstants, todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { MODULES } from "../../lib/modules.ts"
 import { db } from "../db.ts"
@@ -208,11 +208,67 @@ export interface DailyDetail {
     newDueDate: Date | null
     replacement: { id: string; title: string; dueDate: Date } | null
   }[]
-  created: { id: string; memberId: string; title: string; name: string; dueDate: Date; central: string | null; isReplacement: boolean }[]
+  created: {
+    id: string
+    memberId: string
+    title: string
+    name: string
+    dueDate: Date
+    central: string | null
+    isReplacement: boolean
+    /** Criado fora da daily, no mesmo dia e depois dela: quando (entra no resumo, no WhatsApp e no PDF). */
+    addedAt: Date | null
+  }[]
   whatsapp: WhatsAppDaily
 }
 
-function toDetail(daily: DailyWithDetail): DailyDetail {
+const lateSelect = {
+  id: true,
+  title: true,
+  dueDate: true,
+  createdAt: true,
+  memberId: true,
+  member: { select: { preferredName: true } },
+  central: { select: { name: true } },
+} as const
+
+type LateAgreement = { id: string; title: string; dueDate: Date; createdAt: Date; memberId: string; member: { preferredName: string }; central: { name: string } | null }
+
+/**
+ * Combinados que entraram DEPOIS da daily, no mesmo dia, fora de qualquer daily
+ * (criação rápida, 1:1, feedback): fazem parte do resumo daquele dia — tela,
+ * WhatsApp e PDF. Cada um vai para a última daily do dia registrada antes dele.
+ * Daily retroativa (registrada outro dia) não recebe nada.
+ */
+async function lateAgreementsByDaily(ctx: TeamContext, dailies: DailyWithDetail[]): Promise<Map<string, LateAgreement[]>> {
+  const out = new Map<string, LateAgreement[]>()
+  const windows = dailies.flatMap((d) => {
+    const { lt } = businessRangeInstants(d.date, d.date)
+    return d.createdAt < lt ? [{ daily: d, gte: d.createdAt, lt }] : []
+  })
+  if (!windows.length) return out
+  const agreements = await db.agreement.findMany({
+    where: {
+      ...teamScope(ctx),
+      deletedAt: null,
+      sourceDailyId: null,
+      replacesAgreementId: null,
+      OR: windows.map((w) => ({ createdAt: { gte: w.gte, lt: w.lt } })),
+    },
+    orderBy: { createdAt: "asc" },
+    select: lateSelect,
+  })
+  for (const a of agreements) {
+    const owner = windows
+      .filter((w) => a.createdAt >= w.gte && a.createdAt < w.lt)
+      .sort((x, y) => y.gte.getTime() - x.gte.getTime())[0]
+    if (!owner) continue
+    out.set(owner.daily.id, [...(out.get(owner.daily.id) ?? []), a])
+  }
+  return out
+}
+
+function toDetail(daily: DailyWithDetail, late: LateAgreement[] = []): DailyDetail {
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)
   const present = daily.participants
     .filter((p) => p.present)
@@ -242,7 +298,20 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
     dueDate: a.dueDate,
     central: a.central?.name ?? null,
     isReplacement: a.replacesAgreementId !== null,
+    addedAt: null as Date | null,
   }))
+  for (const a of late) {
+    created.push({
+      id: a.id,
+      memberId: a.memberId,
+      title: a.title,
+      name: a.member.preferredName,
+      dueDate: a.dueDate,
+      central: a.central?.name ?? null,
+      isReplacement: false,
+      addedAt: a.createdAt,
+    })
+  }
   return {
     id: daily.id,
     date: daily.date,
@@ -275,7 +344,9 @@ function toDetail(daily: DailyWithDetail): DailyDetail {
 
 export async function getDailyDetail(ctx: TeamContext, id: string): Promise<DailyDetail | null> {
   const daily = await findDaily(id, ctx)
-  return daily ? toDetail(daily) : null
+  if (!daily) return null
+  const late = await lateAgreementsByDaily(ctx, [daily])
+  return toDetail(daily, late.get(daily.id))
 }
 
 /** Histórico: todas as dailies do time, da mais recente para a mais antiga, já com o detalhe. */
@@ -285,5 +356,6 @@ export async function listDailies(ctx: TeamContext): Promise<DailyDetail[]> {
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     include: detailInclude,
   })
-  return dailies.map(toDetail)
+  const late = await lateAgreementsByDaily(ctx, dailies)
+  return dailies.map((d) => toDetail(d, late.get(d.id)))
 }
