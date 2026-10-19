@@ -36,6 +36,19 @@ export interface ReviewItem {
   why: string | null
   /** O caso por trás (observação ATIVA ligada, legível por quem lê). */
   watch: { id: string; title: string } | null
+  /** C11: já revisado NESTA daily (edição) — a linha fica travada, mostrando o desfecho gravado. */
+  reviewed: { outcome: CheckinOutcome; blockerText: string | null; newDueDate: Date | null; replacement: string | null } | null
+}
+
+/** C11: combinado criado na daily em edição (Seção 3). Travado se já foi revisado ou encerrado. */
+export interface EditRow {
+  id: string
+  memberId: string
+  centralId: string | null
+  title: string
+  why: string | null
+  dueDate: Date
+  locked: boolean
 }
 
 /** Primeira linha não vazia de um texto (o "porquê" que cabe numa linha). */
@@ -54,10 +67,51 @@ export interface ReviewGroup {
  * (b) abertos com prazo até a data da daily — sem repetição e agrupados por
  * pessoa; os membros ativos; e os motivos de impeditivo.
  */
-export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessDate()) {
+export async function getDailyForm(ctx: TeamContext, requestedDate: Date = todayBusinessDate(), editId?: string) {
   const team = await teamFor(ctx)
   if (!team) return null
   const scope = teamScope(ctx)
+
+  // C11: edição de uma daily salva no formato de criação. A data é a da daily; as revisões
+  // gravadas nela voltam travadas; os combinados criados nela viram linhas editáveis.
+  const editing = editId
+    ? await db.daily.findFirst({
+        where: { ...scope, id: editId },
+        select: {
+          id: true,
+          date: true,
+          summary: true,
+          decisions: true,
+          participants: { select: { memberId: true, present: true, note: true, blocker: true, member: { select: { preferredName: true } } } },
+          checkins: {
+            select: {
+              agreementId: true,
+              outcome: true,
+              blockerText: true,
+              newDueDate: true,
+              agreement: { select: { replacedBy: { select: { title: true } } } },
+            },
+          },
+          sourcedAgreements: {
+            where: { deletedAt: null, replacesAgreementId: null },
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              memberId: true,
+              centralId: true,
+              title: true,
+              description: true,
+              dueDate: true,
+              status: true,
+              _count: { select: { checkins: true } },
+            },
+          },
+        },
+      })
+    : null
+  if (editId && !editing) return null
+  const date = editing?.date ?? requestedDate
+  const reviewedHere = new Map((editing?.checkins ?? []).map((c) => [c.agreementId, c]))
 
   const previous = await db.daily.findFirst({
     where: { ...scope, date: { lt: date } },
@@ -67,12 +121,30 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
 
   const [agreements, members, reasons, sameDay, centrals] = await Promise.all([
     db.agreement.findMany({
-      where: {
-        ...scope,
-        status: { in: ["OPEN", "IN_PROGRESS"] },
-        member: { deletedAt: null },
-        OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: date } }],
-      },
+      where: editing
+        ? {
+            ...scope,
+            member: { deletedAt: null },
+            OR: [
+              // Os que ficaram sem desfecho: elegíveis pela mesma regra, fora os criados nela
+              // e os já revisados numa daily posterior.
+              {
+                status: { in: ["OPEN", "IN_PROGRESS"] },
+                AND: [
+                  { OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: date } }] },
+                  { OR: [{ sourceDailyId: null }, { sourceDailyId: { not: editing.id } }] },
+                ],
+                checkins: { none: { daily: { date: { gt: date } } } },
+              },
+              { checkins: { some: { dailyId: editing.id } } },
+            ],
+          }
+        : {
+            ...scope,
+            status: { in: ["OPEN", "IN_PROGRESS"] },
+            member: { deletedAt: null },
+            OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: date } }],
+          },
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,
@@ -142,6 +214,10 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
       centralId: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.id ?? null) : null,
       why: whyOn ? firstLine(a.description) : null,
       watch: whyOn ? ((w) => (w ? { id: w.id, title: w.title } : null))(watchFor(a)) : null,
+      reviewed: ((c) =>
+        c
+          ? { outcome: c.outcome, blockerText: c.blockerText, newDueDate: c.newDueDate, replacement: c.agreement.replacedBy?.title ?? null }
+          : null)(reviewedHere.get(a.id)),
     })
     groups.set(a.member.id, group)
   }
@@ -153,7 +229,12 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
     date,
     previousDaily: previous?.date ?? null,
     review: [...groups.values()].sort((a, b) => a.member.preferredName.localeCompare(b.member.preferredName)),
-    members,
+    // Na edição, a presença é a lista gravada na daily (a mesma que a edição confere no servidor).
+    members: editing
+      ? editing.participants
+          .map((p) => ({ id: p.memberId, preferredName: p.member.preferredName }))
+          .sort((a, b) => a.preferredName.localeCompare(b.preferredName))
+      : members,
     reasons,
     sameDay,
     centrals,
@@ -161,6 +242,25 @@ export async function getDailyForm(ctx: TeamContext, date: Date = todayBusinessD
     whyEnabled: hasModule(ctx, MODULES.AGREEMENT_WHY),
     // P21: observação ativa já ligada a cada combinado a revisar (o botão abre a existente).
     watching: await activeWatchByLink(ctx, "agreementId", agreements.map((a) => a.id)),
+    edit: editing
+      ? {
+          dailyId: editing.id,
+          summary: editing.summary,
+          decisions: editing.decisions,
+          participants: editing.participants.map((p) => ({ memberId: p.memberId, present: p.present, note: p.note, blocker: p.blocker })),
+          rows: editing.sourcedAgreements.map(
+            (a): EditRow => ({
+              id: a.id,
+              memberId: a.memberId,
+              centralId: hasModule(ctx, MODULES.CENTRALS) ? a.centralId : null,
+              title: a.title,
+              why: whyOn ? a.description : null,
+              dueDate: a.dueDate,
+              locked: a._count.checkins > 0 || (a.status !== "OPEN" && a.status !== "IN_PROGRESS"),
+            }),
+          ),
+        }
+      : null,
   }
 }
 

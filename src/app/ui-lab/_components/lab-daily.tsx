@@ -26,7 +26,7 @@ const reasons = [
 ]
 
 function item(id: string, title: string, dueOffset: number, reschedules: number, fromPreviousDaily = false, centralName: string | null = null): ReviewItem {
-  return { id, title, dueDate: day(dueOffset), reschedules, fromPreviousDaily, centralName, centralId: null, why: null, watch: null, deadline: deadlineSeverity(day(dueOffset)) }
+  return { id, title, dueDate: day(dueOffset), reschedules, fromPreviousDaily, centralName, centralId: null, why: null, watch: null, reviewed: null, deadline: deadlineSeverity(day(dueOffset)) }
 }
 
 const ITEMS: { item: ReviewItem; state: ReviewState; errors?: Record<string, string> }[] = [

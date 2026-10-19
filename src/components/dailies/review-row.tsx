@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StatusPill } from "@/components/ui/status-pill"
-import { maskDateInput } from "@/lib/dates"
+import { formatDayMonth, maskDateInput } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { ReviewItem } from "@/server/queries/dailies"
@@ -125,6 +125,23 @@ export function ReviewRow({
       setFocusIndex(next)
       buttons.current[next]?.focus()
     }
+  }
+
+  if (item.reviewed) {
+    const r = item.reviewed
+    const detail = [
+      r.blockerText,
+      r.newDueDate ? fill(labels.dailies.edit.newDue, { date: formatDayMonth(r.newDueDate, "business") }) : null,
+      r.replacement ? fill(labels.dailies.edit.replacedBy, { title: r.replacement }) : null,
+    ].filter(Boolean)
+    return (
+      <li className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-1.5 last:border-b-0">
+        <StatusPill severity={r.outcome === "DONE" ? "calm" : r.outcome === "PARTIAL" ? "attention" : "overdue"} label={OUTCOMES.find((o) => o.value === r.outcome)!.label} />
+        <span className="min-w-0 flex-1 truncate text-sm text-ink-secondary">{item.title}</span>
+        {detail.length ? <span className="text-xs text-ink-secondary">{detail.join(" · ")}</span> : null}
+        <MetaLabel>{labels.dailies.edit.reviewedHere}</MetaLabel>
+      </li>
+    )
   }
 
   if (state.outcome === "DONE") {

@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { XIcon } from "lucide-react"
 
-import { createDaily } from "@/actions/dailies"
+import { createDaily, updateDaily } from "@/actions/dailies"
 import { DisclosureToggle, FormError } from "@/components/forms/form-kit"
 import { Button } from "@/components/ui/button"
 import { WatchButton } from "@/components/watch/watch-button"
@@ -23,7 +23,7 @@ import { formatDate, formatTime, maskDateInput, parseDisplayDate, todayBusinessD
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { fieldErrorsOf } from "@/lib/validators/fields"
-import { dailySchema, type DailyInput } from "@/lib/validators/daily"
+import { dailySchema, editDailySchema, type DailyInput } from "@/lib/validators/daily"
 import type { DailyForm as DailyFormData } from "@/server/queries/dailies"
 import type { WhatsAppDaily } from "@/server/whatsapp"
 
@@ -34,6 +34,7 @@ const L = labels.dailies
 /** Rascunho por time (multi-time). A chave antiga, única, ainda é lida uma vez para não perder o que já estava salvo. */
 const LEGACY_DRAFT_KEY = "prontuario.daily-draft"
 const draftKey = (teamId: string) => `${LEGACY_DRAFT_KEY}:${teamId}`
+const editDraftKey = (dailyId: string) => `prontuario.daily-edit-draft:${dailyId}`
 /** Grava pouco depois de cada alteração (antes: a cada 10 s, e os últimos segundos se perdiam). */
 const DRAFT_DEBOUNCE_MS = 600
 
@@ -48,6 +49,12 @@ interface ParticipantState {
 
 interface NewRow {
   key: string
+  /** C11: combinado já criado nesta daily (edição). */
+  id?: string
+  /** Já revisado ou encerrado: aparece só para leitura. */
+  locked?: boolean
+  /** Marcado para remover ao salvar. */
+  remove?: boolean
   memberId: string
   /** Central (P19): opcional, "" = sem. */
   centralId: string
@@ -72,11 +79,13 @@ interface Draft extends FormState {
   version: 1
   date: string
   savedAt: string
+  /** C11: rascunho da edição de uma daily salva (um por daily). */
+  dailyId?: string
 }
 
 let rowSeq = 0
 const newRow = (dueDate: string): NewRow => ({ key: `row-${++rowSeq}`, memberId: "", centralId: "", title: "", dueDate })
-const rowIsEmpty = (row: NewRow) => !row.memberId && !row.title.trim()
+const rowIsEmpty = (row: NewRow) => !row.id && !row.memberId && !row.title.trim()
 
 /** Prazos nascem com a data da própria daily, também na retroativa (D28): o combinado é o compromisso do dia. */
 function initialState(form: DailyFormData, dailyDate: string): FormState {
@@ -100,7 +109,21 @@ function initialState(form: DailyFormData, dailyDate: string): FormState {
   }
   const participants: Record<string, ParticipantState> = {}
   for (const m of form.members) participants[m.id] = { present: true, note: "", isBlocker: false }
-  return { reviews, participants, rows: [newRow(dailyDate)], summary: "", decisions: "" }
+  const edit = form.edit
+  if (!edit) return { reviews, participants, rows: [newRow(dailyDate)], summary: "", decisions: "" }
+  // C11: edição — o que a daily gravou, mais uma linha vazia para acrescentar.
+  for (const p of edit.participants) participants[p.memberId] = { present: p.present, note: p.blocker ?? p.note ?? "", isBlocker: p.blocker !== null }
+  const rows: NewRow[] = edit.rows.map((r) => ({
+    key: `row-${r.id}`,
+    id: r.id,
+    locked: r.locked,
+    memberId: r.memberId,
+    centralId: r.centralId ?? "",
+    title: r.title,
+    why: r.why ?? "",
+    dueDate: formatDate(r.dueDate, "business"),
+  }))
+  return { reviews, participants, rows: [...rows, newRow(dailyDate)], summary: edit.summary ?? "", decisions: edit.decisions ?? "" }
 }
 
 /** Rascunho só vale para a mesma daily e só para o que ainda existe na tela. */
@@ -111,6 +134,13 @@ function restore(base: FormState, draft: Draft): FormState {
   const participants = { ...base.participants }
   for (const [id, p] of Object.entries(draft.participants ?? {})) if (id in participants) participants[id] = p
   const rows = (draft.rows ?? []).filter((r) => !rowIsEmpty(r) || r === draft.rows?.[draft.rows.length - 1])
+  // Na edição, linha travada vem sempre da tela (pode ter sido revisada depois do rascunho).
+  const locked = new Map(base.rows.filter((r) => r.id).map((r) => [r.id!, r]))
+  if (locked.size) {
+    const kept = rows.filter((r) => !r.id || (locked.has(r.id) && !locked.get(r.id)!.locked))
+    const missing = base.rows.filter((r) => r.id && (r.locked || !kept.some((k) => k.id === r.id)))
+    rows.splice(0, rows.length, ...missing, ...kept)
+  }
   return {
     reviews,
     participants,
@@ -120,8 +150,13 @@ function restore(base: FormState, draft: Draft): FormState {
   }
 }
 
-function readDraft(teamId: string, date: string): Draft | null {
+function readDraft(teamId: string, date: string, dailyId?: string): Draft | null {
   try {
+    if (dailyId) {
+      const raw = localStorage.getItem(editDraftKey(dailyId))
+      const draft = raw ? (JSON.parse(raw) as Draft) : null
+      return draft?.version === 1 && draft.dailyId === dailyId ? draft : null
+    }
     const raw = localStorage.getItem(draftKey(teamId)) ?? localStorage.getItem(LEGACY_DRAFT_KEY)
     if (!raw) return null
     const draft = JSON.parse(raw) as Draft
@@ -154,14 +189,15 @@ function retarget(draft: Draft, date: string): Draft {
 
 function writeDraft(teamId: string, draft: Draft) {
   try {
-    localStorage.setItem(draftKey(teamId), JSON.stringify(draft))
+    localStorage.setItem(draft.dailyId ? editDraftKey(draft.dailyId) : draftKey(teamId), JSON.stringify(draft))
   } catch {
     // armazenamento indisponível (janela privada, cota): o formulário segue sem rascunho
   }
 }
 
-function clearDraft(teamId: string) {
+function clearDraft(teamId: string, dailyId?: string) {
   try {
+    if (dailyId) return localStorage.removeItem(editDraftKey(dailyId))
     localStorage.removeItem(draftKey(teamId))
     localStorage.removeItem(LEGACY_DRAFT_KEY)
   } catch {
@@ -180,8 +216,12 @@ function clearDraft(teamId: string) {
  */
 export function DailyForm({ form }: { form: DailyFormData }) {
   const router = useRouter()
-  const dateText = formatDate(form.date, "business")
-  const [state, setState] = React.useState<FormState>(() => initialState(form, dateText))
+  const editId = form.edit?.dailyId
+  const savedDate = formatDate(form.date, "business")
+  // C11: na edição, a data é um campo; o que estava no "dia da daily" acompanha a troca.
+  const [dateInput, setDateInput] = React.useState(savedDate)
+  const [dateText, setDateText] = React.useState(savedDate)
+  const [state, setState] = React.useState<FormState>(() => initialState(form, savedDate))
   const [restoredAt, setRestoredAt] = React.useState<string | null>(null)
   const [showExtra, setShowExtra] = React.useState(false)
   const [errors, setErrors] = React.useState<Record<string, string>>({})
@@ -194,7 +234,11 @@ export function DailyForm({ form }: { form: DailyFormData }) {
   const stateRef = React.useRef(state)
   stateRef.current = state
 
-  const reviewOrder = React.useMemo(() => form.review.flatMap((g) => g.items.map((i) => i.id)), [form.review])
+  // Na edição, as revisões já gravadas ficam fora (travadas).
+  const reviewOrder = React.useMemo(
+    () => form.review.flatMap((g) => g.items.filter((i) => !i.reviewed).map((i) => i.id)),
+    [form.review],
+  )
   const memberName = React.useMemo(() => new Map(form.members.map((m) => [m.id, m.preferredName])), [form.members])
   // Centrais ativas + as criadas nesta daily (o combobox de uma linha cria; as outras linhas já enxergam).
   const [centrals, setCentrals] = React.useState<CentralOption[]>(form.centrals)
@@ -213,21 +257,52 @@ export function DailyForm({ form }: { form: DailyFormData }) {
 
   // Restaura o rascunho depois de montar (localStorage não existe no servidor).
   React.useEffect(() => {
-    const draft = readDraft(form.teamId, dateText)
+    const draft = readDraft(form.teamId, savedDate, editId)
     if (draft) {
-      setState(restore(initialState(form, dateText), draft))
+      setState(restore(initialState(form, savedDate), draft))
+      if (editId && draft.date !== savedDate) {
+        setDateInput(draft.date)
+        setDateText(draft.date)
+      }
       setRestoredAt(formatTime(new Date(draft.savedAt)))
     }
     // Foco inicial: primeiro combinado a revisar; sem revisão, a primeira nota.
     const first = groups.current[0]?.querySelector<HTMLButtonElement>("button[tabindex='0']")
     if (first) first.focus()
     else noteRefs.current[form.members[0]?.id ?? ""]?.focus()
-  }, [dateText, form])
+  }, [savedDate, form, editId])
 
   const persistDraft = React.useCallback(
-    () => writeDraft(form.teamId, { ...stateRef.current, version: 1, date: dateText, savedAt: new Date().toISOString() }),
-    [form.teamId, dateText],
+    () =>
+      writeDraft(form.teamId, {
+        ...stateRef.current,
+        version: 1,
+        date: dateText,
+        savedAt: new Date().toISOString(),
+        ...(editId ? { dailyId: editId } : {}),
+      }),
+    [form.teamId, dateText, editId],
   )
+
+  /** C11: trocar a data na edição leva junto os prazos que eram "o dia da daily". */
+  function changeDate(value: string) {
+    const masked = maskDateInput(value)
+    setDateInput(masked)
+    if (!parseDisplayDate(masked) || masked === dateText) return
+    const from = dateText
+    const swap = (v: string) => (v === from ? masked : v)
+    setState((s) => ({
+      ...s,
+      rows: s.rows.map((r) => (r.locked ? r : { ...r, dueDate: swap(r.dueDate) })),
+      reviews: Object.fromEntries(
+        Object.entries(s.reviews).map(([id, r]) => [
+          id,
+          { ...r, newDueDate: swap(r.newDueDate), replacementDueDate: swap(r.replacementDueDate), nextDueDate: swap(r.nextDueDate) },
+        ]),
+      ),
+    }))
+    setDateText(masked)
+  }
   // A cada alteração (com um respiro curto para não gravar a cada tecla).
   const touched = React.useRef(false)
   React.useEffect(() => {
@@ -268,7 +343,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
 
   function buildInput(current: FormState): { input: DailyInput; reviewIds: string[]; rowKeys: string[] } {
     const reviewIds = reviewOrder.filter((id) => current.reviews[id]?.outcome)
-    const rows = current.rows.filter((r) => !rowIsEmpty(r))
+    const rows = current.rows.filter((r) => !rowIsEmpty(r) && !r.locked)
     return {
       reviewIds,
       rowKeys: rows.map((r) => r.key),
@@ -294,6 +369,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
         }),
         participants: form.members.map((m) => ({ memberId: m.id, ...current.participants[m.id]!, watchIds: current.participants[m.id]!.watchIds ?? [] })),
         newAgreements: rows.map((r) => ({
+          ...(editId ? { id: r.id ?? "", remove: r.remove ?? false } : {}),
           memberId: r.memberId,
           centralId: r.centralId,
           watchIds: r.watchIds ?? [],
@@ -321,6 +397,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
     if (pending) return
     setFormError(null)
     const { input, reviewIds, rowKeys } = buildInput(stateRef.current)
+    if (editId) return saveEdit(input, reviewIds, rowKeys)
     const parsed = dailySchema.safeParse(input)
     if (!parsed.success) {
       setErrors(keyedErrors(fieldErrorsOf(parsed.error), reviewIds, rowKeys))
@@ -342,6 +419,36 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       if (result.ok) {
         clearDraft(form.teamId)
         router.push(`/dailies/${result.id}`)
+        return
+      }
+      setFormError(result.error)
+      if (result.fieldErrors) setErrors(keyedErrors(result.fieldErrors, reviewIds, rowKeys))
+    })
+  }
+
+  function saveEdit(input: DailyInput, reviewIds: string[], rowKeys: string[]) {
+    const parsed = editDailySchema.safeParse({ ...input, id: editId, date: dateInput })
+    if (!parsed.success) {
+      const raw = fieldErrorsOf(parsed.error)
+      setErrors(keyedErrors(raw, reviewIds, rowKeys))
+      setFormError(raw.date ?? labels.validation.generic)
+      requestAnimationFrame(() => document.querySelector<HTMLElement>("[aria-invalid='true']")?.focus())
+      return
+    }
+    setErrors({})
+    persistDraft()
+    startTransition(async () => {
+      let result: Awaited<ReturnType<typeof updateDaily>>
+      try {
+        result = await updateDaily(parsed.data)
+      } catch {
+        setFormError(L.saveFailed)
+        return
+      }
+      if (result.ok) {
+        clearDraft(form.teamId, editId)
+        router.push(`/dailies/${editId}`)
+        router.refresh()
         return
       }
       setFormError(result.error)
@@ -420,13 +527,32 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             variant="ghost"
             size="sm"
             onClick={() => {
-              clearDraft(form.teamId)
-              setState(initialState(form, dateText))
+              clearDraft(form.teamId, editId)
+              setState(initialState(form, savedDate))
+              setDateInput(savedDate)
+              setDateText(savedDate)
               setRestoredAt(null)
             }}
           >
             {L.draft.discard}
           </Button>
+        </div>
+      ) : null}
+
+      {editId ? (
+        <div className="flex flex-col gap-1.5">
+          <FieldGroup label={L.edit.date} error={errors.date} required>
+            <Input
+              value={dateInput}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder={labels.forms.datePlaceholder}
+              className="w-36 font-mono"
+              aria-invalid={Boolean(errors.date)}
+              onChange={(e) => changeDate(e.target.value)}
+            />
+          </FieldGroup>
+          {dateInput !== savedDate ? <p className="text-xs text-ink-secondary">{L.edit.dateHint}</p> : null}
         </div>
       ) : null}
 
@@ -597,6 +723,26 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                 addRowAfter(row.key)
               }
             }
+            if (row.locked) {
+              return (
+                <li key={row.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-2 text-sm last:border-b-0">
+                  <span className="w-[132px] shrink-0 truncate text-ink">{memberName.get(row.memberId) ?? ""}</span>
+                  <span className="min-w-0 flex-1 truncate text-ink-secondary">{row.title}</span>
+                  <span className="font-mono text-xs text-ink-secondary">{row.dueDate}</span>
+                  <span className="basis-full text-xs text-ink-secondary">{L.edit.rowLocked}</span>
+                </li>
+              )
+            }
+            if (row.remove) {
+              return (
+                <li key={row.key} className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-sunken px-3 py-2 last:border-b-0">
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink-secondary line-through">{fill(L.edit.removed, { title: row.title })}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => patchRow(row.key, { remove: false })}>
+                    {L.edit.undoRemove}
+                  </Button>
+                </li>
+              )
+            }
             return (
               <li key={row.key} className="flex flex-col gap-1 border-b border-line px-3 py-1.5 last:border-b-0">
                 <div
@@ -676,13 +822,15 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                     tabIndex={-1}
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={L.newAgreements.remove}
+                    aria-label={row.id ? L.edit.removeRow : L.newAgreements.remove}
                     disabled={state.rows.length === 1 && rowIsEmpty(row)}
                     onClick={() =>
-                      setState((s) => ({
-                        ...s,
-                        rows: s.rows.length === 1 ? [newRow(dateText)] : s.rows.filter((r) => r.key !== row.key),
-                      }))
+                      row.id
+                        ? patchRow(row.key, { remove: true })
+                        : setState((s) => ({
+                            ...s,
+                            rows: s.rows.filter((r) => !r.id).length === 1 ? [...s.rows.filter((r) => r.id), newRow(dateText)] : s.rows.filter((r) => r.key !== row.key),
+                          }))
                     }
                   >
                     <XIcon />
@@ -726,12 +874,18 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-        <CopyWhatsAppButton daily={whatsapp} />
+        {/* Na edição, o texto do WhatsApp sai do detalhe da daily, já com o que estava gravado. */}
+        {editId ? <span /> : <CopyWhatsAppButton daily={whatsapp} />}
         <div className="flex flex-wrap items-center gap-3">
           <FormError message={formError} />
           <span className="font-mono text-2xs text-ink-secondary max-sm:hidden">{L.saveHint}</span>
+          {editId ? (
+            <Button type="button" variant="secondary" disabled={pending} onClick={() => router.push(`/dailies/${editId}`)}>
+              {L.edit.cancel}
+            </Button>
+          ) : null}
           <Button type="submit" loading={pending}>
-            {L.save}
+            {editId ? L.edit.submit : L.save}
           </Button>
         </div>
       </div>

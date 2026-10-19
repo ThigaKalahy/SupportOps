@@ -986,14 +986,23 @@ export const labels = {
     edit: {
       button: "Editar",
       title: "Editar daily",
-      description: "Data, resumo, decisões, presença e notas. As linhas da timeline de cada pessoa acompanham a edição.",
+      pageTitle: "Editar a daily de {date}",
+      subtitle:
+        "As revisões já registradas ficam como estão; os combinados que ficaram sem desfecho podem ser revisados agora. Os combinados de hoje se corrigem, removem e acrescentam.",
       date: "Data da daily",
       dateHint:
         "Mudar a data leva junto o que a daily gravou com ela: a conclusão dos combinados feitos e o prazo (original e atual) dos combinados criados ou reagendados para o dia da daily.",
-      notEditable:
-        "Revisões e combinados criados não se editam aqui: eles já mudaram os combinados. Corrija pelo próprio combinado.",
-      shortcut: "Ctrl+Enter salva",
+      reviewedHere: "Revisado nesta daily",
+      newDue: "novo prazo {date}",
+      replacedBy: "substituído por {title}",
+      rowLocked: "Já revisado ou encerrado — corrija pelo próprio combinado.",
+      removeRow: "Remover combinado",
+      removed: "Será removido ao salvar: {title}",
+      undoRemove: "Desfazer",
+      cancel: "Cancelar",
       submit: "Salvar alterações",
+      lockedRow: "Um combinado desta daily foi revisado ou encerrado enquanto você editava. Recarregue a página.",
+      alreadyReviewed: "Um combinado já tinha sido revisado nesta daily. Recarregue a página.",
     },
     review: {
       title: "Revisão dos combinados",

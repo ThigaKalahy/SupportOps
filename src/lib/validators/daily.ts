@@ -68,16 +68,16 @@ export const dailyNewAgreementSchema = z.object({
   dueDate: z.string().trim(),
 })
 
-export const dailySchema = z
-  .object({
-    date: pastDisplayDate,
-    summary: optionalText(4000),
-    decisions: optionalText(4000),
-    reviews: z.array(dailyReviewSchema),
-    participants: z.array(dailyParticipantSchema),
-    newAgreements: z.array(dailyNewAgreementSchema),
-  })
-  .superRefine((data, ctx) => {
+/** Regras de revisão e de combinados de hoje, comuns à criação e à edição (C11). */
+function refineDaily(
+  data: {
+    date: string
+    reviews: z.infer<typeof dailyReviewSchema>[]
+    newAgreements: (z.infer<typeof dailyNewAgreementSchema> & { remove?: boolean })[]
+  },
+  ctx: z.RefinementCtx,
+) {
+
     data.reviews.forEach((review, i) => {
       if (review.outcome === "DONE") {
         if (!review.nextTitle && !review.nextNote) return
@@ -115,6 +115,7 @@ export const dailySchema = z
       }
     })
     data.newAgreements.forEach((row, i) => {
+      if (row.remove) return
       if (!row.memberId) ctx.addIssue({ code: "custom", path: ["newAgreements", i, "memberId"], message: d.rowIncomplete })
       if (row.title.length < 3) ctx.addIssue({ code: "custom", path: ["newAgreements", i, "title"], message: v.tooShort })
       if (parseDisplayDate(row.dueDate) === null) {
@@ -123,7 +124,18 @@ export const dailySchema = z
         ctx.addIssue({ code: "custom", path: ["newAgreements", i, "dueDate"], message: d.notBeforeDaily })
       }
     })
+}
+
+export const dailySchema = z
+  .object({
+    date: pastDisplayDate,
+    summary: optionalText(4000),
+    decisions: optionalText(4000),
+    reviews: z.array(dailyReviewSchema),
+    participants: z.array(dailyParticipantSchema),
+    newAgreements: z.array(dailyNewAgreementSchema),
   })
+  .superRefine(refineDaily)
 
 export type DailyInput = z.infer<typeof dailySchema>
 export type DailyReviewInput = z.infer<typeof dailyReviewSchema>
@@ -131,17 +143,28 @@ export type DailyParticipantInput = z.infer<typeof dailyParticipantSchema>
 export type DailyNewAgreementInput = z.infer<typeof dailyNewAgreementSchema>
 
 /**
- * Edição de uma daily salva: só o que é texto da própria daily — resumo,
- * decisões, presença e notas. Revisões e combinados criados não se editam:
- * eles já mudaram os combinados (prazo, status, substituição).
+ * Edição de uma daily salva (C11), no formato da criação: data, resumo,
+ * decisões, presença e notas; os combinados que ficaram sem desfecho podem ser
+ * revisados (as revisões já gravadas não mudam); os combinados criados nela se
+ * editam ou removem (os já revisados ficam travados) e se acrescentam linhas.
  */
-export const editDailySchema = z.object({
-  id: z.string().min(1),
-  /** C10: corrigir a data (ex.: tela aberta desde o dia anterior). Ausente = não muda. */
-  date: pastDisplayDate.optional(),
-  summary: optionalText(4000),
-  decisions: optionalText(4000),
-  participants: z.array(dailyParticipantSchema),
+export const dailyEditRowSchema = dailyNewAgreementSchema.extend({
+  /** Combinado já criado nesta daily; vazio = linha nova. */
+  id: z.string().max(40).default(""),
+  /** Remover o combinado criado por engano (exclusão lógica). */
+  remove: z.boolean().default(false),
 })
+
+export const editDailySchema = z
+  .object({
+    id: z.string().min(1),
+    date: pastDisplayDate,
+    summary: optionalText(4000),
+    decisions: optionalText(4000),
+    participants: z.array(dailyParticipantSchema),
+    reviews: z.array(dailyReviewSchema).default([]),
+    newAgreements: z.array(dailyEditRowSchema).default([]),
+  })
+  .superRefine(refineDaily)
 
 export type EditDailyInput = z.infer<typeof editDailySchema>

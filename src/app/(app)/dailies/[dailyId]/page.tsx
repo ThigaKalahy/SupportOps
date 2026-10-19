@@ -5,7 +5,10 @@ import { cache } from "react"
 import { CopyWhatsAppButton } from "@/components/dailies/copy-whatsapp-button"
 import { DailyDetail } from "@/components/dailies/daily-detail"
 import { DownloadDailyPdfButton } from "@/components/dailies/download-pdf-button"
-import { EditDailyButton } from "@/components/dailies/edit-daily-dialog"
+import Link from "next/link"
+import { PencilIcon } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
 import { ContextActions } from "@/components/shell/context-actions"
 import { CrumbLabel } from "@/components/shell/crumb-label"
 import { PageHeader } from "@/components/ui/page-header"
@@ -38,7 +41,14 @@ export default async function DailyPage({ params }: { params: Promise<{ dailyId:
     <div className="flex flex-col gap-8">
       <CrumbLabel segment={daily.id} label={date} />
       <ContextActions>
-        {canWrite(ctx) ? <EditDailyButton daily={daily} /> : null}
+        {canWrite(ctx) ? (
+          <Button asChild size="sm" variant="secondary">
+            <Link href={`/dailies/${daily.id}/edit`}>
+              <PencilIcon />
+              {labels.dailies.edit.button}
+            </Link>
+          </Button>
+        ) : null}
         <CopyWhatsAppButton daily={daily.whatsapp} />
         <DownloadDailyPdfButton dailyId={daily.id} />
       </ContextActions>
