@@ -12,6 +12,7 @@ import { MemberAccessError, requireMemberContext, type MemberContext } from "@/s
 import {
   getMyAgreementHistory,
   getMyBlockerReasons,
+  getMyCentrals,
   getMyLastDailyRecord,
   getMyOpenAgreements,
   getMyPortalState,
@@ -51,11 +52,12 @@ export default async function MemberHomePage() {
     )
   }
 
-  const [open, last, history, reasons, state] = await Promise.all([
+  const [open, last, history, reasons, centrals, state] = await Promise.all([
     getMyOpenAgreements(ctx),
     getMyLastDailyRecord(ctx),
     getMyAgreementHistory(ctx, 20),
     getMyBlockerReasons(ctx),
+    getMyCentrals(ctx),
     getMyPortalState(ctx),
   ])
 
@@ -66,6 +68,7 @@ export default async function MemberHomePage() {
       initialState={state}
       agreements={open}
       reasons={reasons}
+      centrals={centrals}
       header={<PortalHeader name={ctx.preferredName} />}
     >
       <LastDailyZone record={last} />

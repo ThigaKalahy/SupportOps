@@ -150,6 +150,15 @@ export const labels = {
       cancel: "Cancelar",
       failed: "Não foi possível salvar. Tente de novo.",
     },
+    /** C16: próximo passo depois de um Feito — entra como combinado novo, com o mesmo cliente. */
+    next: {
+      action: "Próximo passo",
+      hint: "Entra como combinado novo seu, com o mesmo cliente.",
+      titleField: "Qual é o próximo passo",
+      add: "Adicionar",
+      cancel: "Cancelar",
+      added: "Próximo passo adicionado aos seus combinados.",
+    },
     /** C14: o colaborador cria o próprio combinado; o gestor pode ajustar na daily ou depois. */
     create: {
       title: "Novo combinado",

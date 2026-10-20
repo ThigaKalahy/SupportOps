@@ -32,6 +32,8 @@ export interface MyOpenAgreement {
   originalDueDate: Date
   dueDate: Date
   priority: AgreementPriority
+  /** Cliente do combinado (P19), quando há. O próximo passo herda. */
+  central: { id: string; name: string } | null
   deadline: DeadlineSeverity
   /** Quantas vezes o prazo foi estendido numa daily. */
   reschedules: number
@@ -51,6 +53,7 @@ export async function getMyOpenAgreements(ctx: MemberContext): Promise<MyOpenAgr
       originalDueDate: true,
       dueDate: true,
       priority: true,
+      central: { select: { id: true, name: true } },
       _count: { select: { checkins: { where: { teamId: ctx.teamId, newDueDate: { not: null } } } } },
       selfReports: {
         where: { ...memberOwnScope(ctx), dailyId: null },
@@ -68,6 +71,7 @@ export async function getMyOpenAgreements(ctx: MemberContext): Promise<MyOpenAgr
       originalDueDate: a.originalDueDate,
       dueDate: a.dueDate,
       priority: a.priority,
+      central: a.central,
       deadline: deadlineSeverity(a.dueDate, { today }),
       reschedules: a._count.checkins,
       pendingReport: report
@@ -198,6 +202,20 @@ export async function getMyBlockerReasons(ctx: MemberContext): Promise<{ id: str
     where: { teamId: ctx.teamId, isActive: true },
     orderBy: { order: "asc" },
     select: { id: true, label: true },
+  })
+}
+
+/**
+ * C16: as centrais ativas do time, para escolher o cliente do combinado. null com o módulo
+ * de centrais desligado no time (D32): o campo não aparece.
+ */
+export async function getMyCentrals(ctx: MemberContext): Promise<{ id: string; name: string }[] | null> {
+  const on = await db.teamModule.count({ where: { teamId: ctx.teamId, moduleKey: "CENTRALS", isEnabled: true } })
+  if (!on) return null
+  return db.central.findMany({
+    where: { teamId: ctx.teamId, isActive: true, deletedAt: null },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
   })
 }
 

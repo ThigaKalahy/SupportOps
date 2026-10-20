@@ -34,7 +34,7 @@ import { MODULE_KEYS, MODULES } from "../src/lib/modules.ts"
 import { MEMBER_HOME, routeRequest } from "../src/lib/portal-routing.ts"
 import { accountTier } from "../src/server/account-tier.ts"
 import { verifyCredentials } from "../src/server/credentials.ts"
-import { createOwnAgreement } from "../src/server/member-agreements.ts"
+import { createNextStep, createOwnAgreement, ensureOwnCentral } from "../src/server/member-agreements.ts"
 import { upsertSelfReportCore } from "../src/server/member-portal.ts"
 import { getDailyLock, MemberAccessError, memberContextFor, type MemberContext } from "../src/server/member-scope.ts"
 import { hashPassword } from "../src/server/password.ts"
@@ -435,13 +435,20 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     assert.deepEqual(violations, [])
   })
 
-  test("C14: a ponte que cria o combinado do colaborador só ESCREVE, pela timeline, depois do travamento", () => {
+  test("C14/C16: a ponte do colaborador só lê o próprio combinado e as centrais, e grava combinado só depois do travamento", () => {
     const source = readFileSync(join(SRC, "server/member-agreements.ts"), "utf8")
     const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!)
-    const allowed = (spec: string) => spec.startsWith("../lib/") || ["./db.ts", "./member-scope.ts", "./timeline.ts"].includes(spec)
+    const allowed = (spec: string) => spec === "@prisma/client" || spec.startsWith("../lib/") || ["./db.ts", "./member-scope.ts", "./timeline.ts"].includes(spec)
     assert.deepEqual(imports.filter((spec) => !allowed(spec)), [], "só banco, contexto do colaborador, timeline e src/lib")
     const code = stripComments(source)
-    assert.ok(!/\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/.test(code), "não lê nada: só escreve")
+    // Leituras: só o próprio combinado, as centrais do time e o módulo de centrais.
+    const reads = [...code.matchAll(/(?:db|tx)\.(\w+)\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/g)]
+    assert.deepEqual([...new Set(reads.map((m) => m[1]))].filter((model) => !["agreement", "central", "teamModule"].includes(model!)), [])
+    for (const m of reads.filter((r) => r[1] === "agreement")) {
+      assert.match(callBody(code, (m.index ?? 0) + m[0].length - 1), /memberOwnScope\(ctx\)/, "combinado lido só da própria pessoa")
+    }
+    // Escrita de combinado: só num lugar, depois do travamento, sempre da própria pessoa.
+    assert.equal(code.match(/agreement\.create\(/g)?.length, 1)
     assert.ok(code.indexOf("getDailyLock(") > -1 && code.indexOf("getDailyLock(") < code.indexOf("agreement.create("), "travamento antes de gravar")
     assert.ok(/memberId:\s*ctx\.memberId/.test(code), "sempre o combinado da própria pessoa")
   })
@@ -1133,6 +1140,8 @@ async function cleanupPortal() {
   await d.daily.deleteMany({ where: inTeams })
   await d.teamMember.deleteMany({ where: inTeams })
   await d.seniority.deleteMany({ where: inTeams })
+  await d.central.deleteMany({ where: inTeams })
+  await d.teamModule.deleteMany({ where: inTeams })
   await d.auditLog.deleteMany({ where: { OR: [inTeams, { organizationId: MP_ORG }] } })
   await d.teamAccess.deleteMany({ where: inTeams })
   await d.team.deleteMany({ where: { id: { in: MP_TEAMS } } })
@@ -1341,6 +1350,30 @@ describe("banco: portal do colaborador (P25) — critério de aceite", async () 
     assert.equal(row.authorUserId, MP_USERS.a1)
     assert.equal(row.originalDueDate.getTime(), todayBusinessDate().getTime(), "prazo vazio = hoje")
     assert.equal(await d.timelineEvent.count({ where: { teamId: MP_T1, agreementId: row.id, type: "AGREEMENT" } }), 1)
+  })
+
+  test("C16: próximo passo herda central, prioridade e observação; nunca de combinado alheio; central sem duplicar", async () => {
+    // Central pelo nome: módulo ligado no time; grafias diferentes são a mesma.
+    await d.teamModule.upsert({ where: { teamId_moduleKey: { teamId: MP_T1, moduleKey: "CENTRALS" } }, create: { teamId: MP_T1, moduleKey: "CENTRALS" }, update: { isEnabled: true } })
+    const first = await ensureOwnCentral(a1, { name: "Central Berílio" })
+    const again = await ensureOwnCentral(a1, { name: "  central berilio " })
+    assert.ok(first.ok && again.ok && again.existed && again.id === first.id, "mesma central pelo nome normalizado")
+    const centralId = first.ok ? first.id : ""
+
+    await d.agreement.update({ where: { id: id("ag_a1_reviewed") }, data: { centralId, priority: "HIGH" } })
+    const next = await createNextStep(a1, { agreementId: id("ag_a1_reviewed"), title: text("Próximo passo", "A1") })
+    assert.ok(next.ok)
+    const row = await d.agreement.findUniqueOrThrow({ where: { id: next.ok ? next.id : "" } })
+    assert.equal(row.memberId, id("p_a1"))
+    assert.equal(row.centralId, centralId, "herda a central")
+    assert.equal(row.priority, "HIGH", "herda a prioridade")
+    assert.equal(row.origin, "MEMBER")
+    assert.equal((await createNextStep(a1, { agreementId: id("ag_a2"), title: "Passo de outra pessoa" })).ok, false)
+    assert.equal((await createNextStep(a1, { agreementId: id("ag_a3"), title: "Passo de outro time" })).ok, false)
+    // Central de outro time: recusada.
+    const t2Central = await d.central.create({ data: { teamId: MP_T2, organizationId: MP_ORG, name: "Central T2", slug: "central-t2-isom" } })
+    assert.equal((await createOwnAgreement(a1, { title: "Com central alheia", centralId: t2Central.id })).ok, false)
+    await d.central.delete({ where: { id: t2Central.id } })
   })
 
   test("P26: abrir a daily captura relatos e propostas e trava o portal; o servidor recusa a escrita", async () => {

@@ -47,8 +47,16 @@ export const ownAgreementSchema = z.object({
     const date = parseDisplayDate(value)
     return date !== null && date >= todayBusinessDate()
   }, M.dueInPast),
+  /** Cliente (central, P19): opcional; "" = sem. Só com o módulo ligado no time. */
+  centralId: z.string().max(40).default(""),
 })
 
 export type OwnAgreementInput = z.input<typeof ownAgreementSchema>
+
+/** C16: próximo passo depois de um Feito — herda do combinado de origem; a central é trocável. */
+export const nextStepSchema = ownAgreementSchema.extend({ agreementId: z.string().min(1).max(40) })
+
+/** C16: central pelo nome digitado (a existente pelo nome normalizado, ou uma nova). */
+export const ownCentralSchema = z.object({ name: z.string().max(240) })
 
 export const idSchema = z.string().min(1).max(40)

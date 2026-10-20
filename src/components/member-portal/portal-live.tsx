@@ -3,9 +3,17 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
-import { createAgreement, deleteSelfReport, pollPortalState, upsertSelfReport } from "@/actions/member-portal"
+import {
+  createAgreement,
+  createNextStepAgreement,
+  deleteSelfReport,
+  ensureMemberCentral,
+  pollPortalState,
+  upsertSelfReport,
+} from "@/actions/member-portal"
 import { DueCell } from "@/components/agreements/agreements-table"
 import { Button } from "@/components/ui/button"
+import { CentralCombobox, type CentralOption } from "@/components/ui/CentralCombobox"
 import { Input } from "@/components/ui/input"
 import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -42,12 +50,15 @@ export function PortalLive({
   initialState,
   agreements,
   reasons,
+  centrals: initialCentrals = null,
   header,
   children,
 }: {
   initialState: MyPortalState
   agreements: MyOpenAgreement[]
   reasons: { id: string; label: string }[]
+  /** C16: centrais ativas do time; null com o módulo desligado (o campo não aparece). */
+  centrals?: CentralOption[] | null
   header: React.ReactNode
   /** Zonas somente leitura (última daily, histórico). */
   children: React.ReactNode
@@ -56,6 +67,13 @@ export function PortalLive({
   const [locked, setLocked] = React.useState(initialState.locked)
   const [registered, setRegistered] = React.useState(false)
   const lastClosed = React.useRef(initialState.lastClosedDailyId)
+  // Centrais do time + as criadas agora (todos os campos de central enxergam a nova).
+  const [centrals, setCentrals] = React.useState<CentralOption[] | null>(initialCentrals)
+  const addCentral = React.useCallback(
+    (option: CentralOption) => setCentrals((list) => (list && !list.some((c) => c.id === option.id) ? [...list, option] : list)),
+    [],
+  )
+  const centralField = centrals ? { options: centrals, onCreate: addCentral } : null
 
   React.useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null
@@ -115,29 +133,56 @@ export function PortalLive({
         ) : (
           <ul className={listClass}>
             {agreements.map((a) => (
-              <ReportRow key={a.id} agreement={a} reasons={reasons} locked={locked} onLocked={() => setLocked(true)} />
+              <ReportRow key={a.id} agreement={a} reasons={reasons} centrals={centralField} locked={locked} onLocked={() => setLocked(true)} />
             ))}
           </ul>
         )}
       </Section>
-      <CreateZone locked={locked} onLocked={() => setLocked(true)} />
+      <CreateZone locked={locked} centrals={centralField} onLocked={() => setLocked(true)} />
       {children}
     </>
   )
 }
 
 /** Um combinado dela: o desfecho em três botões grandes, salvo na hora. */
+type CentralField = { options: CentralOption[]; onCreate: (option: CentralOption) => void } | null
+
+/** Campo de cliente do portal: escolhe ou cria a central, sem duplicar nomes (D20). */
+function PortalCentral({ field, value, onChange, label }: { field: CentralField; value: string; onChange: (id: string) => void; label: string }) {
+  if (!field) return null
+  return (
+    <CentralCombobox
+      aria-label={label}
+      options={field.options}
+      value={value || null}
+      onValueChange={(id) => onChange(id ?? "")}
+      onCreate={field.onCreate}
+      createCentral={ensureMemberCentral}
+      inputClassName="min-h-11"
+    />
+  )
+}
+
 function ReportRow({
   agreement,
   reasons,
+  centrals,
   locked,
   onLocked,
 }: {
   agreement: MyOpenAgreement
   reasons: { id: string; label: string }[]
+  centrals: CentralField
   locked: boolean
   onLocked: () => void
 }) {
+  const router = useRouter()
+  // C16: próximo passo depois de um Feito — combinado novo, com o mesmo cliente (trocável).
+  const [nextOpen, setNextOpen] = React.useState(false)
+  const [nextTitle, setNextTitle] = React.useState("")
+  const [nextDue, setNextDue] = React.useState("")
+  const [nextCentral, setNextCentral] = React.useState(agreement.central?.id ?? "")
+  const [nextAdded, setNextAdded] = React.useState(false)
   const [report, setReport] = React.useState<Report | null>(agreement.pendingReport)
   const [editing, setEditing] = React.useState<Outcome | null>(null)
   const [choosing, setChoosing] = React.useState(!agreement.pendingReport)
@@ -180,6 +225,24 @@ function ReportRow({
     requestAnimationFrame(() => blockerRef.current?.focus())
   }
 
+  function addNextStep(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+    startTransition(async () => {
+      const result = await createNextStepAgreement({ agreementId: agreement.id, title: nextTitle, dueDate: nextDue, centralId: nextCentral })
+      if (!result.ok) {
+        if (result.error === L.locked.refused) onLocked()
+        return setError(("fieldErrors" in result && (result.fieldErrors?.title ?? result.fieldErrors?.dueDate)) || result.error)
+      }
+      setNextOpen(false)
+      setNextTitle("")
+      setNextDue("")
+      setNextAdded(true)
+      // O novo aparece em "Seus combinados", vindo do servidor.
+      router.refresh()
+    })
+  }
+
   function undo() {
     setError(null)
     startTransition(async () => {
@@ -195,6 +258,7 @@ function ReportRow({
     <li className={cn("flex flex-col gap-2 px-4 py-3", editing && "bg-surface-sunken/60")}>
       <p className="text-sm font-medium text-ink">{agreement.title}</p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {agreement.central ? <span className="text-xs text-ink-secondary">{agreement.central.name}</span> : null}
         <DueCell row={{ dueDate: agreement.dueDate, open: true, deadline: agreement.deadline }} />
         {agreement.reschedules >= 3 ? <span className="text-xs text-overdue">{fill(L.open.rescheduled, { count: agreement.reschedules })}</span> : null}
       </div>
@@ -208,6 +272,11 @@ function ReportRow({
           </span>
           {showControls ? (
             <>
+              {report.outcome === "DONE" && !nextOpen ? (
+                <button type="button" className="min-h-11 font-medium text-ink underline-offset-2 hover:underline" onClick={() => (setNextOpen(true), setNextAdded(false))}>
+                  {L.next.action}
+                </button>
+              ) : null}
               <button type="button" className="min-h-11 underline-offset-2 hover:text-ink hover:underline" onClick={() => setChoosing(true)}>
                 {R.change}
               </button>
@@ -289,17 +358,52 @@ function ReportRow({
           </div>
         </div>
       ) : null}
+      {showControls && nextOpen ? (
+        <form onSubmit={addNextStep} className="flex flex-col gap-2 rounded-lg border border-line bg-surface-sunken/60 p-3">
+          <p className="text-xs text-ink-secondary">{L.next.hint}</p>
+          <Input
+            value={nextTitle}
+            maxLength={160}
+            autoComplete="off"
+            autoFocus
+            placeholder={L.next.titleField}
+            aria-label={L.next.titleField}
+            className="min-h-11"
+            onChange={(e) => setNextTitle(e.target.value)}
+          />
+          <PortalCentral field={centrals} value={nextCentral} onChange={setNextCentral} label={labels.centrals.field} />
+          <Input
+            value={nextDue}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder={L.create.dueField}
+            aria-label={L.create.dueField}
+            className="min-h-11 font-mono"
+            onChange={(e) => setNextDue(maskDateInput(e.target.value))}
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" className="min-h-11" disabled={pending} onClick={() => setNextOpen(false)}>
+              {L.next.cancel}
+            </Button>
+            <Button type="submit" className="min-h-11" loading={pending} disabled={nextTitle.trim().length < 3}>
+              {L.next.add}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+      {nextAdded && !error ? <p role="status" className="text-xs text-calm">{L.next.added}</p> : null}
       {error ? <p role="alert" className="text-xs text-overdue">{error}</p> : null}
     </li>
   )
 }
 
 /** C14: o colaborador cria o próprio combinado. Sempre dele; a prioridade é do gestor. */
-function CreateZone({ locked, onLocked }: { locked: boolean; onLocked: () => void }) {
+function CreateZone({ locked, centrals, onLocked }: { locked: boolean; centrals: CentralField; onLocked: () => void }) {
   const C = L.create
   const router = useRouter()
   const [title, setTitle] = React.useState("")
   const [due, setDue] = React.useState("")
+  const [centralId, setCentralId] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const [added, setAdded] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
@@ -311,13 +415,14 @@ function CreateZone({ locked, onLocked }: { locked: boolean; onLocked: () => voi
     setError(null)
     setAdded(false)
     startTransition(async () => {
-      const result = await createAgreement({ title, dueDate: due })
+      const result = await createAgreement({ title, dueDate: due, centralId })
       if (!result.ok) {
         if (result.error === L.locked.refused) onLocked()
         return setError(("fieldErrors" in result && (result.fieldErrors?.title ?? result.fieldErrors?.dueDate)) || result.error)
       }
       setTitle("")
       setDue("")
+      setCentralId("")
       setAdded(true)
       // A lista "Seus combinados" vem do servidor: o novo aparece lá, pronto para relatar.
       router.refresh()
@@ -329,6 +434,7 @@ function CreateZone({ locked, onLocked }: { locked: boolean; onLocked: () => voi
       <form onSubmit={add} className="flex flex-col gap-2">
         <p className="-mt-2 text-xs text-ink-secondary">{C.hint}</p>
         <Input value={title} maxLength={160} autoComplete="off" placeholder={C.titleField} aria-label={C.titleField} className="min-h-11" onChange={(e) => setTitle(e.target.value)} />
+        <PortalCentral field={centrals} value={centralId} onChange={setCentralId} label={labels.centrals.field} />
         <div className="flex gap-2">
           <Input
             value={due}
