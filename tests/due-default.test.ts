@@ -85,7 +85,9 @@ describe("C1 — prazo padrão do combinado (D28)", () => {
   test("valores iniciais: daily usa a data dela; criação rápida usa hoje; nenhum usa a próxima daily", () => {
     const form = readFileSync("src/components/dailies/daily-form.tsx", "utf8")
     assert.ok(!/nextDaily|nextBusinessDay/.test(form))
-    assert.match(form, /initialState\(form, dateText\)/)
+    // C11: a data da daily (savedDate = form.date) semeia o formulário, também na edição.
+    assert.match(form, /const savedDate = formatDate\(form\.date, "business"\)/)
+    assert.match(form, /initialState\(form, savedDate\)/)
     assert.match(form, /newDueDate: dailyDate/)
     assert.match(form, /newRow\(dateText\)/)
     assert.ok(!/nextDaily/.test(readFileSync("src/server/queries/dailies.ts", "utf8")))

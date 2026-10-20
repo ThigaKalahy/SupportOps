@@ -62,7 +62,7 @@ function createdLine(dailyDate: Date) {
   return (c: WhatsAppDaily["created"][number]) => {
     const head = `- ${clean(c.name)}${c.central ? ` — ${clean(c.central)}` : ""} — ${clean(c.title)}`
     const line = c.dueDate.getTime() === dailyDate.getTime() ? head : `${head} — ${dayMonth(c.dueDate)}`
-    // O porquê vem do combinado (detalhes), nunca de observação (D25).
+    /* O porquê vem do combinado (detalhes), nunca de observação (D25). */
     return c.why ? `${line}\n  _${clean(c.why)}_` : line
   }
 }
