@@ -104,6 +104,7 @@ function initialState(form: DailyFormData, dailyDate: string): FormState {
         nextTitle: "",
         nextNote: "",
         nextDueDate: dailyDate,
+        nextCentralId: item.centralId ?? "",
       }
     }
   }
@@ -363,8 +364,8 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             replacementTitle: r.replacementTitle,
             replacementDueDate: r.replacementDueDate,
             ...(r.outcome === "DONE" && r.nextOpen
-              ? { nextTitle: r.nextTitle, nextNote: r.nextNote, nextDueDate: r.nextDueDate }
-              : { nextTitle: "", nextNote: "", nextDueDate: "" }),
+              ? { nextTitle: r.nextTitle, nextNote: r.nextNote, nextDueDate: r.nextDueDate, nextCentralId: r.nextCentralId ?? "" }
+              : { nextTitle: "", nextNote: "", nextDueDate: "", nextCentralId: "" }),
           }
         }),
         participants: form.members.map((m) => ({ memberId: m.id, ...current.participants[m.id]!, watchIds: current.participants[m.id]!.watchIds ?? [] })),
@@ -490,7 +491,15 @@ export function DailyForm({ form }: { form: DailyFormData }) {
           const due = parseDisplayDate(r.nextDueDate)
           const owner = reviewOwner.get(r.agreementId)
           return r.outcome === "DONE" && r.nextTitle.trim() && due && owner
-            ? [{ name: owner.name, central: owner.central, title: r.nextTitle, dueDate: due, why: form.whyEnabled ? r.nextNote || null : null }]
+            ? [
+                {
+                  name: owner.name,
+                  central: (r.nextCentralId ? centralName.get(r.nextCentralId) : null) ?? owner.central,
+                  title: r.nextTitle,
+                  dueDate: due,
+                  why: form.whyEnabled ? r.nextNote || null : null,
+                },
+              ]
             : []
         }),
         ...input.newAgreements.flatMap((a) => {
@@ -580,6 +589,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                         item={item}
                         state={state.reviews[item.id]!}
                         reasons={form.reasons}
+                        centrals={form.centralsEnabled ? { options: centrals, onCreate: addCentral } : null}
                         onChange={(patch) => patchReview(item.id, patch)}
                         watch={(blockerText) => (
                           <WatchButton
@@ -836,7 +846,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                     <XIcon />
                   </Button>
                 </div>
-                {form.whyEnabled && (row.title.trim() || row.why) ? (
+                {form.whyEnabled && (row.memberId || row.title.trim() || row.why) ? (
                   <Input
                     aria-label={`${L.newAgreements.why} ${i + 1}`}
                     value={row.why ?? ""}

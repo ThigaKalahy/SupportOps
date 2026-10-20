@@ -32,20 +32,20 @@ function item(id: string, title: string, dueOffset: number, reschedules: number,
 const ITEMS: { item: ReviewItem; state: ReviewState; errors?: Record<string, string> }[] = [
   {
     item: item("l1", "Documentar o fluxo de escalonamento", 0, 0, true),
-    state: { outcome: null, blockerText: "", blockerReasonId: "", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next, nextOpen: false, nextTitle: "", nextNote: "", nextDueDate: next },
+    state: { outcome: null, blockerText: "", blockerReasonId: "", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next, nextOpen: false, nextTitle: "", nextNote: "", nextDueDate: next, nextCentralId: "" },
   },
   {
     item: item("l2", "Validar com o fornecedor do ERP o retorno da API", -3, 4, false, "Central Alfa"),
-    state: { outcome: "NOT_DONE", blockerText: "", blockerReasonId: "r1", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next, nextOpen: false, nextTitle: "", nextNote: "", nextDueDate: next },
+    state: { outcome: "NOT_DONE", blockerText: "", blockerReasonId: "r1", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next, nextOpen: false, nextTitle: "", nextNote: "", nextDueDate: next, nextCentralId: "" },
     errors: { blockerText: "Descreva o impeditivo." },
   },
   {
     item: { ...item("l3", "Revisar os chamados reabertos de setembro", -1, 1), why: "Cliente reclamou de reaberturas no NPS", watch: { id: "lab-watch", title: "NPS da Central Alfa" } },
-    state: { outcome: "PARTIAL", blockerText: "Metade revisada; faltam os da fila N2", blockerReasonId: "", action: "replace", newDueDate: next, replacementTitle: "Revisar os reabertos da fila N2", replacementDueDate: next, nextOpen: false, nextTitle: "", nextNote: "", nextDueDate: next },
+    state: { outcome: "PARTIAL", blockerText: "Metade revisada; faltam os da fila N2", blockerReasonId: "", action: "replace", newDueDate: next, replacementTitle: "Revisar os reabertos da fila N2", replacementDueDate: next, nextOpen: false, nextTitle: "", nextNote: "", nextDueDate: next, nextCentralId: "" },
   },
   {
     item: item("l4", "Finalizar o tutorial de instalação", 0, 0, true),
-    state: { outcome: "DONE", blockerText: "", blockerReasonId: "", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next, nextOpen: true, nextTitle: "Cobrar o retorno do cliente sobre o tutorial", nextNote: "Tutorial pronto; o cliente agora relata erro na instalação offline", nextDueDate: next },
+    state: { outcome: "DONE", blockerText: "", blockerReasonId: "", action: "reschedule", newDueDate: next, replacementTitle: "", replacementDueDate: next, nextOpen: true, nextTitle: "Cobrar o retorno do cliente sobre o tutorial", nextNote: "Tutorial pronto; o cliente agora relata erro na instalação offline", nextDueDate: next, nextCentralId: "" },
   },
 ]
 

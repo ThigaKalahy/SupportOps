@@ -547,6 +547,10 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - "Editar" no detalhe da daily abre `/dailies/[dailyId]/edit`: o mesmo formulário da criação (`DailyForm` com `form.edit`), com a data no topo (trocar leva junto os prazos que eram o dia da daily). Seção 1: as revisões gravadas aparecem travadas ("Revisado nesta daily", desfecho, impeditivo, novo prazo ou substituto); os combinados que ficaram sem desfecho — mesma regra da criação, fora os criados nela e os já revisados numa daily posterior — se revisam, com Feito/Parcial/Não feito, reagendar, substituir e próximo passo. Seção 2: presença e notas da lista gravada. Seção 3: combinados criados nela editáveis ou removíveis (travados se já revisados ou encerrados) e linhas novas. Rascunho próprio por daily. O diálogo antigo de edição saiu.
 - `getDailyForm(ctx, date, editId)` monta a edição; `updateDailyRecord` (schema `editDailySchema`, regras compartilhadas com a criação em `refineDaily`) grava tudo numa transação, reaproveitando `applyReviews`/`createRows` da criação; recusa linha travada ou revisão repetida; remove com `deletedAt` e tira as linhas da timeline; responsável trocado move a linha AGREEMENT; auditoria `daily.update` com o resumo e `agreement.update`/`agreement.delete` por linha.
 
+**C12 — Central no próximo passo; porquê abre com a pessoa (20/10/2026)**
+- O "Próximo passo" (revisão da daily, também na edição) mostra o campo Central, já preenchido com a do combinado feito e editável — antes herdava em silêncio, e quando o original não tinha central não havia onde informar. Vazio grava a do combinado feito. Conferida como as centrais da Seção 3.
+- Na Seção 3, o "Por quê (opcional)" abre assim que a pessoa é escolhida (antes, só ao digitar o título).
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:

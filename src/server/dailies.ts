@@ -174,7 +174,7 @@ async function applyReviews(
             origin: "DAILY",
             sourceDailyId: dailyId,
             priority: agreement.priority,
-            centralId: agreement.centralId,
+            centralId: nextCentral(ctx, review, agreement),
             watchItemId: watch?.id ?? agreement.watchItemId,
             originalDueDate: nextDue,
             dueDate: nextDue,
@@ -225,6 +225,17 @@ async function applyReviews(
   return counts
 }
 
+/** Centrais escolhidas nos próximos passos, para a mesma conferência das linhas da Seção 3. */
+function nextCentrals(reviews: ReviewInput[]) {
+  return reviews.filter((r) => r.outcome === "DONE" && r.nextTitle).map((r) => ({ centralId: r.nextCentralId }))
+}
+
+/** Próximo passo trata o mesmo cliente: a central escolhida na linha, ou a do combinado feito (C12). */
+function nextCentral(ctx: TeamContext, review: ReviewInput, agreement: ReviewAgreement) {
+  if (!hasModule(ctx, MODULES.CENTRALS)) return agreement.centralId
+  return review.nextCentralId || agreement.centralId
+}
+
 /** Combinados de hoje (Seção 3): origem DAILY, prazo original = prazo (D17, D28). */
 async function createRows(tx: Tx, ctx: TeamContext, dailyId: string, rows: RowInput[], timeline: TimelineEventInput[]) {
   const ids: string[] = []
@@ -268,7 +279,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
   if (taken) return { ok: false, error: fill(labels.dailies.sameDay.taken, { date: data.date }) }
 
   const memberIds = new Set([...data.participants.map((p) => p.memberId), ...data.newAgreements.map((a) => a.memberId)])
-  const prepared = await prepare(ctx, data.reviews, memberIds, data.newAgreements)
+  const prepared = await prepare(ctx, data.reviews, memberIds, [...data.newAgreements, ...nextCentrals(data.reviews)])
   if ("ok" in prepared) return prepared
 
   let dailyId: string
@@ -445,7 +456,10 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
   if (data.reviews.some((r) => reviewedHere.has(r.agreementId))) return { ok: false, error: labels.dailies.edit.alreadyReviewed }
 
   const memberIds = new Set([...data.newAgreements.filter((r) => !r.remove).map((r) => r.memberId)])
-  const prepared = await prepare(ctx, data.reviews, memberIds, data.newAgreements.filter((r) => !r.remove))
+  const prepared = await prepare(ctx, data.reviews, memberIds, [
+    ...data.newAgreements.filter((r) => !r.remove),
+    ...nextCentrals(data.reviews),
+  ])
   if ("ok" in prepared) return prepared
 
   const reviewedBy = new Map<string, Record<Outcome, number>>()

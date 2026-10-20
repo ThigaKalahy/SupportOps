@@ -45,6 +45,8 @@ export const dailyReviewSchema = z.object({
   /** O que mudou: vira o porquê do próximo combinado e a revisão da observação, se houver. */
   nextNote: z.string().trim().max(300, v.tooLong).default(""),
   nextDueDate: z.string().trim().default(""),
+  /** Central do próximo passo: vem preenchida com a do combinado feito (C12); vazio = a dele. */
+  nextCentralId: z.string().max(40).default(""),
 })
 
 export const dailyParticipantSchema = z.object({

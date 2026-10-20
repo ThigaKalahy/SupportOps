@@ -5,6 +5,7 @@ import Link from "next/link"
 
 import { DragIndicator, DueCell } from "@/components/agreements/agreements-table"
 import { Button } from "@/components/ui/button"
+import { CentralCombobox, type CentralOption } from "@/components/ui/CentralCombobox"
 import { Input } from "@/components/ui/input"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -32,6 +33,8 @@ export interface ReviewState {
   nextTitle: string
   nextNote: string
   nextDueDate: string
+  /** Central do próximo passo (C12): começa com a do combinado feito. */
+  nextCentralId: string
 }
 
 /** Porquê e caso por trás do combinado, abaixo do título. */
@@ -85,7 +88,10 @@ export function ReviewRow({
   groupRef,
   onDone,
   watch,
+  centrals,
 }: {
+  /** C12: centrais do time para o próximo passo; null com o módulo desligado. */
+  centrals?: { options: CentralOption[]; onCreate: (option: CentralOption) => void } | null
   item: ReviewItem
   state: ReviewState
   onChange: (patch: Partial<ReviewState>) => void
@@ -186,6 +192,18 @@ export function ReviewRow({
                 />
                 <FieldError id={`${idBase}-ntitle-error`} message={errors.nextTitle} />
               </div>
+              {centrals ? (
+                <div className="flex w-full flex-col gap-1 sm:w-48">
+                  <CentralCombobox
+                    aria-label={labels.centrals.field}
+                    options={centrals.options}
+                    value={state.nextCentralId || null}
+                    onValueChange={(id) => onChange({ nextCentralId: id ?? "" })}
+                    onCreate={centrals.onCreate}
+                    inputClassName="h-8"
+                  />
+                </div>
+              ) : null}
               <div className="flex flex-col gap-1">
                 <Input
                   aria-label={R.nextDueDate}
