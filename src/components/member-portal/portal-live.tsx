@@ -158,6 +158,7 @@ function PortalCentral({ field, value, onChange, label }: { field: CentralField;
       onValueChange={(id) => onChange(id ?? "")}
       onCreate={field.onCreate}
       createCentral={ensureMemberCentral}
+      placeholder={L.create.centralField}
       inputClassName="min-h-11"
     />
   )

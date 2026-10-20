@@ -165,6 +165,7 @@ export const labels = {
       hint: "Fica com você. O gestor pode ajustar na daily.",
       titleField: "O que você vai fazer",
       dueField: "Prazo (vazio = hoje)",
+      centralField: "Central (opcional)",
       add: "Adicionar",
       added: "Combinado adicionado.",
     },
