@@ -1,4 +1,4 @@
-# Prontuário
+# Manager Ops
 
 Sistema interno de gestão de time de suporte: registros datados (dailies, 1:1, feedbacks, combinados, desenvolvimento), timeline por pessoa e motor de alertas. Uso restrito a dois papéis — gestor (`OWNER`) e superior com leitura (`VIEWER`). Sem cliente externo, sem endpoint público.
 
@@ -62,7 +62,7 @@ Acesso é por time (`TeamAccess`): **gestor** (MANAGER — registra e lê tudo d
 
 ## Portal do colaborador
 
-Cada pessoa do time pode ter um login para o **portal do colaborador** (`/me`): ela relata como ficaram os próprios combinados abertos (Feito, Parcial ou Não feito, com o impeditivo), propõe combinados novos para o gestor confirmar na daily, e vê o que a última daily registrou sobre ela e o histórico dos combinados encerrados. Enquanto a daily do time está sendo registrada, o portal fica travado (só leitura) e, quando ela é salva, a tela pede para atualizar. Nada do registro gerencial — nem o que é sobre ela, nem o que está compartilhado entre gestores. O portal é a mesma aplicação web: abre no navegador do celular ou do computador e pode ser instalado como atalho na tela inicial.
+Cada pessoa do time pode ter um login para o **portal do colaborador** (`/me`): ela relata como ficaram os próprios combinados abertos (Feito, Parcial ou Não feito, com o impeditivo), cria os próprios combinados novos (o gestor ajusta na daily ou depois), e vê o que a última daily registrou sobre ela e o histórico dos combinados encerrados. Enquanto a daily do time está sendo registrada, o portal fica travado (só leitura) e, quando ela é salva, a tela pede para atualizar. Nada do registro gerencial — nem o que é sobre ela, nem o que está compartilhado entre gestores. O portal é a mesma aplicação web: abre no navegador do celular ou do computador e pode ser instalado como atalho na tela inicial.
 
 ```
 pnpm member:invite       # escolhe o time e as pessoas ativas sem login (uma, várias ou todas); cria as contas
@@ -77,7 +77,7 @@ Encerrar o acesso de um colaborador: `pnpm member:deactivate`, ou simplesmente d
 
 ### Daily com o relato do time
 
-Em **Dailies → Registrar daily**, o primeiro passo mostra quantas pessoas já relataram e quantas propostas chegaram. **Registrar nova daily** abre a daily: o que o time relatou e propôs até ali entra nela, e o portal do time trava. A revisão chega pré-preenchida com o relato de cada pessoa — você confirma ou muda (e pode voltar ao relato dela) — e as propostas aparecem em "Propostas do time" para aceitar, ajustar e aceitar, ou descartar. Salvar registra a daily e destrava o portal; **Descartar daily** desfaz a abertura e devolve relatos e propostas para a próxima. Uma daily aberta há mais de 4 horas deixa de travar o portal.
+Em **Dailies → Registrar daily**, o primeiro passo mostra quantas pessoas já relataram e quantas propostas chegaram. **Registrar nova daily** abre a daily: o que o time relatou e propôs até ali entra nela, e o portal do time trava. A revisão chega pré-preenchida com o relato de cada pessoa — você confirma ou muda (e pode voltar ao relato dela) — e os combinados que a pessoa criou no portal já estão lá, como qualquer outro. Salvar registra a daily e destrava o portal; **Descartar daily** desfaz a abertura e devolve relatos e propostas para a próxima. Uma daily aberta há mais de 4 horas deixa de travar o portal.
 
 ## Abrir um time novo
 

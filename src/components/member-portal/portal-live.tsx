@@ -3,16 +3,16 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
-import { createProposal, deleteProposal, deleteSelfReport, pollPortalState, upsertSelfReport } from "@/actions/member-portal"
+import { createAgreement, deleteSelfReport, pollPortalState, upsertSelfReport } from "@/actions/member-portal"
 import { DueCell } from "@/components/agreements/agreements-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { formatDate, formatDayMonth, maskDateInput } from "@/lib/dates"
+import { formatDate, maskDateInput } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
-import type { MyOpenAgreement, MyPendingProposal, MyPortalState } from "@/server/queries/member-portal"
+import type { MyOpenAgreement, MyPortalState } from "@/server/queries/member-portal"
 
 const L = labels.memberPortal
 const R = L.report
@@ -33,7 +33,7 @@ const SELECTED: Record<Outcome, string> = {
 const listClass = "flex flex-col divide-y divide-line rounded-lg border border-line bg-surface"
 
 /**
- * Parte viva do portal (P26): Zona 1 editável, "Propor combinado", o aviso de daily em
+ * Parte viva do portal (P26, C14): Zona 1 editável, "Novo combinado", o aviso de daily em
  * andamento e a faixa "Atualizar". Salvamento imediato por item — ela preenche no celular
  * entre uma coisa e outra. Travado, os controles de escrita ficam AUSENTES (não
  * desabilitados) e o conteúdo continua legível. Nunca recarrega sozinho.
@@ -42,14 +42,12 @@ export function PortalLive({
   initialState,
   agreements,
   reasons,
-  proposals,
   header,
   children,
 }: {
   initialState: MyPortalState
   agreements: MyOpenAgreement[]
   reasons: { id: string; label: string }[]
-  proposals: MyPendingProposal[]
   header: React.ReactNode
   /** Zonas somente leitura (última daily, histórico). */
   children: React.ReactNode
@@ -122,7 +120,7 @@ export function PortalLive({
           </ul>
         )}
       </Section>
-      <ProposeZone proposals={proposals} locked={locked} onLocked={() => setLocked(true)} />
+      <CreateZone locked={locked} onLocked={() => setLocked(true)} />
       {children}
     </>
   )
@@ -296,91 +294,58 @@ function ReportRow({
   )
 }
 
-/** Propor combinado: título e prazo sugerido. Sempre dela; a prioridade é do gestor. */
-function ProposeZone({ proposals, locked, onLocked }: { proposals: MyPendingProposal[]; locked: boolean; onLocked: () => void }) {
-  const P = L.propose
-  const [items, setItems] = React.useState(proposals)
+/** C14: o colaborador cria o próprio combinado. Sempre dele; a prioridade é do gestor. */
+function CreateZone({ locked, onLocked }: { locked: boolean; onLocked: () => void }) {
+  const C = L.create
+  const router = useRouter()
   const [title, setTitle] = React.useState("")
   const [due, setDue] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
+  const [added, setAdded] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
-  React.useEffect(() => setItems(proposals), [proposals])
+  if (locked) return null
 
   function add(event: React.FormEvent) {
     event.preventDefault()
     setError(null)
+    setAdded(false)
     startTransition(async () => {
-      const result = await createProposal({ title, suggestedDueDate: due })
+      const result = await createAgreement({ title, dueDate: due })
       if (!result.ok) {
         if (result.error === L.locked.refused) onLocked()
-        return setError(result.fieldErrors?.title ?? result.fieldErrors?.suggestedDueDate ?? result.error)
+        return setError(("fieldErrors" in result && (result.fieldErrors?.title ?? result.fieldErrors?.dueDate)) || result.error)
       }
-      const date = due ? (() => {
-        const [d, m, y] = due.split("/").map(Number)
-        return new Date(Date.UTC(y!, m! - 1, d!))
-      })() : null
-      setItems((list) => [...list, { id: result.id ?? `local-${list.length}`, title: title.trim(), suggestedDueDate: date }])
       setTitle("")
       setDue("")
-    })
-  }
-
-  function remove(id: string) {
-    setError(null)
-    startTransition(async () => {
-      const result = await deleteProposal(id)
-      if (!result.ok) {
-        if (result.error === L.locked.refused) onLocked()
-        return setError(result.error)
-      }
-      setItems((list) => list.filter((p) => p.id !== id))
+      setAdded(true)
+      // A lista "Seus combinados" vem do servidor: o novo aparece lá, pronto para relatar.
+      router.refresh()
     })
   }
 
   return (
-    <Section title={P.title} count={items.length || undefined}>
-      {locked ? null : (
-        <form onSubmit={add} className="flex flex-col gap-2">
-          <p className="-mt-2 text-xs text-ink-secondary">{P.hint}</p>
-          <Input value={title} maxLength={160} autoComplete="off" placeholder={P.titleField} aria-label={P.titleField} className="min-h-11" onChange={(e) => setTitle(e.target.value)} />
-          <div className="flex gap-2">
-            <Input
-              value={due}
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder={P.dueField}
-              aria-label={P.dueField}
-              className="min-h-11 flex-1 font-mono"
-              onChange={(e) => setDue(maskDateInput(e.target.value))}
-            />
-            <Button type="submit" className="min-h-11" loading={pending} disabled={title.trim().length < 3}>
-              {P.add}
-            </Button>
-          </div>
-        </form>
-      )}
+    <Section title={C.title}>
+      <form onSubmit={add} className="flex flex-col gap-2">
+        <p className="-mt-2 text-xs text-ink-secondary">{C.hint}</p>
+        <Input value={title} maxLength={160} autoComplete="off" placeholder={C.titleField} aria-label={C.titleField} className="min-h-11" onChange={(e) => setTitle(e.target.value)} />
+        <div className="flex gap-2">
+          <Input
+            value={due}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder={C.dueField}
+            aria-label={C.dueField}
+            className="min-h-11 flex-1 font-mono"
+            onChange={(e) => setDue(maskDateInput(e.target.value))}
+          />
+          <Button type="submit" className="min-h-11" loading={pending} disabled={title.trim().length < 3}>
+            {C.add}
+          </Button>
+        </div>
+      </form>
       {error ? <p role="alert" className="text-xs text-overdue">{error}</p> : null}
-      {items.length ? (
-        <ul className={listClass}>
-          {items.map((p) => (
-            <li key={p.id} className="flex min-h-11 items-center gap-3 px-4 py-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-ink">{p.title}</p>
-                <p className="text-xs text-ink-secondary">
-                  {P.waiting}
-                  {p.suggestedDueDate ? ` · ${formatDayMonth(p.suggestedDueDate, "business")}` : null}
-                </p>
-              </div>
-              {locked ? null : (
-                <Button type="button" variant="ghost" className="min-h-11" disabled={pending} onClick={() => remove(p.id)}>
-                  {P.remove}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {added && !error ? <p role="status" className="text-xs text-calm">{C.added}</p> : null}
     </Section>
   )
 }

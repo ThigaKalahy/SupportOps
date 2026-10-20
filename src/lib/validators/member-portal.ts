@@ -1,20 +1,18 @@
 import { z } from "zod"
 
-import { parseDisplayDate } from "../dates.ts"
+import { parseDisplayDate, todayBusinessDate } from "../dates.ts"
 import { labels } from "../labels.ts"
 
 /**
  * Escrita do colaborador (P26). O MESMO schema valida o portal (cliente) e a action.
- * Datas em "DD/MM/AAAA". O colaborador só relata os próprios combinados e propõe
- * novos: nunca muda prazo, status, título ou responsável de combinado existente.
+ * Datas em "DD/MM/AAAA". O colaborador relata os próprios combinados e cria novos (C14):
+ * nunca muda prazo, status, título ou responsável de combinado existente.
  */
 
 const v = labels.validation
 const M = labels.memberPortal.validation
 
 export const SELF_REPORT_OUTCOMES = ["DONE", "PARTIAL", "NOT_DONE"] as const
-/** Propostas pendentes por pessoa: uma lista curta, não uma lista de desejos. */
-export const MAX_PENDING_PROPOSALS = 10
 
 const optionalDate = z
   .string()
@@ -38,12 +36,19 @@ export const selfReportSchema = z
 
 export type SelfReportInput = z.input<typeof selfReportSchema>
 
-export const proposalSchema = z.object({
+/**
+ * C14: combinado criado pelo próprio colaborador. Prazo vazio = hoje (D28); nunca no
+ * passado. Sem prioridade e sem responsável: é sempre dele, e a prioridade é do gestor.
+ */
+export const ownAgreementSchema = z.object({
   title: z.string().trim().min(3, v.tooShort).max(160, v.tooLong),
-  suggestedDueDate: optionalDate,
-  note: z.string().trim().max(300, v.tooLong).default(""),
+  dueDate: optionalDate.refine((value) => {
+    if (!value) return true
+    const date = parseDisplayDate(value)
+    return date !== null && date >= todayBusinessDate()
+  }, M.dueInPast),
 })
 
-export type ProposalInput = z.input<typeof proposalSchema>
+export type OwnAgreementInput = z.input<typeof ownAgreementSchema>
 
 export const idSchema = z.string().min(1).max(40)

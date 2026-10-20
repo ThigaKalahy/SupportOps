@@ -14,7 +14,7 @@
 
 export const labels = {
   app: {
-    name: "Prontuário",
+    name: "Manager Ops",
     description: "Registro de gestão de times",
   },
   common: {
@@ -150,14 +150,14 @@ export const labels = {
       cancel: "Cancelar",
       failed: "Não foi possível salvar. Tente de novo.",
     },
-    propose: {
-      title: "Propor combinado",
-      hint: "o gestor confirma na daily",
-      titleField: "O que você propõe",
-      dueField: "Prazo sugerido (opcional)",
-      add: "Propor",
-      remove: "Remover",
-      waiting: "aguardando a daily",
+    /** C14: o colaborador cria o próprio combinado; o gestor pode ajustar na daily ou depois. */
+    create: {
+      title: "Novo combinado",
+      hint: "Fica com você. O gestor pode ajustar na daily.",
+      titleField: "O que você vai fazer",
+      dueField: "Prazo (vazio = hoje)",
+      add: "Adicionar",
+      added: "Combinado adicionado.",
     },
     locked: {
       banner: "A daily está acontecendo agora. Seus combinados estão travados até ela ser registrada.",
@@ -171,7 +171,7 @@ export const labels = {
       blockerRequired: "Diga em uma linha o que impediu.",
       notOpen: "Este combinado não está mais em aberto.",
       notFound: "Não encontrado.",
-      tooManyProposals: "Você já tem 10 propostas aguardando o gestor. Espere a próxima daily.",
+      dueInPast: "O prazo não pode ser no passado.",
     },
   },
   /** Férias (C4): período com início e fim; "de férias" é derivado da data. */
@@ -1241,7 +1241,7 @@ export const labels = {
       watchAboveDaily: "aparece acima",
       watchUnreviewed: "sem revisão há {days} dias",
       watchColdHigh: "fogo alto há {days} dias sem mudar de grau",
-      footer: "Prontuário · gerado em {date}",
+      footer: "Manager Ops · gerado em {date}",
       page: "Página {page} de {total}",
     },
     history: {
@@ -2257,7 +2257,7 @@ export const labels = {
   },
   notFound: {
     title: "Página não encontrada",
-    direction: "Este endereço não corresponde a nenhuma página do Prontuário. Confira o link ou volte para Hoje.",
+    direction: "Este endereço não corresponde a nenhuma página do Manager Ops. Confira o link ou volte para Hoje.",
     action: "Ir para Hoje",
   },
   pages: {
@@ -2437,7 +2437,7 @@ export const enumLabels = {
     INCIDENT: "Ocorrência",
     MANAGER: "Gestor",
     OTHER: "Outra",
-    MEMBER: "Proposta do colaborador",
+    MEMBER: "Colaborador",
   },
   agreementPriority: {
     LOW: "Baixa",

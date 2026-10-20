@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 
+import { ProductMark } from "@/components/shell/product-mark"
 import { labels } from "@/lib/labels"
 
 import { LoginForm } from "./login-form"
@@ -16,12 +17,7 @@ export default function LoginPage() {
       <div className="flex w-full max-w-[360px] flex-col gap-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="flex size-6 items-center justify-center rounded-sm border border-line-strong font-mono text-xs font-medium text-ink"
-            >
-              P
-            </span>
+            <ProductMark />
             <h1 className="text-lg font-semibold text-ink">{labels.app.name}</h1>
           </div>
           <p className="text-sm text-ink-secondary">{labels.auth.explanation}</p>

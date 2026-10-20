@@ -34,7 +34,8 @@ import { MODULE_KEYS, MODULES } from "../src/lib/modules.ts"
 import { MEMBER_HOME, routeRequest } from "../src/lib/portal-routing.ts"
 import { accountTier } from "../src/server/account-tier.ts"
 import { verifyCredentials } from "../src/server/credentials.ts"
-import { createProposalCore, upsertSelfReportCore } from "../src/server/member-portal.ts"
+import { createOwnAgreement } from "../src/server/member-agreements.ts"
+import { upsertSelfReportCore } from "../src/server/member-portal.ts"
 import { getDailyLock, MemberAccessError, memberContextFor, type MemberContext } from "../src/server/member-scope.ts"
 import { hashPassword } from "../src/server/password.ts"
 import { deactivateMemberAccount, inviteMember } from "../src/server/provisioning.ts"
@@ -347,7 +348,7 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
 /** Arquivos do portal: allowlist de imports e nenhum nome de modelo gerencial. */
 const PORTAL_FILES = ["server/queries/member-portal.ts", "server/member-portal.ts", "actions/member-portal.ts"]
 /** O que o portal pode importar: o banco, o contexto do colaborador, os próprios arquivos e src/lib. */
-const PORTAL_ALLOWED = ["server/db", "server/member-scope", "server/member-portal", "server/queries/member-portal"]
+const PORTAL_ALLOWED = ["server/db", "server/member-scope", "server/member-portal", "server/queries/member-portal", "server/member-agreements"]
 
 /** Modelos que o portal nunca toca (D40) — nem em comentário. */
 const PORTAL_FORBIDDEN_MODELS = [
@@ -432,6 +433,17 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
       }
     }
     assert.deepEqual(violations, [])
+  })
+
+  test("C14: a ponte que cria o combinado do colaborador só ESCREVE, pela timeline, depois do travamento", () => {
+    const source = readFileSync(join(SRC, "server/member-agreements.ts"), "utf8")
+    const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!)
+    const allowed = (spec: string) => spec.startsWith("../lib/") || ["./db.ts", "./member-scope.ts", "./timeline.ts"].includes(spec)
+    assert.deepEqual(imports.filter((spec) => !allowed(spec)), [], "só banco, contexto do colaborador, timeline e src/lib")
+    const code = stripComments(source)
+    assert.ok(!/\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/.test(code), "não lê nada: só escreve")
+    assert.ok(code.indexOf("getDailyLock(") > -1 && code.indexOf("getDailyLock(") < code.indexOf("agreement.create("), "travamento antes de gravar")
+    assert.ok(/memberId:\s*ctx\.memberId/.test(code), "sempre o combinado da própria pessoa")
   })
 
   test("toda leitura de combinado no portal usa select explícito", () => {
@@ -1231,7 +1243,6 @@ describe("banco: portal do colaborador (P25) — critério de aceite", async () 
     getMyLastDailyRecord: (c) => memberPortal.getMyLastDailyRecord(c),
     getMyAgreementHistory: (c) => memberPortal.getMyAgreementHistory(c, 50),
     getMyBlockerReasons: (c) => memberPortal.getMyBlockerReasons(c),
-    getMyPendingProposals: (c) => memberPortal.getMyPendingProposals(c),
     getMyPortalState: (c) => memberPortal.getMyPortalState(c),
   }
 
@@ -1315,7 +1326,21 @@ describe("banco: portal do colaborador (P25) — critério de aceite", async () 
     assert.equal((await upsertSelfReportCore(a1, { agreementId: id("ag_a1_done"), outcome: "DONE" })).ok, false, "combinado encerrado")
     assert.ok((await upsertSelfReportCore(a1, { agreementId: own, outcome: "PARTIAL", blockerText: "Aguardando acesso ao painel" })).ok)
     assert.equal(await d.agreementSelfReport.count({ where: { agreementId: own, dailyId: null } }), 1, "um relato pendente por combinado")
-    assert.ok((await createProposalCore(a1, { title: text("Proposta nova", "A1") })).ok)
+    // Proposta que já estava no banco (antes do C14): a daily ainda trata.
+    await d.memberProposal.create({ data: { teamId: MP_T1, memberId: id("p_a1"), title: text("Proposta nova", "A1") } })
+  })
+
+  test("C14: o colaborador cria o próprio combinado — origem Colaborador, com linha na timeline, nunca de outra pessoa", async () => {
+    assert.equal((await createOwnAgreement(a1, { title: "ab" })).ok, false)
+    assert.equal((await createOwnAgreement(a1, { title: "Combinado do passado", dueDate: formatDate(day(-3), "business") })).ok, false)
+    const created = await createOwnAgreement(a1, { title: text("Criado no portal", "A1"), memberId: id("p_a2") })
+    assert.ok(created.ok)
+    const row = await d.agreement.findUniqueOrThrow({ where: { id: created.ok ? created.id : "" } })
+    assert.equal(row.memberId, id("p_a1"), "o memberId vem do contexto, nunca do pedido")
+    assert.equal(row.origin, "MEMBER")
+    assert.equal(row.authorUserId, MP_USERS.a1)
+    assert.equal(row.originalDueDate.getTime(), todayBusinessDate().getTime(), "prazo vazio = hoje")
+    assert.equal(await d.timelineEvent.count({ where: { teamId: MP_T1, agreementId: row.id, type: "AGREEMENT" } }), 1)
   })
 
   test("P26: abrir a daily captura relatos e propostas e trava o portal; o servidor recusa a escrita", async () => {
@@ -1331,7 +1356,7 @@ describe("banco: portal do colaborador (P25) — critério de aceite", async () 
     assert.equal(proposal.dailyId, draftId)
     const refused = await upsertSelfReportCore(a1, { agreementId: id("ag_a1_open"), outcome: "DONE" })
     assert.equal(refused.ok, false)
-    assert.equal((await createProposalCore(a1, { title: "Outra proposta" })).ok, false)
+    assert.equal((await createOwnAgreement(a1, { title: "Combinado durante a daily" })).ok, false)
 
     // Salvar: valor FINAL do gestor (Feito) × relato (Parcial) → divergiu; o relato fica intacto (D39).
     const review = { agreementId: id("ag_a1_open"), outcome: "DONE", blockerText: "", blockerReasonId: "", action: "reschedule", newDueDate: today, replacementTitle: "", replacementDueDate: today }

@@ -224,7 +224,7 @@ export class PdfDocument {
     for (const font of ["regular", "bold", "italic"] as const) {
       add(`<< /Type /Font /Subtype /Type1 /BaseFont /${FONT_NAME[font]} /Encoding /WinAnsiEncoding >>`)
     }
-    add(`<< /Title ${pdfUnicode(this.title)} /Producer ${pdfUnicode("Prontuário")} /CreationDate (D:${pdfDate(new Date())}) >>`)
+    add(`<< /Title ${pdfUnicode(this.title)} /Producer ${pdfUnicode("Manager Ops")} /CreationDate (D:${pdfDate(new Date())}) >>`)
     const infoId = objects.length
 
     const pageIds: number[] = []

@@ -201,21 +201,6 @@ export async function getMyBlockerReasons(ctx: MemberContext): Promise<{ id: str
   })
 }
 
-export interface MyPendingProposal {
-  id: string
-  title: string
-  suggestedDueDate: Date | null
-}
-
-/** Propostas dela ainda não capturadas por nenhuma daily (as que ela pode retirar). */
-export async function getMyPendingProposals(ctx: MemberContext): Promise<MyPendingProposal[]> {
-  return db.memberProposal.findMany({
-    where: { ...memberOwnScope(ctx), status: "PENDING", dailyId: null },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, title: true, suggestedDueDate: true },
-  })
-}
-
 export interface MyPortalState {
   /** A daily do time está aberta agora (DRAFT há menos de 4 horas — D41). */
   locked: boolean

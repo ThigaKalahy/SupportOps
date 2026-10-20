@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 
 import { logoutAction } from "@/actions/auth"
 import { Button } from "@/components/ui/button"
+import { ProductMark } from "@/components/shell/product-mark"
 import { labels } from "@/lib/labels"
 import { requireUser } from "@/server/access"
 import { ACTIVE_TEAM_COOKIE, listAccessibleTeams } from "@/server/scope"
@@ -35,12 +36,7 @@ export default async function SelectTeamPage() {
       <div className="flex w-full max-w-[400px] flex-col gap-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="flex size-6 items-center justify-center rounded-sm border border-line-strong font-mono text-xs font-medium text-ink"
-            >
-              P
-            </span>
+            <ProductMark />
             <h1 className="text-lg font-semibold text-ink">{labels.app.name}</h1>
           </div>
           <p className="text-sm text-ink-secondary">{teams.length === 0 ? labels.access.noTeams : T.selectLead}</p>

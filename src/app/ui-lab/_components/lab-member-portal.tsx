@@ -65,13 +65,12 @@ export function LabMemberPortal() {
           <OpenAgreementsZone agreements={OPEN} />
         </div>
       </Specimen>
-      <Specimen state="P26 · Zona 1 editável (Feito / Parcial / Não feito, salvo por item) e Propor combinado" className="w-full max-w-reading">
+      <Specimen state="P26 · Zona 1 editável (Feito / Parcial / Não feito, salvo por item) e Novo combinado (C14)" className="w-full max-w-reading">
         <div className="flex w-full flex-col gap-6">
           <PortalLive
             initialState={{ locked: false, lastClosedDailyId: null, lastClosedAt: null }}
             agreements={OPEN}
             reasons={[{ id: "r1", label: "Dependência de terceiro" }]}
-            proposals={[{ id: "pp1", title: "Criar roteiro de teste offline", suggestedDueDate: day(3) }]}
             header={null}
           >
             {null}
@@ -80,7 +79,7 @@ export function LabMemberPortal() {
       </Specimen>
       <Specimen state="P26 · travado (daily em andamento): aviso fixo, sem controles de escrita" className="w-full max-w-reading">
         <div className="flex w-full flex-col gap-6">
-          <PortalLive initialState={{ locked: true, lastClosedDailyId: null, lastClosedAt: null }} agreements={OPEN} reasons={[]} proposals={[]} header={null}>
+          <PortalLive initialState={{ locked: true, lastClosedDailyId: null, lastClosedAt: null }} agreements={OPEN} reasons={[]} header={null}>
             {null}
           </PortalLive>
         </div>

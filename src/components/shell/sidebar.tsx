@@ -14,17 +14,13 @@ import { cn } from "@/lib/utils"
 
 import { footerNav, isActive, navItemsFor, type NavItem } from "./nav-config"
 import { NavLink } from "./nav-link"
+import { ProductMark } from "./product-mark"
 
 /** Identidade do produto: marca de 24px e nome, sem logo grande. */
 export function ProductIdentity({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b border-line", collapsed ? "justify-center px-0" : "px-4")}>
-      <span
-        aria-hidden
-        className="flex size-6 shrink-0 items-center justify-center rounded-sm border border-line-strong font-mono text-xs font-medium text-ink"
-      >
-        P
-      </span>
+      <ProductMark />
       <span className={cn("truncate text-sm font-semibold text-ink", collapsed && "sr-only")}>{labels.app.name}</span>
     </div>
   )

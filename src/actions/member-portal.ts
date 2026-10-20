@@ -1,24 +1,22 @@
 "use server"
 
 import { labels } from "../lib/labels.ts"
-import {
-  createProposalCore,
-  deleteProposalCore,
-  deleteSelfReportCore,
-  upsertSelfReportCore,
-  type MemberWriteResult,
-} from "../server/member-portal.ts"
+import { createOwnAgreement, type OwnAgreementResult } from "../server/member-agreements.ts"
+import { deleteSelfReportCore, upsertSelfReportCore, type MemberWriteResult } from "../server/member-portal.ts"
 import { MemberAccessError, requireMemberContext } from "../server/member-scope.ts"
 import { getMyPortalState, type MyPortalState } from "../server/queries/member-portal.ts"
 
 /**
  * Server Actions do PORTAL DO COLABORADOR (P26). Mesmas regras de import do portal (D38):
  * nada das actions, queries, escopo ou timeline do gestor. Cada action monta o contexto
- * do colaborador (`requireMemberContext`) e entrega ao núcleo em src/server/member-portal.ts,
- * que confere o travamento antes de escrever (D43). Só estas quatro escrevem.
+ * do colaborador (`requireMemberContext`) e entrega ao núcleo — src/server/member-portal.ts
+ * (relato) ou src/server/member-agreements.ts (criar o próprio combinado, C14) —, que confere
+ * o travamento antes de escrever (D43). Só estas três escrevem.
  */
 
-async function asMember(write: (ctx: Awaited<ReturnType<typeof requireMemberContext>>) => Promise<MemberWriteResult>): Promise<MemberWriteResult> {
+async function asMember<R extends MemberWriteResult | OwnAgreementResult>(
+  write: (ctx: Awaited<ReturnType<typeof requireMemberContext>>) => Promise<R>,
+): Promise<R | { ok: false; error: string }> {
   try {
     return await write(await requireMemberContext())
   } catch (error) {
@@ -36,12 +34,9 @@ export async function deleteSelfReport(agreementId: unknown): Promise<MemberWrit
   return asMember((ctx) => deleteSelfReportCore(ctx, agreementId))
 }
 
-export async function createProposal(input: unknown): Promise<MemberWriteResult> {
-  return asMember((ctx) => createProposalCore(ctx, input))
-}
-
-export async function deleteProposal(id: unknown): Promise<MemberWriteResult> {
-  return asMember((ctx) => deleteProposalCore(ctx, id))
+/** C14: o colaborador cria o próprio combinado (origem MEMBER), fora do horário da daily. */
+export async function createAgreement(input: unknown): Promise<OwnAgreementResult> {
+  return asMember((ctx) => createOwnAgreement(ctx, input))
 }
 
 /** Leitura leve do estado do portal, consultada a cada 25 s com a aba visível. Sem contexto: null. */

@@ -14,7 +14,6 @@ import {
   getMyBlockerReasons,
   getMyLastDailyRecord,
   getMyOpenAgreements,
-  getMyPendingProposals,
   getMyPortalState,
 } from "@/server/queries/member-portal"
 import { accessibleTeamIds } from "@/server/scope"
@@ -52,12 +51,11 @@ export default async function MemberHomePage() {
     )
   }
 
-  const [open, last, history, reasons, proposals, state] = await Promise.all([
+  const [open, last, history, reasons, state] = await Promise.all([
     getMyOpenAgreements(ctx),
     getMyLastDailyRecord(ctx),
     getMyAgreementHistory(ctx, 20),
     getMyBlockerReasons(ctx),
-    getMyPendingProposals(ctx),
     getMyPortalState(ctx),
   ])
 
@@ -68,7 +66,6 @@ export default async function MemberHomePage() {
       initialState={state}
       agreements={open}
       reasons={reasons}
-      proposals={proposals}
       header={<PortalHeader name={ctx.preferredName} />}
     >
       <LastDailyZone record={last} />

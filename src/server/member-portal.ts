@@ -1,19 +1,20 @@
 import { parseDisplayDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
-import { idSchema, MAX_PENDING_PROPOSALS, proposalSchema, selfReportSchema } from "../lib/validators/member-portal.ts"
+import { idSchema, selfReportSchema } from "../lib/validators/member-portal.ts"
 
 import { db } from "./db.ts"
 import { getDailyLock, memberAudit, memberOwnScope, type MemberContext } from "./member-scope.ts"
 
 /**
- * ESCRITA DO COLABORADOR (P26) — núcleo das quatro actions de src/actions/member-portal.ts,
+ * ESCRITA DO COLABORADOR (P26) — núcleo do relato (src/actions/member-portal.ts). Criar o
+ * próprio combinado (C14) mora em src/server/member-agreements.ts, que escreve a timeline.
  * sob as mesmas regras de import do portal (D38): só o banco, o contexto do colaborador e
  * src/lib. Recebe o `MemberContext` pronto; nunca o obtém sozinho.
  *
  * - Toda escrita confere o travamento DENTRO da transação, antes de escrever, e recusa
  *   com erro explícito enquanto a daily do time está aberta (D41, D43).
- * - O colaborador só relata os PRÓPRIOS combinados abertos e propõe combinados novos.
- *   Nunca muda prazo, status, título ou responsável de combinado existente.
+ * - O colaborador só relata os PRÓPRIOS combinados abertos. Nunca muda prazo, status,
+ *   título ou responsável de combinado existente.
  * - Relato pendente = `dailyId` nulo; um por combinado (índice único parcial).
  * - Toda escrita é auditada.
  */
@@ -108,39 +109,6 @@ export async function deleteSelfReportCore(ctx: MemberContext, agreementId: unkn
     if (!report) return { ok: false, error: M.validation.notFound }
     await tx.agreementSelfReport.delete({ where: { id: report.id, teamId: ctx.teamId } })
     await memberAudit(ctx, { action: "member.selfReport.delete", entity: "AgreementSelfReport", entityId: report.id, before: { agreementId: parsed.data, outcome: report.outcome } }, tx)
-    return { ok: true }
-  })
-}
-
-/** Propõe um combinado (só vira combinado no aceite do gestor — D42). Sempre dela, sem prioridade. */
-export async function createProposalCore(ctx: MemberContext, input: unknown): Promise<MemberWriteResult> {
-  const parsed = proposalSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: errorsOf(parsed.error.issues) }
-  const data = parsed.data
-  return whileUnlocked(ctx, async (tx) => {
-    const pending = await tx.memberProposal.count({ where: { ...memberOwnScope(ctx), status: "PENDING" } })
-    if (pending >= MAX_PENDING_PROPOSALS) return { ok: false, error: M.validation.tooManyProposals }
-    const created = await tx.memberProposal.create({
-      data: { ...memberOwnScope(ctx), title: data.title, suggestedDueDate: dateOrNull(data.suggestedDueDate), note: data.note || null, status: "PENDING" },
-      select: { id: true },
-    })
-    await memberAudit(ctx, { action: "member.proposal.create", entity: "MemberProposal", entityId: created.id, after: { title: data.title, suggestedDueDate: data.suggestedDueDate || null } }, tx)
-    return { ok: true, id: created.id }
-  })
-}
-
-/** Retira a própria proposta: só PENDING, só antes de alguma daily capturá-la, só destravado. */
-export async function deleteProposalCore(ctx: MemberContext, id: unknown): Promise<MemberWriteResult> {
-  const parsed = idSchema.safeParse(id)
-  if (!parsed.success) return { ok: false, error: M.validation.notFound }
-  return whileUnlocked(ctx, async (tx) => {
-    const proposal = await tx.memberProposal.findFirst({
-      where: { ...memberOwnScope(ctx), id: parsed.data, status: "PENDING", dailyId: null },
-      select: { id: true, title: true },
-    })
-    if (!proposal) return { ok: false, error: M.validation.notFound }
-    await tx.memberProposal.delete({ where: { id: proposal.id, teamId: ctx.teamId } })
-    await memberAudit(ctx, { action: "member.proposal.delete", entity: "MemberProposal", entityId: proposal.id, before: { title: proposal.title } }, tx)
     return { ok: true }
   })
 }
