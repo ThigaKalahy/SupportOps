@@ -1,9 +1,11 @@
 import { cache } from "react"
 
+import { lockCutoff } from "../lib/daily-lock.ts"
 import { labels } from "../lib/labels.ts"
 
 import { accountTier } from "./account-tier.ts"
 import { isAllowedEmail } from "./allowlist.ts"
+import { writeAudit, type AuditEntry } from "./audit.ts"
 import { db } from "./db.ts"
 
 /**
@@ -28,6 +30,8 @@ export interface MemberContext {
   /** Marca o contexto do portal: `teamScope` recusa qualquer objeto com `memberId`. */
   kind: "member"
   userId: string
+  /** Organização do time — só para a auditoria. Nunca escopa (D36). */
+  organizationId: string
   teamId: string
   /** A pessoa desta conta no time. */
   memberId: string
@@ -52,7 +56,7 @@ export async function memberContextFor(userId: string, teamId: string): Promise<
   if (!user?.isActive) throw new MemberAccessError("inactive")
   const access = await db.teamAccess.findFirst({
     where: { userId, teamId, level: "MEMBER", revokedAt: null, team: { isActive: true } },
-    select: { id: true },
+    select: { team: { select: { organizationId: true } } },
   })
   if (!access) throw new MemberAccessError("no-access")
   const member = await db.teamMember.findFirst({
@@ -60,7 +64,7 @@ export async function memberContextFor(userId: string, teamId: string): Promise<
     select: { id: true, preferredName: true },
   })
   if (!member) throw new MemberAccessError("no-member")
-  return { kind: "member", userId, teamId, memberId: member.id, preferredName: member.preferredName }
+  return { kind: "member", userId, organizationId: access.team.organizationId, teamId, memberId: member.id, preferredName: member.preferredName }
 }
 
 /** Times em que a conta é colaboradora (acesso não revogado, time ativo). */
@@ -108,4 +112,30 @@ export const requireMemberContext = cache(async (): Promise<MemberContext> => {
 /** Início de todo `where` do portal: o time E a pessoa, sempre juntos. */
 export function memberOwnScope(ctx: Pick<MemberContext, "teamId" | "memberId">): { teamId: string; memberId: string } {
   return { teamId: ctx.teamId, memberId: ctx.memberId }
+}
+
+/** Estado de travamento do time (P26, D41, D43): DRAFT aberta há menos de 4 horas. */
+export interface DailyLock {
+  locked: boolean
+  dailyId: string | null
+  openedAt: Date | null
+}
+
+/**
+ * Travado quando há Daily DRAFT no time aberta há menos de 4 horas. DRAFT mais antiga
+ * é daily abandonada e não trava (derivado, sem cron — D41, D9). Toda escrita do portal
+ * confere isto ANTES de escrever, dentro da transação (D43).
+ */
+export async function getDailyLock(teamId: string, client: Pick<typeof db, "daily"> = db): Promise<DailyLock> {
+  const draft = await client.daily.findFirst({
+    where: { teamId, status: "DRAFT", openedAt: { gte: lockCutoff() } },
+    orderBy: { openedAt: "desc" },
+    select: { id: true, openedAt: true },
+  })
+  return { locked: draft !== null, dailyId: draft?.id ?? null, openedAt: draft?.openedAt ?? null }
+}
+
+/** Auditoria de escrita do colaborador: time, organização e a conta dele. */
+export function memberAudit(ctx: MemberContext, entry: AuditEntry, tx?: Parameters<typeof writeAudit>[1]["tx"]): Promise<void> {
+  return writeAudit(entry, { organizationId: ctx.organizationId, teamId: ctx.teamId, userId: ctx.userId, ...(tx ? { tx } : {}) })
 }

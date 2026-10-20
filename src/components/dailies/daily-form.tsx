@@ -4,13 +4,14 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { XIcon } from "lucide-react"
 
-import { createDaily, updateDaily } from "@/actions/dailies"
+import { createDaily, discardDaily, updateDaily } from "@/actions/dailies"
 import { DisclosureToggle, FormError } from "@/components/forms/form-kit"
 import { Button } from "@/components/ui/button"
 import { WatchButton } from "@/components/watch/watch-button"
 import type { WatchHeat } from "@/lib/watch"
 import { CentralCombobox, type CentralOption } from "@/components/ui/CentralCombobox"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/ui/empty-state"
 import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
@@ -19,8 +20,8 @@ import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { DesktopHint } from "@/components/ui/desktop-hint"
-import { formatDate, formatTime, maskDateInput, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
-import { fill, labels } from "@/lib/labels"
+import { formatDate, formatDayMonth, formatTime, maskDateInput, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
+import { enumLabel, fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { fieldErrorsOf } from "@/lib/validators/fields"
 import { dailySchema, editDailySchema, type DailyInput } from "@/lib/validators/daily"
@@ -67,12 +68,23 @@ interface NewRow {
   dueDate: string
 }
 
+/** P26: decisão do gestor sobre uma proposta do time (nenhuma = continua pendente). */
+interface ProposalState {
+  action: "accept" | "discard" | null
+  /** "Editar e aceitar": título e prazo abertos para ajuste. */
+  editing: boolean
+  title: string
+  dueDate: string
+  managerNote: string
+}
+
 interface FormState {
   reviews: Record<string, ReviewState>
   participants: Record<string, ParticipantState>
   rows: NewRow[]
   summary: string
   decisions: string
+  proposals: Record<string, ProposalState>
 }
 
 interface Draft extends FormState {
@@ -87,9 +99,34 @@ let rowSeq = 0
 const newRow = (dueDate: string): NewRow => ({ key: `row-${++rowSeq}`, memberId: "", centralId: "", title: "", dueDate })
 const rowIsEmpty = (row: NewRow) => !row.id && !row.memberId && !row.title.trim()
 
+type ReviewItemData = DailyFormData["review"][number]["items"][number]
+
+/**
+ * P26: a linha como a pessoa relatou — desfecho, impeditivo, motivo e o prazo sugerido
+ * no reagendamento. É o estado inicial da linha e o "voltar ao relato".
+ */
+function reportPatch(item: ReviewItemData, dailyDate: string): Partial<ReviewState> | null {
+  const r = item.selfReport
+  if (!r) return null
+  return {
+    outcome: r.outcome,
+    blockerText: r.blockerText ?? "",
+    blockerReasonId: r.blockerReasonId ?? "",
+    action: "reschedule",
+    newDueDate: r.suggestedDueDate ? formatDate(r.suggestedDueDate, "business") : dailyDate,
+  }
+}
+
+/** A linha ainda está como a pessoa relatou? (desfecho, impeditivo, motivo, reagendamento) */
+function matchesReport(state: ReviewState, report: Partial<ReviewState>): boolean {
+  return (Object.keys(report) as (keyof ReviewState)[]).every((k) => state[k] === report[k])
+}
+
 /** Prazos nascem com a data da própria daily, também na retroativa (D28): o combinado é o compromisso do dia. */
 function initialState(form: DailyFormData, dailyDate: string): FormState {
   const reviews: Record<string, ReviewState> = {}
+  const proposals: Record<string, ProposalState> = {}
+  for (const p of form.proposals) proposals[p.id] = { action: null, editing: false, title: p.title, dueDate: dailyDate, managerNote: "" }
   for (const group of form.review) {
     for (const item of group.items) {
       reviews[item.id] = {
@@ -105,13 +142,15 @@ function initialState(form: DailyFormData, dailyDate: string): FormState {
         nextNote: "",
         nextDueDate: dailyDate,
         nextCentralId: item.centralId ?? "",
+        // P26: a linha com relato chega pronta — editável pelo gestor.
+        ...reportPatch(item, dailyDate),
       }
     }
   }
   const participants: Record<string, ParticipantState> = {}
   for (const m of form.members) participants[m.id] = { present: true, note: "", isBlocker: false }
   const edit = form.edit
-  if (!edit) return { reviews, participants, rows: [newRow(dailyDate)], summary: "", decisions: "" }
+  if (!edit) return { reviews, participants, rows: [newRow(dailyDate)], summary: "", decisions: "", proposals }
   // C11: edição — o que a daily gravou, mais uma linha vazia para acrescentar.
   for (const p of edit.participants) participants[p.memberId] = { present: p.present, note: p.blocker ?? p.note ?? "", isBlocker: p.blocker !== null }
   const rows: NewRow[] = edit.rows.map((r) => ({
@@ -124,7 +163,7 @@ function initialState(form: DailyFormData, dailyDate: string): FormState {
     why: r.why ?? "",
     dueDate: formatDate(r.dueDate, "business"),
   }))
-  return { reviews, participants, rows: [...rows, newRow(dailyDate)], summary: edit.summary ?? "", decisions: edit.decisions ?? "" }
+  return { reviews, participants, rows: [...rows, newRow(dailyDate)], summary: edit.summary ?? "", decisions: edit.decisions ?? "", proposals }
 }
 
 /** Rascunho só vale para a mesma daily e só para o que ainda existe na tela. */
@@ -148,6 +187,10 @@ function restore(base: FormState, draft: Draft): FormState {
     rows: rows.length ? rows.map((r) => ({ ...r, centralId: r.centralId ?? "", key: `row-${++rowSeq}` })) : base.rows,
     summary: draft.summary ?? "",
     decisions: draft.decisions ?? "",
+    // Só as propostas que ainda estão na tela (resolvidas em outra aba somem).
+    proposals: Object.fromEntries(
+      Object.entries(base.proposals).map(([id, p]) => [id, draft.proposals?.[id] ? { ...p, ...draft.proposals[id] } : p]),
+    ),
   }
 }
 
@@ -369,6 +412,10 @@ export function DailyForm({ form }: { form: DailyFormData }) {
           }
         }),
         participants: form.members.map((m) => ({ memberId: m.id, ...current.participants[m.id]!, watchIds: current.participants[m.id]!.watchIds ?? [] })),
+        draftId: form.draft?.id ?? "",
+        proposals: Object.entries(current.proposals).flatMap(([id, p]) =>
+          p.action ? [{ id, action: p.action, title: p.title, dueDate: p.dueDate, managerNote: p.managerNote }] : [],
+        ),
         newAgreements: rows.map((r) => ({
           ...(editId ? { id: r.id ?? "", remove: r.remove ?? false } : {}),
           memberId: r.memberId,
@@ -424,6 +471,23 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       }
       setFormError(result.error)
       if (result.fieldErrors) setErrors(keyedErrors(result.fieldErrors, reviewIds, rowKeys))
+    })
+  }
+
+  // P26: descartar a daily aberta (relatos e propostas voltam a ficar pendentes).
+  const [confirmDiscard, setConfirmDiscard] = React.useState(false)
+  const [discardError, setDiscardError] = React.useState<string | null>(null)
+  const [discarding, startDiscard] = React.useTransition()
+  function discard() {
+    if (!form.draft) return
+    setDiscardError(null)
+    startDiscard(async () => {
+      const result = await discardDaily({ id: form.draft!.id })
+      if (!result.ok) return setDiscardError(result.error)
+      clearDraft(form.teamId)
+      setConfirmDiscard(false)
+      router.push("/dailies/new")
+      router.refresh()
     })
   }
 
@@ -508,6 +572,12 @@ export function DailyForm({ form }: { form: DailyFormData }) {
             ? [{ name: memberName.get(a.memberId) ?? "", central: centralName.get(a.centralId) ?? null, title: a.title, dueDate: due, why: form.whyEnabled ? a.why || null : null }]
             : []
         }),
+        // P26: propostas aceitas viram combinados desta daily.
+        ...input.proposals.flatMap((p) => {
+          const due = parseDisplayDate(p.dueDate)
+          const proposal = form.proposals.find((x) => x.id === p.id)
+          return p.action === "accept" && due && proposal ? [{ name: proposal.memberName, central: null, title: p.title, dueDate: due }] : []
+        }),
       ],
       blockers: input.participants.flatMap((p) =>
         p.isBlocker && p.note.trim() ? [{ name: memberName.get(p.memberId) ?? "", text: p.note }] : [],
@@ -528,6 +598,17 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       noValidate
     >
       <DesktopHint />
+      {form.draft ? (
+        <p
+          role="status"
+          className={cn(
+            "rounded-lg border px-3 py-2 text-sm",
+            form.draft.locking ? "border-line bg-surface-sunken text-ink-secondary" : "border-attention bg-attention-wash text-attention",
+          )}
+        >
+          {form.draft.locking ? fill(L.opening.openedAt, { time: formatTime(form.draft.openedAt!) }) : L.opening.expired}
+        </p>
+      ) : null}
       {restoredAt ? (
         <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface-sunken px-3 py-2">
           <p className="text-sm text-ink-secondary">{fill(L.draft.restored, { time: restoredAt })}</p>
@@ -566,7 +647,17 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       ) : null}
 
       {/* SEÇÃO 1 — revisão */}
-      <Section title={L.review.title} count={reviewOrder.length}>
+      <Section
+        title={L.review.title}
+        count={reviewOrder.length}
+        action={
+          form.reportStats ? (
+            <span className="font-mono text-xs text-ink-secondary">
+              {fill(L.opening.reportedOf, { reported: form.reportStats.reported, total: form.reportStats.total })}
+            </span>
+          ) : undefined
+        }
+      >
         <p className="-mt-2 text-xs text-ink-secondary">
           {L.review.direction} <span id="review-key-hint" className="font-mono text-2xs">{L.review.keyHint}</span>
         </p>
@@ -614,6 +705,24 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                           groups.current[index] = el
                         }}
                         onDone={() => focusAfterReview(index)}
+                        report={(() => {
+                          const original = reportPatch(item, dateText)
+                          if (!original || !item.selfReport) return undefined
+                          return {
+                            line: [
+                              fill(L.opening.memberReported, { name: group.member.preferredName, outcome: enumLabel("checkinOutcome", item.selfReport.outcome) }) +
+                                (item.selfReport.blockerText ? ` — ${item.selfReport.blockerText}` : ""),
+                              item.selfReport.suggestedDueDate
+                                ? fill(L.opening.suggested, { date: formatDayMonth(item.selfReport.suggestedDueDate, "business") })
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · "),
+                            changed: !matchesReport(state.reviews[item.id]!, original),
+                            restoreLabel: fill(L.opening.restore, { name: group.member.preferredName }),
+                            restore: () => patchReview(item.id, original),
+                          }
+                        })()}
                       />
                     )
                   })}
@@ -724,6 +833,14 @@ export function DailyForm({ form }: { form: DailyFormData }) {
       {/* SEÇÃO 3 — combinados de hoje */}
       <Section title={L.newAgreements.title}>
         <p className="-mt-2 text-xs text-ink-secondary">{L.newAgreements.direction}</p>
+        {form.proposals.length ? (
+          <ProposalsBlock
+            proposals={form.proposals}
+            state={state.proposals}
+            dailyDate={dateText}
+            onChange={(id, patch) => setState((s) => ({ ...s, proposals: { ...s.proposals, [id]: { ...s.proposals[id]!, ...patch } } }))}
+          />
+        ) : null}
         <ul className="rounded-lg border border-line bg-surface">
           {state.rows.map((row, i) => {
             const err = (field: string) => errors[`row:${row.key}:${field}`]
@@ -895,11 +1012,140 @@ export function DailyForm({ form }: { form: DailyFormData }) {
               {L.edit.cancel}
             </Button>
           ) : null}
+          {form.draft ? (
+            <Button type="button" variant="secondary" disabled={pending} onClick={() => setConfirmDiscard(true)}>
+              {L.opening.discard}
+            </Button>
+          ) : null}
           <Button type="submit" loading={pending}>
             {editId ? L.edit.submit : L.save}
           </Button>
         </div>
       </div>
+      {form.draft ? (
+        <Dialog open={confirmDiscard} onOpenChange={(next) => !discarding && setConfirmDiscard(next)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{L.opening.discardTitle}</DialogTitle>
+              <DialogDescription>{L.opening.discardBody}</DialogDescription>
+            </DialogHeader>
+            <FormError message={discardError} />
+            <DialogFooter>
+              <Button type="button" variant="secondary" disabled={discarding} onClick={() => setConfirmDiscard(false)}>
+                {labels.common.cancel}
+              </Button>
+              <Button type="button" variant="destructive" loading={discarding} onClick={discard}>
+                {L.opening.discardConfirm}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </form>
+  )
+}
+
+/**
+ * P26: propostas que o time fez no portal, capturadas por esta daily. Aceitar cria o
+ * combinado da pessoa (prazo: a data da daily, ou o sugerido); descartar guarda uma nota
+ * opcional. Sem decisão, a proposta continua pendente para a próxima daily.
+ */
+function ProposalsBlock({
+  proposals,
+  state,
+  dailyDate,
+  onChange,
+}: {
+  proposals: DailyFormData["proposals"]
+  state: Record<string, ProposalState>
+  dailyDate: string
+  onChange: (id: string, patch: Partial<ProposalState>) => void
+}) {
+  const P = L.proposals
+  return (
+    <div className="flex flex-col gap-1.5">
+      <MetaLabel className="text-ink">{P.title}</MetaLabel>
+      <ul className="rounded-lg border border-line bg-surface">
+        {proposals.map((p) => {
+          const s = state[p.id]!
+          const suggested = p.suggestedDueDate ? formatDate(p.suggestedDueDate, "business") : null
+          return (
+            <li key={p.id} className="flex flex-col gap-2 border-b border-line px-3 py-2 last:border-b-0">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-xs text-ink-secondary">{fill(P.by, { name: p.memberName })}</span>
+                <span className="text-sm font-medium text-ink">{p.title}</span>
+                {suggested ? <span className="font-mono text-xs text-ink-secondary">{fill(P.suggestedDue, { date: suggested })}</span> : null}
+              </div>
+              {p.note ? <p className="text-xs text-ink-secondary">{p.note}</p> : null}
+              {s.action === "accept" && !s.editing ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm text-calm">
+                  {fill(P.accepted, { title: s.title, date: s.dueDate })}
+                  <Button type="button" variant="ghost" size="sm" onClick={() => onChange(p.id, { action: null, editing: false, title: p.title, dueDate: dailyDate })}>
+                    {P.undo}
+                  </Button>
+                </div>
+              ) : s.action === "discard" ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-ink-secondary">
+                    {P.discarded}
+                    <Button type="button" variant="ghost" size="sm" onClick={() => onChange(p.id, { action: null, managerNote: "" })}>
+                      {P.undo}
+                    </Button>
+                  </div>
+                  <Input
+                    aria-label={P.note}
+                    placeholder={P.note}
+                    value={s.managerNote}
+                    maxLength={300}
+                    autoComplete="off"
+                    className="h-8"
+                    onChange={(e) => onChange(p.id, { managerNote: e.target.value })}
+                  />
+                </div>
+              ) : s.editing ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    aria-label={P.title_field}
+                    value={s.title}
+                    maxLength={160}
+                    autoComplete="off"
+                    className="h-8 min-w-48 flex-1"
+                    onChange={(e) => onChange(p.id, { title: e.target.value })}
+                  />
+                  <Input
+                    aria-label={P.due}
+                    value={s.dueDate}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    className="h-8 w-32 font-mono"
+                    onChange={(e) => onChange(p.id, { dueDate: maskDateInput(e.target.value) })}
+                  />
+                  {suggested && s.dueDate !== suggested ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => onChange(p.id, { dueDate: suggested })}>
+                      {fill(P.useSuggested, { date: suggested })}
+                    </Button>
+                  ) : null}
+                  <Button type="button" size="sm" disabled={s.title.trim().length < 3} onClick={() => onChange(p.id, { action: "accept", editing: false })}>
+                    {P.confirm}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="secondary" onClick={() => onChange(p.id, { action: "accept" })}>
+                    {P.accept}
+                  </Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => onChange(p.id, { editing: true })}>
+                    {P.editAccept}
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => onChange(p.id, { action: "discard" })}>
+                    {P.discard}
+                  </Button>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }

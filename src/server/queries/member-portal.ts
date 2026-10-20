@@ -3,7 +3,7 @@ import type { AgreementPriority, AgreementStatus, CheckinOutcome, ProposalStatus
 import { todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
-import { memberOwnScope, type MemberContext } from "../member-scope.ts"
+import { getDailyLock, memberOwnScope, type MemberContext } from "../member-scope.ts"
 
 /**
  * PORTAL DO COLABORADOR (P25) — leituras de /me. Regra arquitetural, não estilo (D38):
@@ -36,7 +36,7 @@ export interface MyOpenAgreement {
   /** Quantas vezes o prazo foi estendido numa daily. */
   reschedules: number
   /** Relato ainda não capturado por nenhuma daily (P26). */
-  pendingReport: { outcome: CheckinOutcome; blockerText: string | null; reason: string | null; suggestedDueDate: Date | null } | null
+  pendingReport: { outcome: CheckinOutcome; blockerText: string | null; reasonId: string | null; reason: string | null; suggestedDueDate: Date | null } | null
 }
 
 export async function getMyOpenAgreements(ctx: MemberContext): Promise<MyOpenAgreement[]> {
@@ -55,7 +55,7 @@ export async function getMyOpenAgreements(ctx: MemberContext): Promise<MyOpenAgr
       selfReports: {
         where: { ...memberOwnScope(ctx), dailyId: null },
         take: 1,
-        select: { outcome: true, blockerText: true, suggestedDueDate: true, blockerReason: { select: { label: true } } },
+        select: { outcome: true, blockerText: true, blockerReasonId: true, suggestedDueDate: true, blockerReason: { select: { label: true } } },
       },
     },
   })
@@ -71,7 +71,13 @@ export async function getMyOpenAgreements(ctx: MemberContext): Promise<MyOpenAgr
       deadline: deadlineSeverity(a.dueDate, { today }),
       reschedules: a._count.checkins,
       pendingReport: report
-        ? { outcome: report.outcome, blockerText: report.blockerText, reason: report.blockerReason?.label ?? null, suggestedDueDate: report.suggestedDueDate }
+        ? {
+            outcome: report.outcome,
+            blockerText: report.blockerText,
+            reasonId: report.blockerReasonId,
+            reason: report.blockerReason?.label ?? null,
+            suggestedDueDate: report.suggestedDueDate,
+          }
         : null,
     }
   })
@@ -182,4 +188,51 @@ export async function getMyAgreementHistory(ctx: MemberContext, limit = 20): Pro
     completedAt: a.completedAt,
     outcome: a.outcome,
   }))
+}
+
+/* ───────────────────────────── P26: escrita do colaborador ───────────────────────────── */
+
+/** Motivos de impeditivo ativos do time (para o relato Parcial / Não feito). */
+export async function getMyBlockerReasons(ctx: MemberContext): Promise<{ id: string; label: string }[]> {
+  return db.blockerReason.findMany({
+    where: { teamId: ctx.teamId, isActive: true },
+    orderBy: { order: "asc" },
+    select: { id: true, label: true },
+  })
+}
+
+export interface MyPendingProposal {
+  id: string
+  title: string
+  suggestedDueDate: Date | null
+}
+
+/** Propostas dela ainda não capturadas por nenhuma daily (as que ela pode retirar). */
+export async function getMyPendingProposals(ctx: MemberContext): Promise<MyPendingProposal[]> {
+  return db.memberProposal.findMany({
+    where: { ...memberOwnScope(ctx), status: "PENDING", dailyId: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, title: true, suggestedDueDate: true },
+  })
+}
+
+export interface MyPortalState {
+  /** A daily do time está aberta agora (DRAFT há menos de 4 horas — D41). */
+  locked: boolean
+  /** A última daily registrada do time: quando muda, a tela pede para atualizar. */
+  lastClosedDailyId: string | null
+  lastClosedAt: Date | null
+}
+
+/** Estado leve que o portal consulta a cada 25 segundos (sem rota de API — D8). */
+export async function getMyPortalState(ctx: MemberContext): Promise<MyPortalState> {
+  const [lock, last] = await Promise.all([
+    getDailyLock(ctx.teamId),
+    db.daily.findFirst({
+      where: { teamId: ctx.teamId, status: "CLOSED" },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      select: { id: true, date: true },
+    }),
+  ])
+  return { locked: lock.locked, lastClosedDailyId: last?.id ?? null, lastClosedAt: last?.date ?? null }
 }

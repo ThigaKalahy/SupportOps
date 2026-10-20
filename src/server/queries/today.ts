@@ -85,7 +85,7 @@ export async function getTodayPanel(ctx: TeamContext, today: Date): Promise<Toda
       select: { status: true, seniorityId: true, vacations: { where: vacationCovering(ctx.teamId, today), select: { id: true }, take: 1 } },
     }),
     db.seniority.findMany({ where: scope, orderBy: { order: "desc" } }),
-    db.daily.findFirst({ where: scope, orderBy: { date: "desc" }, select: { date: true } }),
+    db.daily.findFirst({ where: { ...scope, status: "CLOSED" }, orderBy: { date: "desc" }, select: { date: true } }),
     db.oneOnOne.count({ where: { ...scope, member: people, ...visibilityFilter(ctx), date: { gte: month, lte: today } } }),
     db.feedback.count({ where: { ...scope, member: people, ...visibilityFilter(ctx), date: { gte: month, lte: today } } }),
     db.agreement.findMany({

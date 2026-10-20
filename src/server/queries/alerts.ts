@@ -1,6 +1,7 @@
 import type { MemberStatus } from "@prisma/client"
 
 import { trendWindows } from "../../lib/adherence.ts"
+import { lockCutoff } from "../../lib/daily-lock.ts"
 import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
 import { DEV_RETURN_ALERTS } from "../../lib/dev-returns.ts"
 import { feedbackFollowUp } from "../../lib/follow-up.ts"
@@ -77,7 +78,21 @@ export interface AlertFacts {
   devReturns: AlertDevReturn[]
   /** Observações ATIVAS visíveis para quem consulta (P21; VIEWER só SHARED — D25). */
   watchItems: AlertWatchItem[]
+  /** P26: o que vem do portal do colaborador. Opcional para os fatos montados à mão nos testes. */
+  memberPortal?: AlertMemberPortal
 }
+
+export interface AlertMemberPortal {
+  /** Propostas PENDING e quantas dailies registradas passaram por elas desde que foram feitas. */
+  proposals: { id: string; memberId: string; title: string; createdAt: Date; dailiesSince: number }[]
+  /** Dailies abertas (DRAFT) há mais de 4 horas — já não travam o portal. */
+  staleDrafts: { id: string; date: Date; openedAt: Date }[]
+  /** Desfechos registrados diferentes do relato, por pessoa, nos últimos 60 dias (só para o gestor). */
+  diverged: Map<string, number>
+}
+
+/** P26: janela do alerta de relato ajustado. */
+export const DIVERGED_WINDOW_DAYS = 60
 
 export interface AlertWatchItem {
   id: string
@@ -178,7 +193,7 @@ export async function getAlertFacts(ctx: TeamContext, today: Date, t: AlertThres
         select: { memberId: true, status: true, originalDueDate: true, completedAt: true },
       }),
       db.daily.findFirst({
-        where: scope,
+        where: { ...scope, status: "CLOSED" },
         orderBy: { date: "desc" },
         select: { date: true },
       }),
@@ -262,5 +277,40 @@ export async function getAlertFacts(ctx: TeamContext, today: Date, t: AlertThres
       category: r.reason.category,
     })),
     watchItems,
+    memberPortal: await getMemberPortalFacts(ctx, today),
+  }
+}
+
+/**
+ * P26 — fatos do portal do colaborador para o motor de alertas. O ajuste de relato só
+ * é lido para quem gerencia o time: é assunto de 1:1, não de placar.
+ */
+async function getMemberPortalFacts(ctx: TeamContext, today: Date): Promise<AlertMemberPortal> {
+  const scope = teamScope(ctx)
+  const since = new Date(today)
+  since.setUTCDate(since.getUTCDate() - DIVERGED_WINDOW_DAYS)
+  const [proposals, closedDailies, staleDrafts, diverged] = await Promise.all([
+    db.memberProposal.findMany({
+      where: { ...scope, status: "PENDING", member: { deletedAt: null } },
+      select: { id: true, memberId: true, title: true, createdAt: true },
+    }),
+    db.daily.findMany({ where: { ...scope, status: "CLOSED" }, orderBy: { createdAt: "desc" }, take: 60, select: { createdAt: true } }),
+    db.daily.findMany({
+      where: { ...scope, status: "DRAFT", openedAt: { lt: lockCutoff() } },
+      select: { id: true, date: true, openedAt: true },
+    }),
+    ctx.level === "MANAGER"
+      ? db.agreementCheckin.findMany({
+          where: { ...scope, divergedFromSelfReport: true, daily: { date: { gte: since, lte: today } } },
+          select: { agreement: { select: { memberId: true } } },
+        })
+      : Promise.resolve([]),
+  ])
+  const divergedBy = new Map<string, number>()
+  for (const c of diverged) divergedBy.set(c.agreement.memberId, (divergedBy.get(c.agreement.memberId) ?? 0) + 1)
+  return {
+    proposals: proposals.map((p) => ({ ...p, dailiesSince: closedDailies.filter((d) => d.createdAt > p.createdAt).length })),
+    staleDrafts: staleDrafts.flatMap((d) => (d.openedAt ? [{ id: d.id, date: d.date, openedAt: d.openedAt }] : [])),
+    diverged: divergedBy,
   }
 }

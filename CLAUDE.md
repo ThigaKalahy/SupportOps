@@ -212,6 +212,8 @@ O grupo de rotas `(member)` tem layout próprio: sem sidebar, sem barra de conte
 - `MemberProposal` só vira `Agreement` no aceite, com `origin = MEMBER`. Descartada permanece `DISCARDED`, nunca apagada (D42).
 - `Daily.status = DRAFT` é marcador de travamento, não salvamento progressivo. A daily continua salvando em transação única. `DRAFT` com `openedAt` há mais de 4 horas deixa de travar, derivado em query (D41).
 - Descartar uma daily DRAFT devolve relatos e propostas ao estado pendente.
+- A consulta de estado do portal (travado? daily nova?) é Server Action de leitura (`pollPortalState`), chamada a cada 25 s com a aba visível — não rota GET (D8, decisão em 20/10/2026).
+- Daily DRAFT não aparece em lugar nenhum além de /dailies/new: histórico, detalhe, PDF, "daily anterior", alerta de daily não registrada e a home só leem dailies CLOSED.
 - Soft delete (`deletedAt`) apenas onde há valor histórico: `TeamMember`, `Agreement`, registros. Não em tabelas de junção (D10).
 - `tags` em `TimelineEvent` é `text[]` nativo do Postgres com índice GIN — não criar tabela de tags separada.
 - A daily do dia D puxa os combinados criados na daily anterior mais os em aberto com `dueDate <= hoje`. Revisar grava `AgreementCheckin` (D11).
@@ -599,6 +601,15 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Provisionamento: `pnpm member:invite` (`listInvitableMembers`, `inviteMember`) e `pnpm member:deactivate` (`deactivateMemberAccount`) em `src/server/provisioning.ts`, auditados.
 - Testes: dois estruturais novos em `tests/isolation.test.ts` (imports do portal só de db/member-scope/lib/Prisma; nenhum nome de modelo proibido nem relação que os alcance, nem em comentário; select explícito), passando; e o bloco de banco com os dez critérios do P25 + allowlist em dois níveis + invite/deactivate, escrito e ainda NÃO executado (banco de teste expirado).
 
+**P26 — Autorrelato, propostas e travamento (20/10/2026)**
+- Travamento: `getDailyLock(teamId)` em `src/server/member-scope.ts` — DRAFT aberta há menos de 4 horas (`src/lib/daily-lock.ts`, derivado, sem cron — D41). Escrita do colaborador: núcleo em `src/server/member-portal.ts` (`upsertSelfReportCore`, `deleteSelfReportCore`, `createProposalCore`, `deleteProposalCore`), todas dentro de `whileUnlocked` — o travamento é conferido dentro da transação, antes de escrever (D43); casca em `src/actions/member-portal.ts` (`requireMemberContext`). Só o próprio combinado aberto; impeditivo obrigatório em Parcial/Não feito; até 10 propostas pendentes; tudo auditado (`member.selfReport.*`, `member.proposal.*`). Schemas em `src/lib/validators/member-portal.ts`.
+- Portal: Zona 1 editável (`src/components/member-portal/portal-live.tsx`) — Feito / Parcial / Não feito em botões de 44px, salvo por item (Feito na hora; Parcial/Não feito abrem impeditivo, motivo e prazo sugerido inline), "relatado", "alterar", "desfazer relato"; "Propor combinado" (título e prazo sugerido; "o gestor confirma na daily"; remover). Travado: aviso fixo em atenção e controles de escrita AUSENTES. `pollPortalState` a cada 25 s só com a aba visível; daily nova registrada mostra a faixa fixa "A daily foi registrada. Atualize…" com botão — nunca recarrega sozinho.
+- Daily do gestor: `/dailies/new` com passo zero (`getDailyOpening`): data editável, "N de M pessoas relataram", propostas do time e "Registrar nova daily" (`openDailyRecord`: cria a DRAFT e captura relatos pendentes e propostas PENDING numa transação). DRAFT de outra pessoa: "sendo registrada por X, aberta às HH:mm" + "Assumir" (`takeOverDailyRecord`). "Descartar daily" com confirmação no app (`discardDailyRecord`: devolve relatos e propostas ao pendente, apaga a DRAFT). DRAFT há mais de 4 h: aviso de que já não trava ninguém. Salvar fecha a DRAFT (CLOSED) na mesma transação única.
+- Seção 1: linha com relato chega pronta (desfecho, impeditivo, motivo, prazo sugerido no reagendamento), com "Fulano relatou: …" e "voltar ao relato de Fulano" quando o gestor muda algo; indicador "N de M relataram". Ao salvar, o checkin grava o valor final, `selfReportId` e `divergedFromSelfReport` (só o desfecho); o relato fica intacto (D39).
+- Seção 3: bloco "Propostas do time" — Aceitar (combinado da pessoa, origem MEMBER, prazo da daily ou o sugerido), Editar e aceitar, Descartar (nota opcional). Sem decisão, continua PENDING para a próxima daily; nunca apagada (D42).
+- Alertas: "Proposta sem resposta" (PENDING que já passou por 2+ dailies registradas), "Daily aberta sem finalizar" (DRAFT há mais de 4 h) e "N relatos ajustados na daily nos últimos 60 dias" (3+, só para quem gerencia, ação "Dar feedback"). Nenhuma tela de métrica de divergência.
+- Testes: estruturais do portal estendidos (actions com contexto do colaborador; toda escrita do núcleo dentro do travamento; `memberProposal`/`agreementSelfReport` na varredura de `teamId`), passando; fluxo de banco (relato, travamento e recusa, captura, divergência sem sobrescrever, aceite, descarte) escrito e NÃO executado.
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:
@@ -634,7 +645,7 @@ As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora
 - P23 — Seleção e troca de time. _(Entregue.)_
 - P24 — Provisionamento de time. _(Entregue. Treinamento e Hardware criados em produção em 09/10/2026.)_
 - P25 — Identidade do colaborador e portal somente leitura: `TeamMember.userId`, nível `MEMBER`, `User.isActive`, `Daily.status` (sempre CLOSED nesta fase), tabelas `AgreementSelfReport` e `MemberProposal` criadas vazias, `requireMemberContext`, `/me` mobile-first (combinados abertos, registrado na última daily, histórico), `pnpm member:invite` / `member:deactivate`, allowlist em dois níveis, suíte de isolamento estendida com os dois testes estruturais do portal. _(Código entregue; a parte de banco da suíte aguarda o banco de teste — BLOCKERS.md.)_
-- P26 — Autorrelato, propostas e travamento: o colaborador relata os próprios combinados e propõe novos antes da daily; captura no "Registrar nova daily"; checkin com `selfReportId` e `divergedFromSelfReport`; aceite e descarte de propostas; travamento DRAFT verificado no servidor. _(Pendente.)_
+- P26 — Autorrelato, propostas e travamento: o colaborador relata os próprios combinados e propõe novos antes da daily; captura no "Registrar nova daily"; checkin com `selfReportId` e `divergedFromSelfReport`; aceite e descarte de propostas; travamento DRAFT verificado no servidor. _(Código entregue; a parte de banco da suíte não rodou — sem banco de teste, validação em produção por decisão do usuário em 20/10/2026.)_
 
 ## Protocolo de execução autônoma
 

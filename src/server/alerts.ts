@@ -1,6 +1,6 @@
 import { makeRate, makeTrend, percent, type Rate, type Trend } from "../lib/adherence.ts"
 import { DEFAULT_THRESHOLDS, oneOnOneLimit, type AlertThresholds } from "../lib/alert-thresholds.ts"
-import { businessDaysBetween, isBusinessDay, todayBusinessDate, toSaoPaulo, toUrlDate } from "../lib/dates.ts"
+import { businessDaysBetween, formatDate, isBusinessDay, todayBusinessDate, toSaoPaulo, toUrlDate } from "../lib/dates.ts"
 import { DEV_RETURN_ALERTS } from "../lib/dev-returns.ts"
 import { coldHighDays, reviewState as watchReviewState, showsOnHome, stalledDays } from "../lib/watch.ts"
 import { PLAN_REVIEW_THRESHOLDS } from "../lib/development.ts"
@@ -206,6 +206,9 @@ export type AlertKind =
   | "watchUnreviewed"
   | "watchColdHigh"
   | "watchStalled"
+  | "proposalUnanswered"
+  | "dailyDraftStale"
+  | "selfReportDiverged"
 
 /** Item da navegação onde o alerta é resolvido (contador da sidebar). */
 export type AlertNav = "watch" | "agreements" | "validations" | "records" | "development" | "dailies"
@@ -597,6 +600,67 @@ export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds,
       nav: "development",
       informative: true,
     })
+  }
+
+  // P26 — portal do colaborador.
+  const portal = facts.memberPortal
+  if (portal) {
+    // Proposta que já passou por duas dailies registradas sem resposta: corrói o uso do portal.
+    for (const p of portal.proposals) {
+      if (p.dailiesSince < 2) continue
+      const member = who(p.memberId)
+      if (!member) continue
+      const days = businessDaysBetween(businessDayOf(p.createdAt), today)
+      alerts.push({
+        id: `proposalUnanswered:${p.id}`,
+        kind: "proposalUnanswered",
+        severity: p.dailiesSince >= 4 ? "overdue" : "attention",
+        strong: true,
+        member,
+        text: fill(L.proposalUnanswered, { title: p.title, count: p.dailiesSince }),
+        age: ago(days),
+        ageDays: days,
+        action: { kind: "link", label: L.actions.answerProposal, href: "/dailies/new" },
+        nav: "dailies",
+        informative: false,
+      })
+    }
+    // Daily aberta há mais de 4 horas: já não trava ninguém, mas está pela metade.
+    for (const d of portal.staleDrafts) {
+      const days = businessDaysBetween(businessDayOf(d.openedAt), today)
+      alerts.push({
+        id: `dailyDraftStale:${d.id}`,
+        kind: "dailyDraftStale",
+        severity: "attention",
+        strong: true,
+        member: null,
+        text: fill(L.dailyDraftStale, { date: formatDate(d.date, "business") }),
+        age: ago(days),
+        ageDays: days,
+        action: { kind: "link", label: L.actions.finishDaily, href: "/dailies/new" },
+        nav: "dailies",
+        informative: false,
+      })
+    }
+    // Relatos ajustados na daily: texto neutro, a ação é conversar (feedback) — nunca placar.
+    for (const [memberId, count] of portal.diverged) {
+      if (count < 3) continue
+      const member = who(memberId)
+      if (!member) continue
+      alerts.push({
+        id: `selfReportDiverged:${memberId}`,
+        kind: "selfReportDiverged",
+        severity: "attention",
+        strong: false,
+        member,
+        text: fill(L.selfReportDiverged, { count }),
+        age: L.last60,
+        ageDays: 0,
+        action: { kind: "feedback", label: L.actions.feedback, memberId },
+        nav: "records",
+        informative: false,
+      })
+    }
   }
 
   return alerts.sort(

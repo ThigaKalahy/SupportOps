@@ -91,7 +91,10 @@ export function ReviewRow({
   watch,
   centrals,
   showCase = false,
+  report,
 }: {
+  /** P26: o relato da pessoa — linha de contexto e o "voltar ao relato" quando o gestor mudou algo. */
+  report?: { line: string; changed: boolean; restoreLabel: string; restore: () => void }
   /** Módulo do porquê ligado: a linha "Em observação" aparece abaixo do título. */
   showCase?: boolean
   /** C12: centrais do time para o próximo passo; null com o módulo desligado. */
@@ -154,9 +157,21 @@ export function ReviewRow({
     )
   }
 
+  const reportLine = report ? (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <MetaLabel>{report.line}</MetaLabel>
+      {report.changed ? (
+        <button type="button" className="text-xs text-ink-secondary underline-offset-2 hover:text-ink hover:underline" onClick={report.restore}>
+          {report.restoreLabel}
+        </button>
+      ) : null}
+    </span>
+  ) : null
+
   if (state.outcome === "DONE") {
     return (
       <li className={cn("flex flex-col gap-2 border-b border-line px-3 py-1.5 last:border-b-0", state.nextOpen && "bg-surface-sunken/60 pb-3")}>
+        {reportLine}
         <div className="flex min-h-10 items-center gap-3">
           <StatusPill severity="calm" label={R.done} />
           <span className="min-w-0 flex-1 truncate text-sm text-ink-secondary line-through decoration-line-strong">
@@ -270,6 +285,7 @@ export function ReviewRow({
             {item.fromPreviousDaily ? <MetaLabel>{R.fromPreviousDaily}</MetaLabel> : null}
           </span>
           <Context item={item} showCase={showCase} />
+          {reportLine}
         </div>
         <div
           ref={groupRef}

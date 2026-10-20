@@ -4,7 +4,7 @@ import { parseDisplayDate } from "../lib/dates.ts"
 import { fill, labels } from "../lib/labels.ts"
 import { MODULES } from "../lib/modules.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
-import { dailySchema, editDailySchema, type DailyInput } from "../lib/validators/daily.ts"
+import { dailySchema, draftRefSchema, editDailySchema, openDailySchema, type DailyInput } from "../lib/validators/daily.ts"
 
 import { auditOf, writeAudit } from "./audit.ts"
 import { linkPendingWatchItems, recordWatchReview } from "./watch.ts"
@@ -142,8 +142,10 @@ async function applyReviews(
   prepared: { byId: Map<string, ReviewAgreement>; caseWatch: CaseWatch },
   timeline: TimelineEventInput[],
   reviewedBy: Map<string, Record<Outcome, number>>,
+  /** P26: relato do colaborador capturado por esta daily, por combinado. */
+  reports: Map<string, { id: string; outcome: Outcome }> = new Map(),
 ) {
-  const counts = { rescheduled: 0, replaced: 0, nextSteps: 0 }
+  const counts = { rescheduled: 0, replaced: 0, nextSteps: 0, diverged: 0 }
   for (const review of reviews) {
     const agreement = prepared.byId.get(review.agreementId)!
     const mine = reviewedBy.get(agreement.memberId) ?? { DONE: 0, PARTIAL: 0, NOT_DONE: 0 }
@@ -152,7 +154,20 @@ async function applyReviews(
 
     // Condição de status no UPDATE: se outra tela encerrou o combinado no meio, a daily inteira volta.
     const open = { ...teamScope(ctx), id: agreement.id, status: { in: ["OPEN" as const, "IN_PROGRESS" as const] } }
-    const checkin = { ...teamScope(ctx), agreementId: agreement.id, dailyId, outcome: review.outcome, authorUserId: ctx.userId }
+    // D39: o checkin guarda o valor FINAL do gestor e aponta o relato; o relato nunca é sobrescrito.
+    // Divergência compara só o desfecho — mudar a redação do impeditivo não é divergir.
+    const report = reports.get(agreement.id)
+    const diverged = report ? report.outcome !== review.outcome : false
+    if (diverged) counts.diverged++
+    const checkin = {
+      ...teamScope(ctx),
+      agreementId: agreement.id,
+      dailyId,
+      outcome: review.outcome,
+      authorUserId: ctx.userId,
+      selfReportId: report?.id ?? null,
+      divergedFromSelfReport: diverged,
+    }
 
     if (review.outcome === "DONE") {
       const done = await tx.agreement.updateMany({ where: open, data: { status: "DONE", completedAt: day } })
@@ -276,29 +291,51 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
 
   const team = await teamFor(ctx)
   if (!team) return { ok: false, error: labels.validation.generic }
+  // P26: a daily aberta no passo zero, que este registro fecha. Já fechada ou descartada: recusa.
+  const draft = data.draftId
+    ? await db.daily.findFirst({ where: { ...teamScope(ctx), id: data.draftId, status: "DRAFT" }, select: { id: true, date: true } })
+    : null
+  if (data.draftId && !draft) return { ok: false, error: labels.dailies.opening.gone }
+  if (draft && draft.date.getTime() !== day.getTime()) return { ok: false, error: labels.validation.generic }
   // C10: uma daily por data. Pega também a página aberta desde outro dia.
-  const taken = await db.daily.findFirst({ where: { ...teamScope(ctx), date: day }, select: { id: true } })
+  const taken = await db.daily.findFirst({
+    where: { ...teamScope(ctx), date: day, ...(draft ? { id: { not: draft.id } } : {}) },
+    select: { id: true },
+  })
   if (taken) return { ok: false, error: fill(labels.dailies.sameDay.taken, { date: data.date }) }
 
   const memberIds = new Set([...data.participants.map((p) => p.memberId), ...data.newAgreements.map((a) => a.memberId)])
   const prepared = await prepare(ctx, data.reviews, memberIds, [...data.newAgreements, ...nextCentrals(data.reviews)])
   if ("ok" in prepared) return prepared
 
+  // P26: relatos e propostas que a daily aberta capturou.
+  const [captured, proposals] = draft
+    ? await Promise.all([
+        db.agreementSelfReport.findMany({ where: { ...teamScope(ctx), dailyId: draft.id }, select: { id: true, agreementId: true, outcome: true } }),
+        db.memberProposal.findMany({ where: { ...teamScope(ctx), dailyId: draft.id, status: "PENDING" }, select: { id: true, memberId: true, title: true } }),
+      ])
+    : [[], []]
+  const reports = new Map(captured.map((r) => [r.agreementId, { id: r.id, outcome: r.outcome }]))
+  const proposalById = new Map(proposals.map((p) => [p.id, p]))
+  if (data.proposals.some((p) => !proposalById.has(p.id)) || new Set(data.proposals.map((p) => p.id)).size !== data.proposals.length) {
+    return { ok: false, error: labels.dailies.opening.proposalGone }
+  }
+
   let dailyId: string
   try {
     dailyId = await db.$transaction(
       async (tx) => {
-        const daily = await tx.daily.create({
-          data: {
-            ...teamScope(ctx),
-            date: day,
-            summary: textOrNull(data.summary),
-            decisions: textOrNull(data.decisions),
-            // P25: o travamento (DRAFT) é do P26; até lá toda daily nasce fechada.
-            status: "CLOSED",
-            authorUserId: ctx.userId,
-          },
-        })
+        // P26: fecha a daily aberta (a condição de status impede fechar duas vezes); sem
+        // passo zero, cria já fechada. Salvar não faz mais nada além disso e dos filhos.
+        const content = { summary: textOrNull(data.summary), decisions: textOrNull(data.decisions), authorUserId: ctx.userId }
+        let daily: { id: string }
+        if (draft) {
+          const closed = await tx.daily.updateMany({ where: { ...teamScope(ctx), id: draft.id, status: "DRAFT" }, data: { ...content, status: "CLOSED" } })
+          if (closed.count !== 1) throw new DraftGoneError()
+          daily = { id: draft.id }
+        } else {
+          daily = await tx.daily.create({ data: { ...teamScope(ctx), date: day, ...content, status: "CLOSED" }, select: { id: true } })
+        }
 
         await tx.dailyParticipant.createMany({
           data: data.participants.map((p) => {
@@ -316,8 +353,9 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
 
         const timeline: TimelineEventInput[] = []
         const reviewedBy = new Map<string, Record<Outcome, number>>()
-        const counts = await applyReviews(tx, ctx, daily.id, day, data.reviews, prepared, timeline, reviewedBy)
+        const counts = await applyReviews(tx, ctx, daily.id, day, data.reviews, prepared, timeline, reviewedBy, reports)
         await createRows(tx, ctx, daily.id, data.newAgreements, timeline)
+        const proposalCounts = await resolveProposals(tx, ctx, daily.id, data.proposals, proposalById, timeline)
         // P21: observações marcadas nas notas e nas linhas desta daily passam a apontar para ela.
         await linkPendingWatchItems(
           tx,
@@ -342,6 +380,8 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
               done: data.reviews.filter((r) => r.outcome === "DONE").length,
               ...counts,
               created: data.newAgreements.length,
+              selfReports: reports.size,
+              proposals: proposalCounts,
             },
           },
           auditOf(ctx, tx),
@@ -352,11 +392,134 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
       { maxWait: 10_000, timeout: 30_000 },
     )
   } catch (error) {
-    if (error instanceof ClosedAgreementError) return { ok: false, error: error.message }
+    if (error instanceof ClosedAgreementError || error instanceof DraftGoneError) return { ok: false, error: error.message }
     throw error
   }
 
   return { ok: true, id: dailyId }
+}
+
+/**
+ * P26: aceita ou descarta as propostas que o gestor decidiu. Aceitar cria o combinado da
+ * pessoa que propôs (origem MEMBER, prazo original = prazo — D17) e liga a proposta a ele;
+ * descartar guarda a nota. A proposta NUNCA é apagada (D42); sem decisão, fica PENDING.
+ */
+async function resolveProposals(
+  tx: Tx,
+  ctx: TeamContext,
+  dailyId: string,
+  decisions: DailyInput["proposals"],
+  byId: Map<string, { id: string; memberId: string; title: string }>,
+  timeline: TimelineEventInput[],
+) {
+  const counts = { accepted: 0, discarded: 0 }
+  for (const decision of decisions) {
+    const proposal = byId.get(decision.id)!
+    const pending = { ...teamScope(ctx), id: proposal.id, status: "PENDING" as const }
+    if (decision.action === "discard") {
+      const done = await tx.memberProposal.updateMany({ where: pending, data: { status: "DISCARDED", managerNote: textOrNull(decision.managerNote) } })
+      if (done.count !== 1) throw new DraftGoneError()
+      counts.discarded++
+      continue
+    }
+    const due = date(decision.dueDate)
+    const created = await tx.agreement.create({
+      data: {
+        ...teamScope(ctx),
+        memberId: proposal.memberId,
+        title: decision.title,
+        origin: "MEMBER",
+        sourceDailyId: dailyId,
+        originalDueDate: due,
+        dueDate: due,
+        authorUserId: ctx.userId,
+      },
+    })
+    timeline.push(timelineEventFor.agreementCreated(created))
+    const done = await tx.memberProposal.updateMany({ where: pending, data: { status: "ACCEPTED", resolvedAgreementId: created.id } })
+    if (done.count !== 1) throw new DraftGoneError()
+    counts.accepted++
+  }
+  return counts
+}
+
+/**
+ * P26 — "Registrar nova daily" (passo zero). Numa transação: cria a Daily DRAFT (aberta
+ * agora, por quem clicou) e CAPTURA o momento — todo relato pendente do time e toda
+ * proposta PENDING passam a apontar para ela. A partir daí o portal do time trava (D41).
+ * Uma daily por data (C10) e uma daily aberta por vez.
+ */
+export async function openDailyRecord(ctx: TeamContext, input: unknown): Promise<DailyResult> {
+  requireManager(ctx)
+  const parsed = openDailySchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  const day = date(parsed.data.date)
+  const [open, taken] = await Promise.all([
+    db.daily.findFirst({ where: { ...teamScope(ctx), status: "DRAFT" }, select: { id: true } }),
+    db.daily.findFirst({ where: { ...teamScope(ctx), date: day }, select: { id: true } }),
+  ])
+  if (open) return { ok: false, error: labels.dailies.opening.alreadyOpen }
+  if (taken) return { ok: false, error: fill(labels.dailies.sameDay.taken, { date: parsed.data.date }) }
+  const id = await db.$transaction(async (tx) => {
+    const daily = await tx.daily.create({
+      data: { ...teamScope(ctx), date: day, status: "DRAFT", openedAt: new Date(), openedByUserId: ctx.userId, authorUserId: ctx.userId },
+      select: { id: true },
+    })
+    const reports = await tx.agreementSelfReport.updateMany({ where: { ...teamScope(ctx), dailyId: null }, data: { dailyId: daily.id } })
+    const proposals = await tx.memberProposal.updateMany({ where: { ...teamScope(ctx), status: "PENDING" }, data: { dailyId: daily.id } })
+    await writeAudit(
+      { action: "daily.open", entity: "Daily", entityId: daily.id, after: { date: parsed.data.date, selfReports: reports.count, proposals: proposals.count } },
+      auditOf(ctx, tx),
+    )
+    return daily.id
+  })
+  return { ok: true, id }
+}
+
+/** P26: assumir a daily aberta por outra pessoa — quem assume passa a ser quem a abriu. */
+export async function takeOverDailyRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  const parsed = draftRefSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic }
+  const draft = await db.daily.findFirst({ where: { ...teamScope(ctx), id: parsed.data.id, status: "DRAFT" }, select: { id: true, openedByUserId: true } })
+  if (!draft) return { ok: false, error: labels.dailies.opening.gone }
+  await db.$transaction(async (tx) => {
+    await tx.daily.update({ where: { id: draft.id, ...teamScope(ctx) }, data: { openedByUserId: ctx.userId } })
+    await writeAudit(
+      { action: "daily.takeover", entity: "Daily", entityId: draft.id, before: { openedByUserId: draft.openedByUserId }, after: { openedByUserId: ctx.userId } },
+      auditOf(ctx, tx),
+    )
+  })
+  return { ok: true }
+}
+
+/**
+ * P26: descartar a daily aberta — apaga a Daily DRAFT (ela ainda não tem filhos: tudo é
+ * gravado ao salvar) e devolve relatos e propostas capturados ao estado pendente.
+ */
+export async function discardDailyRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  const parsed = draftRefSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic }
+  const draft = await db.daily.findFirst({ where: { ...teamScope(ctx), id: parsed.data.id, status: "DRAFT" }, select: { id: true, date: true, openedAt: true } })
+  if (!draft) return { ok: false, error: labels.dailies.opening.gone }
+  await db.$transaction(async (tx) => {
+    const reports = await tx.agreementSelfReport.updateMany({ where: { ...teamScope(ctx), dailyId: draft.id }, data: { dailyId: null } })
+    const proposals = await tx.memberProposal.updateMany({ where: { ...teamScope(ctx), dailyId: draft.id, status: "PENDING" }, data: { dailyId: null } })
+    const removed = await tx.daily.deleteMany({ where: { ...teamScope(ctx), id: draft.id, status: "DRAFT" } })
+    if (removed.count !== 1) throw new DraftGoneError()
+    await writeAudit(
+      {
+        action: "daily.discard",
+        entity: "Daily",
+        entityId: draft.id,
+        before: { date: draft.date.toISOString().slice(0, 10), openedAt: draft.openedAt?.toISOString() ?? null },
+        after: { selfReportsReturned: reports.count, proposalsReturned: proposals.count },
+      },
+      auditOf(ctx, tx),
+    )
+  })
+  return { ok: true }
 }
 
 /** Uma linha DAILY por pessoa com nota, bloqueio ou combinado revisado (presença sozinha não vira linha). */
@@ -403,7 +566,7 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
   }
   const data = parsed.data
   const daily = await db.daily.findFirst({
-    where: { ...teamScope(ctx), id: data.id },
+    where: { ...teamScope(ctx), id: data.id, status: "CLOSED" },
     select: {
       id: true,
       date: true,
@@ -631,6 +794,14 @@ async function moveDailyDate(
     data: { originalDueDate: day },
   })
   return { completed: completedIds.length, rescheduled: rescheduled.count, dueDate: due.count, originalDueDate: original.count }
+}
+
+/** A daily aberta foi fechada ou descartada em outra tela no meio do salvamento. */
+export class DraftGoneError extends Error {
+  constructor() {
+    super(labels.dailies.opening.gone)
+    this.name = "DraftGoneError"
+  }
 }
 
 export class ClosedAgreementError extends Error {

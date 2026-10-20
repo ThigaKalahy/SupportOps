@@ -128,16 +128,48 @@ function refineDaily(
     })
 }
 
+/**
+ * P26: decisão do gestor sobre uma proposta do time capturada pela daily aberta.
+ * Aceitar cria o combinado (origem MEMBER, prazo = data da daily por padrão — D28);
+ * descartar guarda a nota opcional. Proposta sem decisão fica PENDING (volta na próxima).
+ */
+export const dailyProposalDecisionSchema = z.object({
+  id: z.string().min(1).max(40),
+  action: z.enum(["accept", "discard"]),
+  title: z.string().trim().max(160, v.tooLong).default(""),
+  dueDate: z.string().trim().default(""),
+  managerNote: z.string().trim().max(300, v.tooLong).default(""),
+})
+
 export const dailySchema = z
   .object({
     date: pastDisplayDate,
+    /** P26: a daily aberta (DRAFT) que este registro fecha. Vazio = sem passo zero (testes, legado). */
+    draftId: z.string().max(40).default(""),
     summary: optionalText(4000),
     decisions: optionalText(4000),
     reviews: z.array(dailyReviewSchema),
     participants: z.array(dailyParticipantSchema),
     newAgreements: z.array(dailyNewAgreementSchema),
+    proposals: z.array(dailyProposalDecisionSchema).default([]),
   })
-  .superRefine(refineDaily)
+  .superRefine((data, ctx) => {
+    refineDaily(data, ctx)
+    data.proposals.forEach((p, i) => {
+      if (p.action !== "accept") return
+      if (p.title.length < 3) ctx.addIssue({ code: "custom", path: ["proposals", i, "title"], message: v.tooShort })
+      if (parseDisplayDate(p.dueDate) === null) {
+        ctx.addIssue({ code: "custom", path: ["proposals", i, "dueDate"], message: v.date })
+      } else if (!onOrAfter(data.date, p.dueDate)) {
+        ctx.addIssue({ code: "custom", path: ["proposals", i, "dueDate"], message: d.notBeforeDaily })
+      }
+    })
+  })
+
+/** P26: abrir a daily (passo zero) — só a data. */
+export const openDailySchema = z.object({ date: pastDisplayDate })
+/** P26: assumir ou descartar a daily aberta. */
+export const draftRefSchema = z.object({ id: z.string().min(1).max(40) })
 
 export type DailyInput = z.infer<typeof dailySchema>
 export type DailyReviewInput = z.infer<typeof dailyReviewSchema>

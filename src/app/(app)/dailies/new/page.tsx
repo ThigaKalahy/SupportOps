@@ -3,12 +3,13 @@ import Link from "next/link"
 
 import { DailyForm } from "@/components/dailies/daily-form"
 import { DailyDatePicker } from "@/components/dailies/daily-date-picker"
+import { OpenDailyButton, TakeOverDailyButton } from "@/components/dailies/daily-opening"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageHeader } from "@/components/ui/page-header"
-import { formatDate, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
-import { fill, labels } from "@/lib/labels"
+import { formatDate, formatTime, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
+import { fill, labels, plural } from "@/lib/labels"
 import { canWrite, requireTeamContext } from "@/server/scope"
-import { getDailyForm } from "@/server/queries/dailies"
+import { getDailyForm, getDailyOpening } from "@/server/queries/dailies"
 
 const L = labels.dailies
 
@@ -41,19 +42,54 @@ export default async function NewDailyPage({
       </div>
     )
   }
-  const date = dailyDate((await searchParams).date)
-  const form = await getDailyForm(ctx, date)
-  if (!form) {
+  const requested = dailyDate((await searchParams).date)
+  const opening = await getDailyOpening(ctx, requested)
+
+  // P26: há daily ABERTA no time — de outra pessoa: avisa e deixa assumir; minha: o formulário.
+  if (opening.draft && !opening.draft.mine) {
+    const date = formatDate(opening.draft.date, "business")
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title={fill(L.newTitle, { date })} subtitle={L.newSubtitle} />
+        <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface px-4 py-4">
+          <p role="status" className="text-sm text-ink">
+            {fill(L.opening.byOther, { date, name: opening.draft.openedBy ?? "", time: formatTime(opening.draft.openedAt!) })}
+          </p>
+          {opening.draft.locking ? null : <p className="text-sm text-attention">{L.opening.expired}</p>}
+          <TakeOverDailyButton id={opening.draft.id} />
+        </div>
+      </div>
+    )
+  }
+
+  const form = opening.draft ? await getDailyForm(ctx, undefined, undefined, opening.draft.id) : null
+  if (opening.draft && !form) {
     return (
       <div className="rounded-lg border border-line bg-surface">
         <EmptyState title={L.new} direction={labels.pages.team.emptyDirection} />
       </div>
     )
   }
-  const dateText = formatDate(form.date, "business")
-  const retroactive = form.date < todayBusinessDate()
-  const first = form.sameDay[0]
 
+  if (form) {
+    const dateText = formatDate(form.date, "business")
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title={fill(L.newTitle, { date: dateText })} subtitle={L.newSubtitle} />
+        {form.date < todayBusinessDate() ? (
+          <div className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">
+            {fill(L.otherDate.retroactive, { date: dateText })}
+          </div>
+        ) : null}
+        {/* key: outra daily recomeça o formulário (e o rascunho, que é guardado por data). */}
+        <DailyForm key={form.draft?.id ?? dateText} form={form} />
+      </div>
+    )
+  }
+
+  // Passo zero: nenhuma daily aberta. A data (editável), quem já relatou e as propostas.
+  const dateText = formatDate(requested, "business")
+  const retroactive = requested < todayBusinessDate()
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -61,26 +97,29 @@ export default async function NewDailyPage({
         subtitle={L.newSubtitle}
         actions={<DailyDatePicker value={dateText} retroactive={retroactive} />}
       />
-      {first ? (
+      {opening.closedOnDate ? (
         // C10: uma daily por data — a registrada se edita; não há segunda.
         <div className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink">
           <p role="status">
             {fill(L.sameDay.blocked, { date: dateText })}{" "}
-            <Link href={`/dailies/${first.id}`} className="font-medium text-accent hover:underline">
+            <Link href={`/dailies/${opening.closedOnDate}`} className="font-medium text-accent hover:underline">
               {L.sameDay.open}
             </Link>
           </p>
         </div>
       ) : (
-        <>
-          {retroactive ? (
-            <div className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">
-              {fill(L.otherDate.retroactive, { date: dateText })}
-            </div>
-          ) : null}
-          {/* key: trocar a data recomeça o formulário (e o rascunho, que é guardado por data). */}
-          <DailyForm key={dateText} form={form} />
-        </>
+        <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface px-4 py-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold text-ink">{L.opening.title}</h2>
+            <p className="text-sm text-ink-secondary">{L.opening.direction}</p>
+          </div>
+          <p className="font-mono text-xs text-ink-secondary">
+            {fill(L.opening.reported, { reported: opening.reported, people: opening.people })} ·{" "}
+            {opening.proposals ? plural(L.opening.proposals, opening.proposals) : L.opening.noProposals}
+          </p>
+          {retroactive ? <p className="text-sm text-ink-secondary">{fill(L.otherDate.retroactive, { date: dateText })}</p> : null}
+          <OpenDailyButton date={dateText} />
+        </div>
       )}
     </div>
   )

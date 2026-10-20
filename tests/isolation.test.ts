@@ -28,13 +28,14 @@ import { dirname, join, relative, resolve, sep } from "node:path"
 import { after, before, describe, test } from "node:test"
 
 import { parseAgreementFilters } from "../src/lib/agreement-filters.ts"
-import { todayBusinessDate } from "../src/lib/dates.ts"
+import { formatDate, todayBusinessDate } from "../src/lib/dates.ts"
 import { parseDevReturnFilters } from "../src/lib/dev-return-filters.ts"
 import { MODULE_KEYS, MODULES } from "../src/lib/modules.ts"
 import { MEMBER_HOME, routeRequest } from "../src/lib/portal-routing.ts"
 import { accountTier } from "../src/server/account-tier.ts"
 import { verifyCredentials } from "../src/server/credentials.ts"
-import { MemberAccessError, memberContextFor, type MemberContext } from "../src/server/member-scope.ts"
+import { createProposalCore, upsertSelfReportCore } from "../src/server/member-portal.ts"
+import { getDailyLock, MemberAccessError, memberContextFor, type MemberContext } from "../src/server/member-scope.ts"
 import { hashPassword } from "../src/server/password.ts"
 import { deactivateMemberAccount, inviteMember } from "../src/server/provisioning.ts"
 import * as memberPortal from "../src/server/queries/member-portal.ts"
@@ -45,7 +46,7 @@ import { parseWatchFilters } from "../src/lib/watch-filters.ts"
 import { getAlerts } from "../src/server/alerts.ts"
 import { createAgreementRecord, completeAgreementRecord, cancelAgreementRecord, transferAgreementRecord, updateAgreementRecord } from "../src/server/agreements.ts"
 import { ensureCentralRecord, importCentralsRecord } from "../src/server/centrals.ts"
-import { createDailyRecord, updateDailyRecord } from "../src/server/dailies.ts"
+import { createDailyRecord, discardDailyRecord, openDailyRecord, takeOverDailyRecord, updateDailyRecord } from "../src/server/dailies.ts"
 import { db, dbIncludingDeleted } from "../src/server/db.ts"
 import { createDevReturnRecord, deleteDevReturnRecord, resolveDevReturnRecord, updateDevReturnRecord } from "../src/server/dev-returns.ts"
 import {
@@ -163,6 +164,8 @@ const SCOPED_MODELS = [
   "developmentAction", "scoreComponent", "metricResult", "scoreResult", "scoreResultComponent",
   // C4
   "agreementTransfer", "memberVacation",
+  // P25/P26
+  "agreementSelfReport", "memberProposal",
 ]
 const GUARDED_METHODS = ["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "update", "updateMany", "delete", "deleteMany"]
 const CALL = new RegExp(`\\b(?:db|tx|dbIncludingDeleted)\\.(${SCOPED_MODELS.join("|")})\\.(${GUARDED_METHODS.join("|")})\\(`, "g")
@@ -288,7 +291,7 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
 
   test("toda Server Action monta o contexto de time; as de escrita exigem nível MANAGER (ou administração)", () => {
     const violations: string[] = []
-    for (const file of files.filter((f) => rel(f).startsWith("actions/") && !rel(f).endsWith("auth.ts"))) {
+    for (const file of files.filter((f) => rel(f).startsWith("actions/") && !rel(f).endsWith("auth.ts") && rel(f) !== "actions/member-portal.ts")) {
       const source = readFileSync(file, "utf8")
       for (const m of source.matchAll(/export async function (\w+)\(/g)) {
         const open = source.indexOf("{", m.index! + m[0].length)
@@ -342,7 +345,9 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
 /* ══════════════════════ 1b. ESTRUTURAL: PORTAL DO COLABORADOR (D38, D40) ══════════════════════ */
 
 /** Arquivos do portal: allowlist de imports e nenhum nome de modelo gerencial. */
-const PORTAL_FILES = ["server/queries/member-portal.ts", "actions/member-portal.ts"]
+const PORTAL_FILES = ["server/queries/member-portal.ts", "server/member-portal.ts", "actions/member-portal.ts"]
+/** O que o portal pode importar: o banco, o contexto do colaborador, os próprios arquivos e src/lib. */
+const PORTAL_ALLOWED = ["server/db", "server/member-scope", "server/member-portal", "server/queries/member-portal"]
 
 /** Modelos que o portal nunca toca (D40) — nem em comentário. */
 const PORTAL_FORBIDDEN_MODELS = [
@@ -383,7 +388,7 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
             ? relative(SRC, resolve(dirname(join(SRC, file)), spec)).split(sep).join("/")
             : null
         const clean = target?.replace(/\.(ts|tsx)$/, "")
-        const ok = clean === "server/db" || clean === "server/member-scope" || (clean?.startsWith("lib/") ?? false)
+        const ok = (clean !== undefined && PORTAL_ALLOWED.includes(clean)) || (clean?.startsWith("lib/") ?? false)
         if (!ok) violations.push(`${file}: importa "${spec}"`)
       }
     }
@@ -395,10 +400,36 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     for (const file of present) {
       const source = readFileSync(join(SRC, file), "utf8")
       for (const name of PORTAL_FORBIDDEN_MODELS) if (new RegExp(`\\b${name}\\b`).test(source)) violations.push(`${file}: ${name}`)
-      for (const name of PORTAL_FORBIDDEN_ACCESSORS) if (new RegExp(`\\.${name}\\b`).test(source)) violations.push(`${file}: .${name}`)
+      // Acessor do Prisma (`db.note`, `tx.feedback`) — não um campo homônimo (`data.note` da proposta).
+      for (const name of PORTAL_FORBIDDEN_ACCESSORS) {
+        if (new RegExp(`\\b(db|tx|dbIncludingDeleted|client)\\.${name}\\b`).test(source)) violations.push(`${file}: .${name}`)
+      }
       for (const key of PORTAL_FORBIDDEN_KEYS) if (new RegExp(`\\b${key}\\s*:`).test(source)) violations.push(`${file}: ${key}:`)
       if (/\binclude\s*:/.test(source)) violations.push(`${file}: include (use select explícito)`)
-      if (/requireMemberContext\(|requireTeamContext\(|getCurrentUser\(/.test(source)) violations.push(`${file}: obtém o contexto sozinho`)
+      if (/requireTeamContext\(|requireWriteContext\(|getCurrentUser\(/.test(source)) violations.push(`${file}: contexto do gestor no portal`)
+      if (file !== "actions/member-portal.ts" && /requireMemberContext\(/.test(source)) violations.push(`${file}: obtém o contexto sozinho`)
+    }
+    assert.deepEqual(violations, [])
+  })
+
+  test("toda action do portal monta o contexto do colaborador; toda escrita confere o travamento antes (D43)", () => {
+    const violations: string[] = []
+    const actions = readFileSync(join(SRC, "actions/member-portal.ts"), "utf8")
+    for (const m of actions.matchAll(/export async function (\w+)\(/g)) {
+      const open = actions.indexOf("{", m.index! + m[0].length)
+      const next = actions.indexOf("\nexport ", open)
+      const body = actions.slice(open, next === -1 ? undefined : next)
+      if (!/asMember\(|requireMemberContext\(/.test(body)) violations.push(`actions/member-portal.ts:${m[1]} sem contexto do colaborador`)
+    }
+    const core = readFileSync(join(SRC, "server/member-portal.ts"), "utf8")
+    for (const m of core.matchAll(/export async function (\w+)\(/g)) {
+      const open = core.indexOf("{", m.index! + m[0].length)
+      const next = core.indexOf("\nexport ", open)
+      const body = core.slice(open, next === -1 ? undefined : next)
+      if (!body.includes("whileUnlocked(")) violations.push(`server/member-portal.ts:${m[1]} escreve sem conferir o travamento`)
+      if (/\b(db|tx)\.\w+\.(create|update|upsert|delete)(Many)?\(/.test(body.split("whileUnlocked(")[0]!)) {
+        violations.push(`server/member-portal.ts:${m[1]} escreve antes do travamento`)
+      }
     }
     assert.deepEqual(violations, [])
   })
@@ -633,6 +664,7 @@ const QUERIES: Record<string, Invoke> = {
   // dailies.ts
   teamFor: (c) => dailies.teamFor(c),
   getDailyForm: (c) => dailies.getDailyForm(c),
+  getDailyOpening: (c) => dailies.getDailyOpening(c, day(0)),
   getDailyDetail: async (c, own, other) => [await dailies.getDailyDetail(c, own.daily), await dailies.getDailyDetail(c, other.daily)],
   listDailies: (c) => dailies.listDailies(c),
   // dev-returns.ts
@@ -764,6 +796,10 @@ const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unk
   importCentralsRecord: (c) => importCentralsRecord(c, { text: "x" }),
   createDailyRecord: (c) => createDailyRecord(c, {}),
   updateDailyRecord: (c, o) => updateDailyRecord(c, { id: o.daily }),
+  // P26: abrir na data que já tem daily é recusado (sem efeito); assumir/descartar só DRAFT do próprio time.
+  openDailyRecord: (c) => openDailyRecord(c, { date: formatDate(day(-1), "business") }),
+  takeOverDailyRecord: (c, o) => takeOverDailyRecord(c, { id: o.daily }),
+  discardDailyRecord: (c, o) => discardDailyRecord(c, { id: o.daily }),
   createDevReturnRecord: (c) => createDevReturnRecord(c, {}),
   updateDevReturnRecord: (c, o) => updateDevReturnRecord(c, { id: o.devReturn }),
   resolveDevReturnRecord: (c, o) => resolveDevReturnRecord(c, { id: o.devReturn }),
@@ -1194,6 +1230,9 @@ describe("banco: portal do colaborador (P25) — critério de aceite", async () 
     getMyOpenAgreements: (c) => memberPortal.getMyOpenAgreements(c),
     getMyLastDailyRecord: (c) => memberPortal.getMyLastDailyRecord(c),
     getMyAgreementHistory: (c) => memberPortal.getMyAgreementHistory(c, 50),
+    getMyBlockerReasons: (c) => memberPortal.getMyBlockerReasons(c),
+    getMyPendingProposals: (c) => memberPortal.getMyPendingProposals(c),
+    getMyPortalState: (c) => memberPortal.getMyPortalState(c),
   }
 
   test("meta: toda função exportada do portal está na tabela", () => {
@@ -1266,6 +1305,71 @@ describe("banco: portal do colaborador (P25) — critério de aceite", async () 
     const member = await verifyCredentials(`${MP_USERS.a1}@teste.local`, MP_PASSWORD)
     assert.equal(member?.memberOnly, true)
     assert.equal(await verifyCredentials(`${MP_USERS.mgr}@teste.local`, MP_PASSWORD), null)
+  })
+
+  test("P26: relato só do próprio combinado aberto; impeditivo obrigatório em Parcial/Não feito", async () => {
+    const own = id("ag_a1_open")
+    assert.equal((await upsertSelfReportCore(a1, { agreementId: own, outcome: "NOT_DONE" })).ok, false)
+    assert.equal((await upsertSelfReportCore(a1, { agreementId: id("ag_a2"), outcome: "DONE" })).ok, false, "combinado de A2")
+    assert.equal((await upsertSelfReportCore(a1, { agreementId: id("ag_a3"), outcome: "DONE" })).ok, false, "combinado de T2")
+    assert.equal((await upsertSelfReportCore(a1, { agreementId: id("ag_a1_done"), outcome: "DONE" })).ok, false, "combinado encerrado")
+    assert.ok((await upsertSelfReportCore(a1, { agreementId: own, outcome: "PARTIAL", blockerText: "Aguardando acesso ao painel" })).ok)
+    assert.equal(await d.agreementSelfReport.count({ where: { agreementId: own, dailyId: null } }), 1, "um relato pendente por combinado")
+    assert.ok((await createProposalCore(a1, { title: text("Proposta nova", "A1") })).ok)
+  })
+
+  test("P26: abrir a daily captura relatos e propostas e trava o portal; o servidor recusa a escrita", async () => {
+    const mgr = await teamContextFor(MP_USERS.mgr, MP_T1)
+    const today = formatDate(todayBusinessDate(), "business")
+    const opened = await openDailyRecord(mgr, { date: today })
+    assert.ok(opened.ok)
+    const draftId = opened.ok ? opened.id : ""
+    assert.equal((await getDailyLock(MP_T1)).locked, true)
+    assert.equal((await getDailyLock(MP_T2)).locked, false, "o travamento é do time")
+    assert.equal(await d.agreementSelfReport.count({ where: { teamId: MP_T1, dailyId: null } }), 0, "relatos capturados")
+    const proposal = await d.memberProposal.findFirstOrThrow({ where: { teamId: MP_T1, title: text("Proposta nova", "A1") } })
+    assert.equal(proposal.dailyId, draftId)
+    const refused = await upsertSelfReportCore(a1, { agreementId: id("ag_a1_open"), outcome: "DONE" })
+    assert.equal(refused.ok, false)
+    assert.equal((await createProposalCore(a1, { title: "Outra proposta" })).ok, false)
+
+    // Salvar: valor FINAL do gestor (Feito) × relato (Parcial) → divergiu; o relato fica intacto (D39).
+    const review = { agreementId: id("ag_a1_open"), outcome: "DONE", blockerText: "", blockerReasonId: "", action: "reschedule", newDueDate: today, replacementTitle: "", replacementDueDate: today }
+    const saved = await createDailyRecord(mgr, {
+      date: today,
+      draftId,
+      reviews: [review],
+      participants: [],
+      newAgreements: [],
+      proposals: [{ id: proposal.id, action: "accept", title: text("Proposta aceita", "A1"), dueDate: today }],
+    })
+    assert.ok(saved.ok, JSON.stringify(saved))
+    assert.equal((await d.daily.findUniqueOrThrow({ where: { id: draftId } })).status, "CLOSED")
+    const checkin = await d.agreementCheckin.findFirstOrThrow({ where: { dailyId: draftId, agreementId: id("ag_a1_open") } })
+    assert.ok(checkin.selfReportId)
+    assert.equal(checkin.divergedFromSelfReport, true)
+    const report = await d.agreementSelfReport.findUniqueOrThrow({ where: { id: checkin.selfReportId! } })
+    assert.equal(report.outcome, "PARTIAL", "o relato nunca é sobrescrito")
+    assert.equal(report.blockerText, "Aguardando acesso ao painel")
+    const accepted = await d.memberProposal.findUniqueOrThrow({ where: { id: proposal.id } })
+    assert.equal(accepted.status, "ACCEPTED")
+    const created = await d.agreement.findUniqueOrThrow({ where: { id: accepted.resolvedAgreementId! } })
+    assert.equal(created.origin, "MEMBER")
+    assert.equal(created.memberId, id("p_a1"))
+    assert.equal((await getDailyLock(MP_T1)).locked, false, "salvar destrava")
+  })
+
+  test("P26: descartar a daily aberta devolve relatos e propostas ao pendente", async () => {
+    const mgr = await teamContextFor(MP_USERS.mgr, MP_T1)
+    assert.ok((await upsertSelfReportCore(a1, { agreementId: id("ag_a1_reviewed"), outcome: "DONE" })).ok)
+    const opened = await openDailyRecord(mgr, { date: formatDate(day(-2), "business") })
+    assert.ok(opened.ok)
+    const draftId = opened.ok ? opened.id : ""
+    assert.equal(await d.agreementSelfReport.count({ where: { dailyId: draftId } }), 1)
+    assert.ok((await discardDailyRecord(mgr, { id: draftId })).ok)
+    assert.equal(await d.daily.count({ where: { id: draftId } }), 0)
+    assert.equal(await d.agreementSelfReport.count({ where: { teamId: MP_T1, agreementId: id("ag_a1_reviewed"), dailyId: null } }), 1)
+    assert.equal((await getDailyLock(MP_T1)).locked, false)
   })
 
   test("member:invite liga o login à pessoa; member:deactivate tira o acesso sem apagar nada", async () => {

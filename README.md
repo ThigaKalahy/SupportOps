@@ -62,7 +62,7 @@ Acesso é por time (`TeamAccess`): **gestor** (MANAGER — registra e lê tudo d
 
 ## Portal do colaborador
 
-Cada pessoa do time pode ter um login para o **portal do colaborador** (`/me`): ela vê só os próprios combinados abertos, o que a última daily registrou sobre ela e o histórico dos combinados encerrados. Nada do registro gerencial — nem o que é sobre ela, nem o que está compartilhado entre gestores. O portal é a mesma aplicação web: abre no navegador do celular ou do computador e pode ser instalado como atalho na tela inicial.
+Cada pessoa do time pode ter um login para o **portal do colaborador** (`/me`): ela relata como ficaram os próprios combinados abertos (Feito, Parcial ou Não feito, com o impeditivo), propõe combinados novos para o gestor confirmar na daily, e vê o que a última daily registrou sobre ela e o histórico dos combinados encerrados. Enquanto a daily do time está sendo registrada, o portal fica travado (só leitura) e, quando ela é salva, a tela pede para atualizar. Nada do registro gerencial — nem o que é sobre ela, nem o que está compartilhado entre gestores. O portal é a mesma aplicação web: abre no navegador do celular ou do computador e pode ser instalado como atalho na tela inicial.
 
 ```
 pnpm member:invite       # escolhe o time e as pessoas ativas sem login (uma, várias ou todas); cria as contas
@@ -74,6 +74,10 @@ pnpm member:deactivate   # por e-mail: desativa a conta e revoga o acesso ao por
 **Allowlist em dois níveis — assimetria deliberada.** Conta com `isPlatformAdmin` ou com nível de gestor ou leitura em qualquer time continua exigindo o e-mail em `ALLOWED_EMAILS`: conta de privilégio alto só entra com deploy, e essa fricção é desejada. Conta cujo **único** nível é colaborador **dispensa** `ALLOWED_EMAILS`: ela depende da conta ativa (`User.isActive`), do acesso de colaborador ao time e da pessoa ativa no cadastro. Serão dezenas de pessoas, e exigir um deploy a cada contratação tornaria o sistema impraticável.
 
 Encerrar o acesso de um colaborador: `pnpm member:deactivate`, ou simplesmente desativar a pessoa no cadastro do time — pessoa inativa não entra no portal, mesmo com login válido. Mudar o nível de uma conta (de colaborador para gestor, por exemplo) vale a partir do próximo login.
+
+### Daily com o relato do time
+
+Em **Dailies → Registrar daily**, o primeiro passo mostra quantas pessoas já relataram e quantas propostas chegaram. **Registrar nova daily** abre a daily: o que o time relatou e propôs até ali entra nela, e o portal do time trava. A revisão chega pré-preenchida com o relato de cada pessoa — você confirma ou muda (e pode voltar ao relato dela) — e as propostas aparecem em "Propostas do time" para aceitar, ajustar e aceitar, ou descartar. Salvar registra a daily e destrava o portal; **Descartar daily** desfaz a abertura e devolve relatos e propostas para a próxima. Uma daily aberta há mais de 4 horas deixa de travar o portal.
 
 ## Abrir um time novo
 

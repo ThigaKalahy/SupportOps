@@ -1,6 +1,7 @@
 import type { CheckinOutcome } from "@prisma/client"
 
 import { businessRangeInstants, todayBusinessDate } from "../../lib/dates.ts"
+import { isLockActive } from "../../lib/daily-lock.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { MODULES } from "../../lib/modules.ts"
 import { db } from "../db.ts"
@@ -36,6 +37,15 @@ export interface ReviewItem {
   why: string | null
   /** O caso por trás (observação ATIVA ligada, legível por quem lê). */
   watch: { id: string; title: string } | null
+  /** P26: o que a pessoa relatou no portal, capturado por esta daily (só na daily aberta). */
+  selfReport: {
+    id: string
+    outcome: CheckinOutcome
+    blockerText: string | null
+    blockerReasonId: string | null
+    reason: string | null
+    suggestedDueDate: Date | null
+  } | null
   /** C11: já revisado NESTA daily (edição) — a linha fica travada, mostrando o desfecho gravado. */
   reviewed: { outcome: CheckinOutcome; blockerText: string | null; newDueDate: Date | null; replacement: string | null } | null
 }
@@ -67,16 +77,26 @@ export interface ReviewGroup {
  * (b) abertos com prazo até a data da daily — sem repetição e agrupados por
  * pessoa; os membros ativos; e os motivos de impeditivo.
  */
-export async function getDailyForm(ctx: TeamContext, requestedDate: Date = todayBusinessDate(), editId?: string) {
+export async function getDailyForm(ctx: TeamContext, requestedDate: Date = todayBusinessDate(), editId?: string, draftId?: string) {
   const team = await teamFor(ctx)
   if (!team) return null
   const scope = teamScope(ctx)
+
+  // P26: a daily ABERTA (DRAFT) que este formulário vai fechar — com os relatos e as
+  // propostas que ela capturou ao ser aberta.
+  const draft = draftId
+    ? await db.daily.findFirst({
+        where: { ...scope, id: draftId, status: "DRAFT" },
+        select: { id: true, date: true, openedAt: true, openedByUserId: true, openedBy: { select: { name: true } } },
+      })
+    : null
+  if (draftId && !draft) return null
 
   // C11: edição de uma daily salva no formato de criação. A data é a da daily; as revisões
   // gravadas nela voltam travadas; os combinados criados nela viram linhas editáveis.
   const editing = editId
     ? await db.daily.findFirst({
-        where: { ...scope, id: editId },
+        where: { ...scope, id: editId, status: "CLOSED" },
         select: {
           id: true,
           date: true,
@@ -110,11 +130,26 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
       })
     : null
   if (editId && !editing) return null
-  const date = editing?.date ?? requestedDate
+  const date = editing?.date ?? draft?.date ?? requestedDate
   const reviewedHere = new Map((editing?.checkins ?? []).map((c) => [c.agreementId, c]))
+  const [captured, proposals] = draft
+    ? await Promise.all([
+        db.agreementSelfReport.findMany({
+          where: { ...scope, dailyId: draft.id },
+          select: { id: true, agreementId: true, outcome: true, blockerText: true, blockerReasonId: true, suggestedDueDate: true, blockerReason: { select: { label: true } } },
+        }),
+        db.memberProposal.findMany({
+          where: { ...scope, dailyId: draft.id, status: "PENDING" },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, title: true, suggestedDueDate: true, note: true, member: { select: { id: true, preferredName: true } } },
+        }),
+      ])
+    : [[], []]
+  const reportFor = new Map(captured.map((r) => [r.agreementId, r]))
 
+  // A daily anterior é a última REGISTRADA (a aberta não conta).
   const previous = await db.daily.findFirst({
-    where: { ...scope, date: { lt: date } },
+    where: { ...scope, status: "CLOSED", date: { lt: date } },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     select: { id: true, date: true },
   })
@@ -219,6 +254,10 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
         c
           ? { outcome: c.outcome, blockerText: c.blockerText, newDueDate: c.newDueDate, replacement: c.agreement.replacedBy?.title ?? null }
           : null)(reviewedHere.get(a.id)),
+      selfReport: ((r) =>
+        r
+          ? { id: r.id, outcome: r.outcome, blockerText: r.blockerText, blockerReasonId: r.blockerReasonId, reason: r.blockerReason?.label ?? null, suggestedDueDate: r.suggestedDueDate }
+          : null)(reportFor.get(a.id)),
     })
     groups.set(a.member.id, group)
   }
@@ -243,6 +282,30 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
     whyEnabled: hasModule(ctx, MODULES.AGREEMENT_WHY),
     // P21: observação ativa já ligada a cada combinado a revisar (o botão abre a existente).
     watching: await activeWatchByLink(ctx, "agreementId", agreements.map((a) => a.id)),
+    // P26: a daily aberta, os relatos ("6 de 9 relataram") e as propostas do time.
+    draft: draft
+      ? {
+          id: draft.id,
+          openedAt: draft.openedAt,
+          openedBy: draft.openedBy?.name ?? null,
+          mine: draft.openedByUserId === ctx.userId,
+          locking: isLockActive(draft.openedAt),
+        }
+      : null,
+    reportStats: draft
+      ? {
+          reported: [...groups.values()].filter((g) => g.items.some((i) => i.selfReport)).length,
+          total: groups.size,
+        }
+      : null,
+    proposals: proposals.map((p) => ({
+      id: p.id,
+      title: p.title,
+      suggestedDueDate: p.suggestedDueDate,
+      note: p.note,
+      memberId: p.member.id,
+      memberName: p.member.preferredName,
+    })),
     edit: editing
       ? {
           dailyId: editing.id,
@@ -320,7 +383,7 @@ type DailyWithDetail = NonNullable<Awaited<ReturnType<typeof findDaily>>>
 
 function findDaily(id: string, ctx: TeamContext) {
   return db.daily.findFirst({
-    where: { id, ...teamScope(ctx) },
+    where: { id, ...teamScope(ctx), status: "CLOSED" },
     include: detailInclude,
   })
 }
@@ -507,10 +570,46 @@ export async function getDailyDetail(ctx: TeamContext, id: string): Promise<Dail
 /** Histórico: todas as dailies do time, da mais recente para a mais antiga, já com o detalhe. */
 export async function listDailies(ctx: TeamContext): Promise<DailyDetail[]> {
   const dailies = await db.daily.findMany({
-    where: teamScope(ctx),
+    where: { ...teamScope(ctx), status: "CLOSED" },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     include: detailInclude,
   })
   const late = await lateAgreementsByDaily(ctx, dailies)
   return dailies.map((d) => toDetail(d, late.get(d.id), hasModule(ctx, MODULES.AGREEMENT_WHY)))
+}
+
+/**
+ * P26 — o passo zero de /dailies/new: há daily ABERTA no time? (qualquer data; a mais
+ * recente). Se não, o que a tela mostra antes de abrir: a daily já registrada na data
+ * (uma por data — C10), quantas pessoas relataram e quantas propostas aguardam.
+ */
+export async function getDailyOpening(ctx: TeamContext, date: Date) {
+  const scope = teamScope(ctx)
+  const [draft, closed, reports, proposals, people] = await Promise.all([
+    db.daily.findFirst({
+      where: { ...scope, status: "DRAFT" },
+      orderBy: { openedAt: "desc" },
+      select: { id: true, date: true, openedAt: true, openedByUserId: true, openedBy: { select: { name: true } } },
+    }),
+    db.daily.findFirst({ where: { ...scope, status: "CLOSED", date }, select: { id: true } }),
+    db.agreementSelfReport.findMany({ where: { ...scope, dailyId: null }, distinct: ["memberId"], select: { memberId: true } }),
+    db.memberProposal.count({ where: { ...scope, status: "PENDING" } }),
+    db.teamMember.count({ where: { ...scope, status: { in: ["ACTIVE", "OFFBOARDING"] } } }),
+  ])
+  return {
+    draft: draft
+      ? {
+          id: draft.id,
+          date: draft.date,
+          openedAt: draft.openedAt,
+          openedBy: draft.openedBy?.name ?? null,
+          mine: draft.openedByUserId === ctx.userId,
+          locking: isLockActive(draft.openedAt),
+        }
+      : null,
+    closedOnDate: closed?.id ?? null,
+    reported: reports.length,
+    people,
+    proposals,
+  }
 }

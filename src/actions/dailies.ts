@@ -9,7 +9,14 @@ import { getThresholds } from "@/server/queries/thresholds"
 import { activeWatchForReport } from "@/server/queries/watch"
 import type { ActionResult } from "@/lib/validators/fields"
 import { memberIdOf, runAction } from "@/server/action-runner"
-import { createDailyRecord, updateDailyRecord, type DailyResult } from "@/server/dailies"
+import {
+  createDailyRecord,
+  discardDailyRecord,
+  openDailyRecord,
+  takeOverDailyRecord,
+  updateDailyRecord,
+  type DailyResult,
+} from "@/server/dailies"
 
 /**
  * Server Action da daily: requireWriteContext → núcleo em src/server/dailies.ts
@@ -22,6 +29,21 @@ export async function createDaily(input: unknown): Promise<DailyResult> {
     "/agreements",
     ["/team", "layout"],
   ])
+}
+
+/** P26: "Registrar nova daily" — abre a daily (DRAFT), captura relatos e propostas e trava o portal. */
+export async function openDaily(input: unknown): Promise<DailyResult> {
+  return runAction("dailies", async () => openDailyRecord(await requireWriteContext(), input), ["/dailies", "/dailies/new"])
+}
+
+/** P26: assumir a daily aberta por outra pessoa. */
+export async function takeOverDaily(input: unknown): Promise<ActionResult> {
+  return runAction("dailies", async () => takeOverDailyRecord(await requireWriteContext(), input), ["/dailies/new"])
+}
+
+/** P26: descartar a daily aberta — relatos e propostas voltam a ficar pendentes. */
+export async function discardDaily(input: unknown): Promise<ActionResult> {
+  return runAction("dailies", async () => discardDailyRecord(await requireWriteContext(), input), ["/dailies", "/dailies/new"])
 }
 
 /** Edição de daily salva: resumo, decisões, presença e notas. */

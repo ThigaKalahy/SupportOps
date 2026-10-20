@@ -2,13 +2,21 @@ import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 
 import { logoutAction } from "@/actions/auth"
-import { HistoryZone, LastDailyZone, OpenAgreementsZone } from "@/components/member-portal/portal-zones"
+import { PortalLive } from "@/components/member-portal/portal-live"
+import { HistoryZone, LastDailyZone } from "@/components/member-portal/portal-zones"
 import { Button } from "@/components/ui/button"
 import { formatDateLong, todayBusinessDate } from "@/lib/dates"
 import { labels } from "@/lib/labels"
 import { getCurrentUser } from "@/server/access"
 import { MemberAccessError, requireMemberContext, type MemberContext } from "@/server/member-scope"
-import { getMyAgreementHistory, getMyLastDailyRecord, getMyOpenAgreements } from "@/server/queries/member-portal"
+import {
+  getMyAgreementHistory,
+  getMyBlockerReasons,
+  getMyLastDailyRecord,
+  getMyOpenAgreements,
+  getMyPendingProposals,
+  getMyPortalState,
+} from "@/server/queries/member-portal"
 import { accessibleTeamIds } from "@/server/scope"
 
 const L = labels.memberPortal
@@ -44,15 +52,28 @@ export default async function MemberHomePage() {
     )
   }
 
-  const [open, last, history] = await Promise.all([getMyOpenAgreements(ctx), getMyLastDailyRecord(ctx), getMyAgreementHistory(ctx, 20)])
+  const [open, last, history, reasons, proposals, state] = await Promise.all([
+    getMyOpenAgreements(ctx),
+    getMyLastDailyRecord(ctx),
+    getMyAgreementHistory(ctx, 20),
+    getMyBlockerReasons(ctx),
+    getMyPendingProposals(ctx),
+    getMyPortalState(ctx),
+  ])
 
+  // P26: a parte viva (relato, propostas, travamento) recomeça quando chega uma daily nova.
   return (
-    <>
-      <PortalHeader name={ctx.preferredName} />
-      <OpenAgreementsZone agreements={open} />
+    <PortalLive
+      key={state.lastClosedDailyId ?? "none"}
+      initialState={state}
+      agreements={open}
+      reasons={reasons}
+      proposals={proposals}
+      header={<PortalHeader name={ctx.preferredName} />}
+    >
       <LastDailyZone record={last} />
       <HistoryZone agreements={history} />
-    </>
+    </PortalLive>
   )
 }
 
