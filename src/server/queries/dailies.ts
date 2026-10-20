@@ -179,9 +179,10 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
     hasModule(ctx, MODULES.CENTRALS) ? listActiveCentrals(ctx) : Promise.resolve([]),
   ])
 
-  // O caso por trás de cada combinado: a observação ligada (C7) ou a que nasceu dele. Só com o módulo do porquê.
+  // O caso por trás de cada combinado: a observação ligada (C7) ou a que nasceu dele. Vem para todo
+  // time — o próximo passo entra nela (C13); a linha "Em observação" da revisão é do módulo do porquê.
   const whyOn = hasModule(ctx, MODULES.AGREEMENT_WHY)
-  const watchRows = whyOn && agreements.length
+  const watchRows = agreements.length
     ? await db.watchItem.findMany({
         where: {
           ...scope,
@@ -213,7 +214,7 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
       centralName: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.name ?? null) : null,
       centralId: hasModule(ctx, MODULES.CENTRALS) ? (a.central?.id ?? null) : null,
       why: whyOn ? firstLine(a.description) : null,
-      watch: whyOn ? ((w) => (w ? { id: w.id, title: w.title } : null))(watchFor(a)) : null,
+      watch: ((w) => (w ? { id: w.id, title: w.title } : null))(watchFor(a)),
       reviewed: ((c) =>
         c
           ? { outcome: c.outcome, blockerText: c.blockerText, newDueDate: c.newDueDate, replacement: c.agreement.replacedBy?.title ?? null }

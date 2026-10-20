@@ -551,6 +551,10 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - O "Próximo passo" (revisão da daily, também na edição) mostra o campo Central, já preenchido com a do combinado feito e editável — antes herdava em silêncio, e quando o original não tinha central não havia onde informar. Vazio grava a do combinado feito. Conferida como as centrais da Seção 3.
 - Na Seção 3, o "Por quê (opcional)" abre assim que a pessoa é escolhida (antes, só ao digitar o título).
 
+**C13 — Próximo passo na observação; combinado encerrado riscado (20/10/2026)**
+- O próximo passo entra na observação ATIVA do caso (a ligada ao combinado feito ou a que nasceu dele) — já entrava; agora o formulário diz isso em todo time ("Entra na observação …") e a revisão automática registra "o que mudou → Novo combinado: título". O caso por trás passou a ser lido para todo time; a linha "Em observação" abaixo do título da revisão continua só com o módulo do porquê.
+- Painel da observação: combinado encerrado (feito ou cancelado) aparece riscado, legível e clicável.
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:

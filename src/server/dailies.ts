@@ -182,7 +182,9 @@ async function applyReviews(
           },
         })
         timeline.push(timelineEventFor.agreementCreated(next))
-        if (watch) await recordWatchReview(tx, ctx, watch, review.nextNote)
+        if (watch) {
+          await recordWatchReview(tx, ctx, watch, fill(labels.dailies.review.nextReview, { note: review.nextNote, title: review.nextTitle }))
+        }
         counts.nextSteps++
       }
       continue

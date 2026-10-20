@@ -1034,7 +1034,8 @@ export const labels = {
       nextTitle: "Próximo combinado",
       nextNote: "O que mudou",
       nextNotePlaceholder: "O que mudou no caso, em uma linha (vira o porquê do próximo combinado)",
-      nextNoteWatch: "Também entra como revisão da observação “{title}”.",
+      nextNoteWatch: "Entra na observação “{title}”, com o que mudou registrado como revisão.",
+      nextReview: "{note} → Novo combinado: {title}",
       nextDueDate: "Prazo",
     },
     participants: {

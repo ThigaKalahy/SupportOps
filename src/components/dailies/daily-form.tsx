@@ -590,6 +590,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                         state={state.reviews[item.id]!}
                         reasons={form.reasons}
                         centrals={form.centralsEnabled ? { options: centrals, onCreate: addCentral } : null}
+                        showCase={form.whyEnabled}
                         onChange={(patch) => patchReview(item.id, patch)}
                         watch={(blockerText) => (
                           <WatchButton

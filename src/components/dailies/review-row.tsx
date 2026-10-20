@@ -38,14 +38,15 @@ export interface ReviewState {
 }
 
 /** Porquê e caso por trás do combinado, abaixo do título. */
-function Context({ item }: { item: ReviewItem }) {
-  if (!item.why && !item.watch) return null
+function Context({ item, showCase }: { item: ReviewItem; showCase: boolean }) {
+  const watch = showCase ? item.watch : null
+  if (!item.why && !watch) return null
   return (
     <span className="flex flex-col gap-0.5 text-xs text-ink-secondary">
       {item.why ? <span>{fill(R.why, { text: item.why })}</span> : null}
-      {item.watch ? (
-        <Link href={`/watch?open=${item.watch.id}`} target="_blank" rel="noopener" className="w-fit hover:text-ink hover:underline">
-          {fill(R.watching, { title: item.watch.title })}
+      {watch ? (
+        <Link href={`/watch?open=${watch.id}`} target="_blank" rel="noopener" className="w-fit hover:text-ink hover:underline">
+          {fill(R.watching, { title: watch.title })}
         </Link>
       ) : null}
     </span>
@@ -89,7 +90,10 @@ export function ReviewRow({
   onDone,
   watch,
   centrals,
+  showCase = false,
 }: {
+  /** Módulo do porquê ligado: a linha "Em observação" aparece abaixo do título. */
+  showCase?: boolean
   /** C12: centrais do time para o próximo passo; null com o módulo desligado. */
   centrals?: { options: CentralOption[]; onCreate: (option: CentralOption) => void } | null
   item: ReviewItem
@@ -265,7 +269,7 @@ export function ReviewRow({
             {item.reschedules > 0 ? <DragIndicator reschedules={item.reschedules} /> : null}
             {item.fromPreviousDaily ? <MetaLabel>{R.fromPreviousDaily}</MetaLabel> : null}
           </span>
-          <Context item={item} />
+          <Context item={item} showCase={showCase} />
         </div>
         <div
           ref={groupRef}
