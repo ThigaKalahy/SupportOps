@@ -5,6 +5,8 @@ import { CalendarPlusIcon, ClipboardListIcon, EllipsisIcon, ListChecksIcon, User
 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { DatePickerField } from "@/components/ui/date-picker-field"
+import { formatDate } from "@/lib/dates"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Command,
@@ -268,11 +270,26 @@ export function LabCalendar({ today }: { today: Date }) {
     new Date(localToday.getFullYear(), localToday.getMonth(), localToday.getDate() + 3)
   )
 
+  const [due, setDue] = React.useState(formatDate(today, "business"))
+  const [suggested, setSuggested] = React.useState("")
+
   return (
-    <Specimen state={`${labels.uiLab.states.default} + ${labels.uiLab.states.selected}`}>
-      <div className="rounded-lg border border-line bg-surface">
-        <Calendar mode="single" selected={selected} onSelect={setSelected} defaultMonth={localToday} today={localToday} />
-      </div>
-    </Specimen>
+    <>
+      <Specimen state={`${labels.uiLab.states.default} + ${labels.uiLab.states.selected}`}>
+        <div className="rounded-lg border border-line bg-surface">
+          <Calendar mode="single" selected={selected} onSelect={setSelected} defaultMonth={localToday} today={localToday} />
+        </div>
+      </Specimen>
+      <Specimen state="DatePickerField · prazo (padrão hoje, sem datas passadas)">
+        <div className="w-60">
+          <DatePickerField aria-label="Prazo" value={due} onChange={setDue} min={today} />
+        </div>
+      </Specimen>
+      <Specimen state="DatePickerField · opcional (vazio, com Limpar)">
+        <div className="w-60">
+          <DatePickerField aria-label="Sugerir novo prazo (opcional)" value={suggested} onChange={setSuggested} min={today} optional />
+        </div>
+      </Specimen>
+    </>
   )
 }

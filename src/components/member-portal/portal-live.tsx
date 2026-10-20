@@ -14,10 +14,11 @@ import {
 import { DueCell } from "@/components/agreements/agreements-table"
 import { Button } from "@/components/ui/button"
 import { CentralCombobox, type CentralOption } from "@/components/ui/CentralCombobox"
+import { DatePickerField } from "@/components/ui/date-picker-field"
 import { Input } from "@/components/ui/input"
 import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { formatDate, maskDateInput } from "@/lib/dates"
+import { formatDate, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { MyOpenAgreement, MyPortalState } from "@/server/queries/member-portal"
@@ -39,6 +40,9 @@ const SELECTED: Record<Outcome, string> = {
 }
 
 const listClass = "flex flex-col divide-y divide-line rounded-lg border border-line bg-surface"
+
+/** Prazo padrão dos combinados do portal: hoje (D28), em DD/MM/AAAA. */
+const todayText = () => formatDate(todayBusinessDate(), "business")
 
 /**
  * Parte viva do portal (P26, C14): Zona 1 editável, "Novo combinado", o aviso de daily em
@@ -181,7 +185,7 @@ function ReportRow({
   // C16: próximo passo depois de um Feito — combinado novo, com o mesmo cliente (trocável).
   const [nextOpen, setNextOpen] = React.useState(false)
   const [nextTitle, setNextTitle] = React.useState("")
-  const [nextDue, setNextDue] = React.useState("")
+  const [nextDue, setNextDue] = React.useState(todayText)
   const [nextCentral, setNextCentral] = React.useState(agreement.central?.id ?? "")
   const [nextAdded, setNextAdded] = React.useState(false)
   const [report, setReport] = React.useState<Report | null>(agreement.pendingReport)
@@ -237,7 +241,7 @@ function ReportRow({
       }
       setNextOpen(false)
       setNextTitle("")
-      setNextDue("")
+      setNextDue(todayText())
       setNextAdded(true)
       // O novo aparece em "Seus combinados", vindo do servidor.
       router.refresh()
@@ -340,15 +344,7 @@ function ReportRow({
               </SelectContent>
             </Select>
           ) : null}
-          <Input
-            aria-label={R.suggestedDue}
-            value={suggested}
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder={R.suggestedDue}
-            className="min-h-11 font-mono"
-            onChange={(e) => setSuggested(maskDateInput(e.target.value))}
-          />
+          <DatePickerField aria-label={R.suggestedDue} value={suggested} onChange={setSuggested} min={todayBusinessDate()} optional placeholder={R.suggestedDue} />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" className="min-h-11" disabled={pending} onClick={() => (setEditing(null), setChoosing(!report))}>
               {R.cancel}
@@ -373,15 +369,7 @@ function ReportRow({
             onChange={(e) => setNextTitle(e.target.value)}
           />
           <PortalCentral field={centrals} value={nextCentral} onChange={setNextCentral} label={labels.centrals.field} />
-          <Input
-            value={nextDue}
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder={L.create.dueField}
-            aria-label={L.create.dueField}
-            className="min-h-11 font-mono"
-            onChange={(e) => setNextDue(maskDateInput(e.target.value))}
-          />
+          <DatePickerField aria-label={L.create.dueField} value={nextDue} onChange={setNextDue} min={todayBusinessDate()} />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" className="min-h-11" disabled={pending} onClick={() => setNextOpen(false)}>
               {L.next.cancel}
@@ -403,7 +391,7 @@ function CreateZone({ locked, centrals, onLocked }: { locked: boolean; centrals:
   const C = L.create
   const router = useRouter()
   const [title, setTitle] = React.useState("")
-  const [due, setDue] = React.useState("")
+  const [due, setDue] = React.useState(todayText)
   const [centralId, setCentralId] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const [added, setAdded] = React.useState(false)
@@ -422,7 +410,7 @@ function CreateZone({ locked, centrals, onLocked }: { locked: boolean; centrals:
         return setError(("fieldErrors" in result && (result.fieldErrors?.title ?? result.fieldErrors?.dueDate)) || result.error)
       }
       setTitle("")
-      setDue("")
+      setDue(todayText())
       setCentralId("")
       setAdded(true)
       // A lista "Seus combinados" vem do servidor: o novo aparece lá, pronto para relatar.
@@ -437,15 +425,7 @@ function CreateZone({ locked, centrals, onLocked }: { locked: boolean; centrals:
         <Input value={title} maxLength={160} autoComplete="off" placeholder={C.titleField} aria-label={C.titleField} className="min-h-11" onChange={(e) => setTitle(e.target.value)} />
         <PortalCentral field={centrals} value={centralId} onChange={setCentralId} label={labels.centrals.field} />
         <div className="flex gap-2">
-          <Input
-            value={due}
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder={C.dueField}
-            aria-label={C.dueField}
-            className="min-h-11 flex-1 font-mono"
-            onChange={(e) => setDue(maskDateInput(e.target.value))}
-          />
+          <DatePickerField aria-label={C.dueField} value={due} onChange={setDue} min={todayBusinessDate()} className="flex-1" />
           <Button type="submit" className="min-h-11" loading={pending} disabled={title.trim().length < 3}>
             {C.add}
           </Button>
