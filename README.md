@@ -54,11 +54,26 @@ pnpm user:password       # gera nova senha para um e-mail existente e desbloquei
 
 Os dois geram uma senha aleatória, mostram **uma única vez** no terminal e gravam só o hash. Guarde no gerenciador de senhas. Ambos registram a operação no AuditLog.
 
-- O e-mail precisa estar em `ALLOWED_EMAILS` para entrar. Tirar um e-mail da variável revoga o acesso na hora, inclusive de sessões abertas.
+- Gestor, leitura e administrador precisam do e-mail em `ALLOWED_EMAILS` para entrar. Tirar um e-mail da variável revoga o acesso na hora, inclusive de sessões abertas. O colaborador é a exceção — veja "Portal do colaborador".
 - 5 senhas erradas seguidas bloqueiam a conta por 15 minutos. `pnpm user:password` desbloqueia.
 - O seed cria o OWNER com o primeiro e-mail de `ALLOWED_EMAILS`, sem senha: defina com `pnpm user:password`.
 
 Acesso é por time (`TeamAccess`): **gestor** (MANAGER — registra e lê tudo do time, inclusive o privado) ou **leitura** (VIEWER — só lê, e só o que foi compartilhado). O mesmo usuário pode ter acesso a vários times; quem tem mais de um escolhe o time depois do login e troca pela barra lateral. `User.role` é obsoleto e não decide nada.
+
+## Portal do colaborador
+
+Cada pessoa do time pode ter um login para o **portal do colaborador** (`/me`): ela vê só os próprios combinados abertos, o que a última daily registrou sobre ela e o histórico dos combinados encerrados. Nada do registro gerencial — nem o que é sobre ela, nem o que está compartilhado entre gestores. O portal é a mesma aplicação web: abre no navegador do celular ou do computador e pode ser instalado como atalho na tela inicial.
+
+```
+pnpm member:invite       # escolhe o time e as pessoas ativas sem login (uma, várias ou todas); cria as contas
+pnpm member:deactivate   # por e-mail: desativa a conta e revoga o acesso ao portal (não apaga nada)
+```
+
+`pnpm member:invite` pergunta o e-mail de cada pessoa (sugere o do cadastro), gera uma senha aleatória por pessoa e imprime **uma única vez** um resumo com nome, e-mail e senha, pronto para copiar. Só o hash é gravado. Se o e-mail já tem conta (por exemplo, quem gerencia outro time), a conta é só ligada à pessoa e a senha não muda. Tudo vai para o AuditLog.
+
+**Allowlist em dois níveis — assimetria deliberada.** Conta com `isPlatformAdmin` ou com nível de gestor ou leitura em qualquer time continua exigindo o e-mail em `ALLOWED_EMAILS`: conta de privilégio alto só entra com deploy, e essa fricção é desejada. Conta cujo **único** nível é colaborador **dispensa** `ALLOWED_EMAILS`: ela depende da conta ativa (`User.isActive`), do acesso de colaborador ao time e da pessoa ativa no cadastro. Serão dezenas de pessoas, e exigir um deploy a cada contratação tornaria o sistema impraticável.
+
+Encerrar o acesso de um colaborador: `pnpm member:deactivate`, ou simplesmente desativar a pessoa no cadastro do time — pessoa inativa não entra no portal, mesmo com login válido. Mudar o nível de uma conta (de colaborador para gestor, por exemplo) vale a partir do próximo login.
 
 ## Abrir um time novo
 

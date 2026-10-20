@@ -1,5 +1,7 @@
 import type { NextAuthConfig } from "next-auth"
 
+import { routeRequest, SURFACE_COOKIE } from "../lib/portal-routing"
+
 import { isAllowedEmail } from "./allowlist"
 
 /**
@@ -20,14 +22,23 @@ export const authConfig = {
     /**
      * Middleware: tudo exige sessão, exceto /login. A allowlist é conferida de
      * novo a cada requisição — tirar o e-mail do ALLOWED_EMAILS derruba a
-     * sessão imediatamente, sem tocar no banco.
+     * sessão imediatamente, sem tocar no banco. Conta só de colaborador (P25)
+     * dispensa a lista; o servidor confere `isActive`, TeamAccess e a pessoa ativa.
+     * Também roteia entre o portal (/me) e as telas do gestor — conveniência; cada
+     * rota revalida no servidor (src/lib/portal-routing.ts).
      */
     authorized({ auth, request }) {
-      const loggedIn = isAllowedEmail(auth?.user?.email)
-      if (request.nextUrl.pathname === "/login") {
-        return loggedIn ? Response.redirect(new URL("/", request.nextUrl)) : true
-      }
-      return loggedIn
+      const memberOnly = auth?.user?.memberOnly === true
+      const loggedIn = Boolean(auth?.user?.email) && (memberOnly || isAllowedEmail(auth?.user?.email))
+      const decision = routeRequest({
+        pathname: request.nextUrl.pathname,
+        loggedIn,
+        memberOnly,
+        surface: request.cookies.get(SURFACE_COOKIE)?.value,
+      })
+      if (decision.kind === "allow") return true
+      if (decision.kind === "login") return false
+      return Response.redirect(new URL(decision.to, request.nextUrl))
     },
     /**
      * O token leva só QUEM é (id e organização). O que a pessoa pode ver NÃO vai no
@@ -37,6 +48,7 @@ export const authConfig = {
       if (user) {
         token.uid = user.id
         token.organizationId = user.organizationId
+        token.memberOnly = user.memberOnly === true
       }
       return token
     },
@@ -44,6 +56,7 @@ export const authConfig = {
       // O token chega tipado como registro genérico: valida o formato ao copiar.
       if (typeof token.uid === "string") session.user.id = token.uid
       if (typeof token.organizationId === "string") session.user.organizationId = token.organizationId
+      session.user.memberOnly = token.memberOnly === true
       return session
     },
   },

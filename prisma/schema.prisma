@@ -59,6 +59,8 @@ enum AgreementOrigin {
   INCIDENT
   MANAGER
   OTHER
+  /// Proposta do colaborador aceita pelo gestor (P26, D42).
+  MEMBER
 }
 
 /// Prioridade de COMBINADO. Não confundir com PriorityLevel, que é a escala de
@@ -199,6 +201,8 @@ model User {
   /// Pode criar time, criar usuário, conceder/revogar TeamAccess e ligar módulo. NÃO dá
   /// acesso a dado de time nenhum: até o administrador precisa de TeamAccess.
   isPlatformAdmin     Boolean   @default(false)
+  /// P25: conta ativa. Falso bloqueia o login e derruba a sessão (offboarding do colaborador).
+  isActive            Boolean   @default(true)
   organizationId      String
   /// Hash bcryptjs (cost 12). Nunca a senha em texto.
   passwordHash        String?
@@ -221,7 +225,10 @@ model User {
   memberVacations     MemberVacation[]
   auditLogs           AuditLog[]
   memberChanges       MemberChange[]
-  dailies             Daily[]
+  dailies             Daily[]              @relation("DailyAuthor")
+  openedDailies       Daily[]              @relation("DailyOpenedBy")
+  /// P25: a pessoa do time ligada a esta conta (portal do colaborador, D37).
+  teamMember          TeamMember?
   agreements          Agreement[]
   agreementCheckins   AgreementCheckin[]
   oneOnOnes           OneOnOne[]
@@ -295,6 +302,8 @@ model Team {
   scoreResultComponents   ScoreResultComponent[]
   agreementTransfers      AgreementTransfer[]
   memberVacations         MemberVacation[]
+  agreementSelfReports    AgreementSelfReport[]
+  memberProposals         MemberProposal[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -331,6 +340,8 @@ model AuditLog {
 enum TeamAccessLevel {
   MANAGER
   VIEWER
+  /// P25: o colaborador. Só o portal (/me), só os próprios combinados e propostas (D37, D38).
+  MEMBER
 }
 
 /// ÚNICA fonte de verdade do escopo de time (D30). O time ativo da sessão é
@@ -431,12 +442,15 @@ model TeamMember {
   avatarSeed     String
   /// Resumo gerencial editável no perfil.
   managerSummary String?
+  /// P25: login do colaborador. Opcional e único — a pessoa existe sem conta; o login é anexo (D37).
+  userId         String?      @unique
   createdAt      DateTime     @default(now()) @db.Timestamptz
   updatedAt      DateTime     @updatedAt @db.Timestamptz
   deletedAt      DateTime?    @db.Timestamptz
 
   team      Team      @relation(fields: [teamId], references: [id])
   seniority Seniority @relation(fields: [seniorityId], references: [id])
+  user      User?     @relation(fields: [userId], references: [id])
 
   traits                 MemberTrait[]
   changes                MemberChange[]
@@ -464,8 +478,12 @@ model TeamMember {
   transfersIn  AgreementTransfer[] @relation("TransferTo")
   vacations    MemberVacation[]
 
+  selfReports AgreementSelfReport[]
+  proposals   MemberProposal[]
+
   @@index([teamId, status])
   @@index([seniorityId])
+  @@index([userId])
 }
 
 /// Pontos fortes e de desenvolvimento numa tabela só, separados por `kind`.
@@ -567,26 +585,41 @@ model MentorshipLink {
 
 // ═══════════════════════════ REGISTROS ═══════════════════════════
 
+/// Daily. `status` (P25) existe para o travamento do P26 (D41): toda daily é gravada
+/// CLOSED; DRAFT só marca que alguém abriu o registro. Uma daily por data por time (C10).
 model Daily {
-  id           String   @id @default(cuid())
-  teamId       String
-  date         DateTime @db.Date
-  summary      String?
-  decisions    String?
-  authorUserId String
-  createdAt    DateTime @default(now()) @db.Timestamptz
+  id             String      @id @default(cuid())
+  teamId         String
+  date           DateTime    @db.Date
+  summary        String?
+  decisions      String?
+  status         DailyStatus @default(CLOSED)
+  openedAt       DateTime?   @db.Timestamptz
+  openedByUserId String?
+  authorUserId   String
+  createdAt      DateTime    @default(now()) @db.Timestamptz
 
-  team   Team @relation(fields: [teamId], references: [id])
-  author User @relation(fields: [authorUserId], references: [id])
+  team     Team  @relation(fields: [teamId], references: [id])
+  author   User  @relation("DailyAuthor", fields: [authorUserId], references: [id])
+  openedBy User? @relation("DailyOpenedBy", fields: [openedByUserId], references: [id])
 
   participants      DailyParticipant[]
   sourcedAgreements Agreement[]
   checkins          AgreementCheckin[]
   timelineEvents    TimelineEvent[]
+  selfReports       AgreementSelfReport[]
+  proposals         MemberProposal[]
 
   watchItems WatchItem[]
 
+  @@unique([teamId, date])
   @@index([teamId, date(sort: Desc)])
+  @@index([teamId, status])
+}
+
+enum DailyStatus {
+  DRAFT
+  CLOSED
 }
 
 /// Participação de cada pessoa na daily. Absorve o antigo "DailyNote": nota e
@@ -664,6 +697,9 @@ model Agreement {
   checkins       AgreementCheckin[]
   transfers      AgreementTransfer[]
   timelineEvents TimelineEvent[]
+  selfReports    AgreementSelfReport[]
+  /// Proposta do colaborador que virou este combinado no aceite (P26).
+  fromProposals  MemberProposal[]
 
   watchItems WatchItem[] @relation("WatchOrigin")
   watchItem  WatchItem?  @relation("WatchAgreements", fields: [watchItemId], references: [id], onDelete: SetNull)
@@ -702,8 +738,9 @@ model BlockerReason {
   isActive       Boolean         @default(true)
   order          Int
 
-  organization Organization       @relation(fields: [organizationId], references: [id])
+  organization Organization          @relation(fields: [organizationId], references: [id])
   checkins     AgreementCheckin[]
+  selfReports  AgreementSelfReport[]
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
@@ -716,26 +753,90 @@ model BlockerReason {
 /// CHECK no banco: blockerText obrigatório (não vazio) quando outcome é
 /// PARTIAL ou NOT_DONE.
 model AgreementCheckin {
-  id              String         @id @default(cuid())
-  teamId          String
-  agreementId     String
-  dailyId         String
-  outcome         CheckinOutcome
-  blockerText     String?
-  blockerReasonId String?
-  newDueDate      DateTime?      @db.Date
-  authorUserId    String
-  createdAt       DateTime       @default(now()) @db.Timestamptz
+  id                     String         @id @default(cuid())
+  teamId                 String
+  agreementId            String
+  dailyId                String
+  outcome                CheckinOutcome
+  blockerText            String?
+  blockerReasonId        String?
+  newDueDate             DateTime?      @db.Date
+  authorUserId           String
+  /// P26: relato do colaborador que a daily considerou, e se o desfecho registrado diferiu dele (D39).
+  selfReportId           String?
+  divergedFromSelfReport Boolean        @default(false)
+  createdAt              DateTime       @default(now()) @db.Timestamptz
 
-  agreement     Agreement      @relation(fields: [agreementId], references: [id])
-  daily         Daily          @relation(fields: [dailyId], references: [id])
-  blockerReason BlockerReason? @relation(fields: [blockerReasonId], references: [id])
-  author        User           @relation(fields: [authorUserId], references: [id])
+  agreement     Agreement            @relation(fields: [agreementId], references: [id])
+  daily         Daily                @relation(fields: [dailyId], references: [id])
+  selfReport    AgreementSelfReport? @relation(fields: [selfReportId], references: [id])
+  blockerReason BlockerReason?       @relation(fields: [blockerReasonId], references: [id])
+  author        User                 @relation(fields: [authorUserId], references: [id])
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@index([teamId, agreementId, createdAt])
   @@index([dailyId])
+}
+
+/// P25/P26: o que o colaborador relata sobre o próprio combinado antes da daily.
+/// `dailyId` nulo = pendente; preenchido = capturado por aquela daily (histórico).
+/// Nunca sobrescrito pela decisão do gestor (D39). Um pendente por combinado:
+/// índice único parcial `(agreementId) WHERE dailyId IS NULL`, criado em SQL na migration.
+model AgreementSelfReport {
+  id               String         @id @default(cuid())
+  teamId           String
+  memberId         String
+  agreementId      String
+  outcome          CheckinOutcome
+  blockerText      String?
+  blockerReasonId  String?
+  suggestedDueDate DateTime?      @db.Date
+  dailyId          String?
+  createdAt        DateTime       @default(now()) @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @db.Timestamptz
+
+  team          Team               @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  member        TeamMember         @relation(fields: [memberId], references: [id])
+  agreement     Agreement          @relation(fields: [agreementId], references: [id])
+  blockerReason BlockerReason?     @relation(fields: [blockerReasonId], references: [id])
+  daily         Daily?             @relation(fields: [dailyId], references: [id])
+  checkins      AgreementCheckin[]
+
+  @@index([teamId, memberId, dailyId])
+  @@index([agreementId])
+}
+
+/// P25/P26: combinado proposto pelo colaborador. Não é Agreement (D42): só vira um no
+/// aceite do gestor (`resolvedAgreementId`, origem MEMBER). Descartada fica DISCARDED,
+/// nunca é apagada. `managerNote` é a resposta do gestor À PESSOA sobre a proposta.
+model MemberProposal {
+  id                  String         @id @default(cuid())
+  teamId              String
+  memberId            String
+  title               String
+  suggestedDueDate    DateTime?      @db.Date
+  note                String?
+  dailyId             String?
+  status              ProposalStatus @default(PENDING)
+  resolvedAgreementId String?
+  managerNote         String?
+  createdAt           DateTime       @default(now()) @db.Timestamptz
+  updatedAt           DateTime       @updatedAt @db.Timestamptz
+
+  team              Team       @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  member            TeamMember @relation(fields: [memberId], references: [id])
+  daily             Daily?     @relation(fields: [dailyId], references: [id])
+  resolvedAgreement Agreement? @relation(fields: [resolvedAgreementId], references: [id])
+
+  @@index([teamId, memberId, status])
+  @@index([dailyId])
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  DISCARDED
 }
 
 /// 1:1. Nasce PRIVATE. Mudar a visibilidade atualiza a TimelineEvent espelho

@@ -243,3 +243,130 @@ export async function resolveAdmin(organizationId: string, email?: string): Prom
   if (admins.length === 0) throw new ProvisioningError(email ? "este e-mail não administra a plataforma." : "nenhum usuário com isPlatformAdmin nesta organização.")
   throw new ProvisioningError("há mais de um administrador: informe o e-mail em ADMIN_EMAIL.")
 }
+
+/* ───────────────────── Portal do colaborador (P25): login de quem é do time ───────────────────── */
+
+/** Pessoas ATIVAS do time ainda sem login, para `pnpm member:invite`. */
+export async function listInvitableMembers(teamSlug: string, organizationId: string) {
+  const team = await db.team.findFirst({
+    where: { slug: teamSlug.trim().toLowerCase(), organizationId, isActive: true },
+    select: { id: true, name: true },
+  })
+  if (!team) throw new ProvisioningError(`não existe time ativo com o slug "${teamSlug}".`)
+  const members = await db.teamMember.findMany({
+    where: { teamId: team.id, status: "ACTIVE", deletedAt: null, userId: null },
+    orderBy: { preferredName: "asc" },
+    select: { id: true, preferredName: true, fullName: true, email: true },
+  })
+  return { team, members }
+}
+
+export interface MemberInviteResult {
+  memberId: string
+  name: string
+  email: string
+  /** Senha gerada agora (mostrada UMA vez); null quando a conta já existia e foi só ligada. */
+  password: string | null
+}
+
+/**
+ * Dá à pessoa o acesso ao portal (D37): cria a conta (ou reaproveita a do e-mail),
+ * concede TeamAccess MEMBER no time e liga `TeamMember.userId` — numa transação,
+ * auditado. NÃO exige o e-mail em ALLOWED_EMAILS: conta só de colaborador dispensa a
+ * lista (allowlist em dois níveis). Só o hash da senha é gravado.
+ */
+export async function inviteMember(
+  input: { teamId: string; memberId: string; email: string },
+  actor: { organizationId: string; adminUserId: string },
+): Promise<MemberInviteResult> {
+  const email = normalizeEmail(input.email)
+  if (!z.string().email().safeParse(email).success) throw new ProvisioningError(`e-mail inválido: ${input.email}`)
+  const password = generatePassword()
+  const passwordHash = await hashPassword(password)
+  return db.$transaction(async (tx) => {
+    const member = await tx.teamMember.findFirst({
+      where: { id: input.memberId, teamId: input.teamId, status: "ACTIVE", deletedAt: null },
+      select: { id: true, fullName: true, preferredName: true, userId: true },
+    })
+    if (!member) throw new ProvisioningError("pessoa não encontrada ou não está ativa neste time.")
+    if (member.userId) throw new ProvisioningError(`${member.preferredName} já tem login.`)
+
+    const existing = await tx.user.findUnique({ where: { email }, select: { id: true, organizationId: true, isActive: true, teamMember: { select: { id: true } } } })
+    if (existing && existing.organizationId !== actor.organizationId) throw new ProvisioningError(`o e-mail ${email} pertence a outra organização.`)
+    if (existing?.teamMember) throw new ProvisioningError(`o e-mail ${email} já está ligado a outra pessoa.`)
+    if (existing && !existing.isActive) throw new ProvisioningError(`a conta ${email} está desativada.`)
+
+    const userId =
+      existing?.id ??
+      (
+        await tx.user.create({
+          // `role` é obsoleto (P22) e não decide nada; a coluna ainda é obrigatória.
+          data: { email, name: member.fullName, role: "VIEWER", organizationId: actor.organizationId, passwordHash, passwordUpdatedAt: new Date() },
+          select: { id: true },
+        })
+      ).id
+    if (!existing) {
+      await writeAudit(
+        { action: "user.create", entity: "User", entityId: userId, after: { email, name: member.fullName, via: "member:invite" } },
+        { organizationId: actor.organizationId, teamId: input.teamId, userId: actor.adminUserId, tx },
+      )
+    }
+
+    const access = await tx.teamAccess.findUnique({ where: { userId_teamId: { userId, teamId: input.teamId } } })
+    if (access && !access.revokedAt && access.level !== "MEMBER") {
+      throw new ProvisioningError(`${email} já tem acesso de ${access.level === "MANAGER" ? "gestor" : "leitura"} neste time.`)
+    }
+    if (!access || access.revokedAt) {
+      const row = await tx.teamAccess.upsert({
+        where: { userId_teamId: { userId, teamId: input.teamId } },
+        create: { userId, teamId: input.teamId, level: "MEMBER", grantedByUserId: actor.adminUserId },
+        update: { level: "MEMBER", revokedAt: null, grantedAt: new Date(), grantedByUserId: actor.adminUserId },
+        select: { id: true },
+      })
+      await writeAudit(
+        { action: "team.access.grant", entity: "TeamAccess", entityId: row.id, after: { email, level: "MEMBER", via: "member:invite" } },
+        { organizationId: actor.organizationId, teamId: input.teamId, userId: actor.adminUserId, tx },
+      )
+    }
+
+    await tx.teamMember.update({ where: { id: member.id, teamId: input.teamId }, data: { userId } })
+    await writeAudit(
+      { action: "member.login.link", entity: "TeamMember", entityId: member.id, after: { userId, email } },
+      { organizationId: actor.organizationId, teamId: input.teamId, userId: actor.adminUserId, tx },
+    )
+    return { memberId: member.id, name: member.preferredName, email, password: existing ? null : password }
+  })
+}
+
+/**
+ * Tira o acesso ao portal: `User.isActive` falso e os TeamAccess MEMBER revogados
+ * (`revokedAt`). Não apaga nada e não mexe na pessoa (TeamMember). Conta inativa não
+ * entra em lugar nenhum — vale também para quem é gestor em outro time.
+ */
+export async function deactivateMemberAccount(
+  rawEmail: string,
+  actor: { organizationId: string; adminUserId: string },
+): Promise<{ email: string; revoked: number }> {
+  const email = normalizeEmail(rawEmail)
+  const user = await db.user.findFirst({ where: { email, organizationId: actor.organizationId }, select: { id: true, isActive: true } })
+  if (!user) throw new ProvisioningError(`não existe usuário com o e-mail ${email} nesta organização.`)
+  return db.$transaction(async (tx) => {
+    const accesses = await tx.teamAccess.findMany({ where: { userId: user.id, level: "MEMBER", revokedAt: null }, select: { id: true, teamId: true } })
+    const now = new Date()
+    for (const access of accesses) {
+      await tx.teamAccess.update({ where: { id: access.id }, data: { revokedAt: now } })
+      await writeAudit(
+        { action: "team.access.revoke", entity: "TeamAccess", entityId: access.id, before: { email, level: "MEMBER" }, after: { revoked: true, via: "member:deactivate" } },
+        { organizationId: actor.organizationId, teamId: access.teamId, userId: actor.adminUserId, tx },
+      )
+    }
+    if (user.isActive) {
+      await tx.user.update({ where: { id: user.id }, data: { isActive: false } })
+      await writeAudit(
+        { action: "user.deactivate", entity: "User", entityId: user.id, before: { isActive: true }, after: { isActive: false, via: "member:deactivate" } },
+        { organizationId: actor.organizationId, userId: actor.adminUserId, tx },
+      )
+    }
+    return { email, revoked: accesses.length }
+  })
+}

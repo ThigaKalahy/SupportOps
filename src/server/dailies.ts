@@ -294,6 +294,8 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
             date: day,
             summary: textOrNull(data.summary),
             decisions: textOrNull(data.decisions),
+            // P25: o travamento (DRAFT) é do P26; até lá toda daily nasce fechada.
+            status: "CLOSED",
             authorUserId: ctx.userId,
           },
         })

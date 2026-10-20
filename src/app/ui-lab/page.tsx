@@ -39,6 +39,7 @@ import { LabToday } from "./_components/lab-today"
 import { LabCalendar, LabOverlays } from "./_components/lab-overlays"
 import { LabCentral } from "./_components/lab-central"
 import { LabDevReturns } from "./_components/lab-dev-returns"
+import { LabMemberPortal } from "./_components/lab-member-portal"
 import { LabWatch } from "./_components/lab-watch"
 import { LabShell } from "./_components/lab-shell"
 import { LabSection, Specimen } from "./_components/specimen"
@@ -577,6 +578,11 @@ export default function UiLabPage() {
       {/* Em observação (P21) */}
       <LabSection id="watch" title={sectionCopy.watch.title} description={sectionCopy.watch.description}>
         <LabWatch />
+      </LabSection>
+
+      {/* Portal do colaborador (P25) */}
+      <LabSection id="member-portal" title={sectionCopy.memberPortal.title} description={sectionCopy.memberPortal.description}>
+        <LabMemberPortal />
       </LabSection>
 
       {/* Devolução do desenvolvimento (P20) */}

@@ -97,7 +97,7 @@ describe("bloqueio progressivo e auditoria de login", () => {
     assert.deepEqual(calls, [DUMMY_HASH])
   })
 
-  test("e-mail fora da allowlist: recusado antes do banco, ainda com compare", async () => {
+  test("e-mail fora da allowlist (e sem ser só colaborador): recusado, ainda com compare", async () => {
     const calls: string[] = []
     const result = await verifyCredentials("fora.da.lista@prontuario.test", PASSWORD, {
       compare: async (password, hash) => {

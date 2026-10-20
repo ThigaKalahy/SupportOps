@@ -3,6 +3,7 @@ import { cache } from "react"
 
 import { labels } from "../lib/labels.ts"
 import type { ModuleKey } from "../lib/modules.ts"
+import { MEMBER_HOME } from "../lib/portal-routing.ts"
 import { db } from "./db.ts"
 
 /**
@@ -20,6 +21,11 @@ import { db } from "./db.ts"
  *   padrão nem no "primeiro time que encontrar".
  * - O middleware não faz esse redirecionamento: ele roda no Edge, sem Prisma, e não
  *   tem como consultar TeamAccess. Quem decide é esta função, no servidor.
+ *
+ * - O colaborador (nível MEMBER, P25) NUNCA recebe `TeamContext`: `teamContextFor`
+ *   só aceita MANAGER e VIEWER, e quem chega aqui com o time ativo em que é
+ *   colaborador vai para o portal (/me), que tem contexto próprio
+ *   (src/server/member-scope.ts, D38). `teamScope` recusa um contexto de colaborador.
  *
  * Este arquivo NÃO conhece visibilidade, e src/server/visibility.ts não conhece
  * escopo (D29): os dois gates se compõem no ponto de uso —
@@ -74,13 +80,17 @@ export class ModuleDisabledError extends ForbiddenError {
   }
 }
 
+/** Níveis do lado do gestor. MEMBER fica de fora: o colaborador só tem o portal (D38). */
+const MANAGER_SIDE_LEVELS: TeamAccessLevel[] = ["MANAGER", "VIEWER"]
+
 /**
- * Contexto do usuário no time, conferido no banco: TeamAccess não revogado e time
- * ativo. Sem acesso, LANÇA `TeamAccessError`. Uma consulta.
+ * Contexto do usuário no time, conferido no banco: TeamAccess não revogado, de nível
+ * MANAGER ou VIEWER, e time ativo. Sem acesso — inclusive sendo só colaborador ali —,
+ * LANÇA `TeamAccessError`. Uma consulta.
  */
 export async function teamContextFor(userId: string, teamId: string): Promise<TeamContext> {
   const access = await db.teamAccess.findFirst({
-    where: { userId, teamId, revokedAt: null, team: { isActive: true } },
+    where: { userId, teamId, revokedAt: null, level: { in: MANAGER_SIDE_LEVELS }, team: { isActive: true }, user: { isActive: true } },
     select: {
       level: true,
       user: { select: { isPlatformAdmin: true } },
@@ -98,10 +108,10 @@ export async function teamContextFor(userId: string, teamId: string): Promise<Te
   }
 }
 
-/** Times que o usuário pode abrir agora (acesso não revogado, time ativo). */
+/** Times que o usuário pode abrir nas telas do gestor (MANAGER/VIEWER, não revogado, time ativo). */
 export async function accessibleTeamIds(userId: string): Promise<string[]> {
   const rows = await db.teamAccess.findMany({
-    where: { userId, revokedAt: null, team: { isActive: true } },
+    where: { userId, revokedAt: null, level: { in: MANAGER_SIDE_LEVELS }, team: { isActive: true } },
     select: { teamId: true },
     orderBy: { grantedAt: "asc" },
   })
@@ -162,16 +172,25 @@ export const requireTeamContext = cache(async (): Promise<TeamContext> => {
 
   const store = await cookies()
   const requested = store.get(ACTIVE_TEAM_COOKIE)?.value
+  const { memberTeamIds } = await import("./member-scope")
   if (requested) {
     try {
       return await teamContextFor(user.id, requested)
     } catch (error) {
       if (!(error instanceof TeamAccessError)) throw error
+      // Time ativo em que a conta é colaboradora (P25): só colaboradora vai ao portal; quem
+      // também gerencia outro time escolhe de novo (o middleware só deixa entrar em /me
+      // quem escolheu a superfície do colaborador).
+      if ((await memberTeamIds(user.id)).includes(requested)) {
+        return redirect((await accessibleTeamIds(user.id)).length ? SELECT_TEAM_PATH : MEMBER_HOME)
+      }
       // Cookie de time sem acesso: ignorado — nunca vira credencial nem padrão.
     }
   }
 
   const teams = await accessibleTeamIds(user.id)
+  // Só colaboradora (em algum time): o portal, nunca as telas do gestor.
+  if (teams.length === 0 && (await memberTeamIds(user.id)).length > 0) return redirect(MEMBER_HOME)
   // Nenhum time, ou mais de um sem escolha válida: a tela de seleção resolve (P23).
   if (teams.length !== 1) return redirect(SELECT_TEAM_PATH)
   const ctx = await teamContextFor(user.id, teams[0]!)
@@ -209,8 +228,17 @@ export function requirePlatformAdmin(ctx: Pick<TeamContext, "isPlatformAdmin">):
   if (!ctx.isPlatformAdmin) throw new ForbiddenError()
 }
 
+/**
+ * Contexto do colaborador (tem `memberId`) nunca serve às queries e núcleos do gestor:
+ * lança. O tipo já impede; isto pega o que o tipo não pega (D38).
+ */
+function refuseMemberContext(ctx: object): void {
+  if ("memberId" in ctx) throw new ForbiddenError()
+}
+
 /** Início de todo `where` (leitura e escrita) e de todo `data` de criação em dado de time. */
 export function teamScope(ctx: Pick<TeamContext, "teamId">): { teamId: string } {
+  refuseMemberContext(ctx)
   return { teamId: ctx.teamId }
 }
 
@@ -219,6 +247,7 @@ export function teamScope(ctx: Pick<TeamContext, "teamId">): { teamId: string } 
  * `alias` é constante do código, nunca entrada do usuário.
  */
 export function teamSql(ctx: Pick<TeamContext, "teamId">, alias: string): Prisma.Sql {
+  refuseMemberContext(ctx)
   if (!/^[a-z_][a-z0-9_]*$/i.test(alias)) throw new Error(`Alias SQL inválido: ${alias}`)
   return Prisma.sql`${Prisma.raw(`"${alias}"`)}."teamId" = ${ctx.teamId}`
 }

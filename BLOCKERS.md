@@ -83,3 +83,14 @@ aqui para o exemplo não ser lido como bloqueio real pelo phase-gate):
     Onde consigo: <passo a passo>
     Enquanto isso: <o que fica bloqueado>
 -->
+
+## [ ] Banco de teste para rodar a suíte com banco (P25)
+Fase: P25
+Preciso de: um branch novo do Neon para testes e as URLs no `.env.test` (`DATABASE_URL` e `DIRECT_URL`). O branch anterior expirou.
+Onde consigo:
+1. console.neon.tech → projeto do Prontuário → Branches → "Create branch" a partir do `main` (pode ser temporário).
+2. "Connect" no branch novo → copie a string com pooling para `DATABASE_URL` e a sem pooling para `DIRECT_URL`.
+3. Cole no `.env.test` (não no `.env.local`). Não precisa me mostrar os valores.
+4. Eu rodo `pnpm test:db:prepare` (migrations + seed no banco de teste) e `pnpm test`.
+Enquanto isso: o critério de aceite do P25 — a suíte de isolamento inteira — fica sem a parte de banco. Os testes estruturais (sem banco) passam; o bloco "banco: portal do colaborador" com os dez critérios está escrito e não rodou. Os testes com banco do C3 ao C13 também não rodaram desde que o branch expirou.
+

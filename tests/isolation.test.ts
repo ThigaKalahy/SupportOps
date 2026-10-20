@@ -24,13 +24,20 @@
  */
 import assert from "node:assert/strict"
 import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join, relative, sep } from "node:path"
+import { dirname, join, relative, resolve, sep } from "node:path"
 import { after, before, describe, test } from "node:test"
 
 import { parseAgreementFilters } from "../src/lib/agreement-filters.ts"
 import { todayBusinessDate } from "../src/lib/dates.ts"
 import { parseDevReturnFilters } from "../src/lib/dev-return-filters.ts"
 import { MODULE_KEYS, MODULES } from "../src/lib/modules.ts"
+import { MEMBER_HOME, routeRequest } from "../src/lib/portal-routing.ts"
+import { accountTier } from "../src/server/account-tier.ts"
+import { verifyCredentials } from "../src/server/credentials.ts"
+import { MemberAccessError, memberContextFor, type MemberContext } from "../src/server/member-scope.ts"
+import { hashPassword } from "../src/server/password.ts"
+import { deactivateMemberAccount, inviteMember } from "../src/server/provisioning.ts"
+import * as memberPortal from "../src/server/queries/member-portal.ts"
 import { parseRecordFilters } from "../src/lib/records-filters.ts"
 import { parseTimelineFilters } from "../src/lib/timeline-filters.ts"
 import { parseValidationFilters } from "../src/lib/validation-filters.ts"
@@ -243,6 +250,7 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
         const body = callBody(source, (match.index ?? 0) + match[0].length - 1)
         const ok =
           body.includes("teamScope(") ||
+          body.includes("memberOwnScope(") ||
           /\bteamId\b/.test(body) ||
           [...scoped].some((name) => new RegExp(`(\\.\\.\\.|where:\\s*|\\b)${name}\\b`).test(body))
         if (!ok) violations.push(`${key}: where sem teamId`)
@@ -328,6 +336,78 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
       for (const m of source.matchAll(/\b(user|ctx|viewer|session\.user)\.role\b/g)) violations.push(`${rel(file)}: ${m[0]}`)
     }
     assert.deepEqual(violations, [])
+  })
+})
+
+/* ══════════════════════ 1b. ESTRUTURAL: PORTAL DO COLABORADOR (D38, D40) ══════════════════════ */
+
+/** Arquivos do portal: allowlist de imports e nenhum nome de modelo gerencial. */
+const PORTAL_FILES = ["server/queries/member-portal.ts", "actions/member-portal.ts"]
+
+/** Modelos que o portal nunca toca (D40) — nem em comentário. */
+const PORTAL_FORBIDDEN_MODELS = [
+  "Note", "OneOnOne", "Feedback", "WatchItem", "WatchReview", "TimelineEvent", "DevelopmentPlan", "DevelopmentAction",
+  "MemberTrait", "MemberChange", "MemberCompetency", "Competency", "CompetencyExpectation", "MentorshipLink",
+  "MetricResult", "ScoreResult", "ScoreResultComponent", "PriorityValidation", "DevReturn", "DailyParticipant",
+  "AuditLog", "TeamAccess", "User",
+]
+/** Os mesmos modelos como acessor do Prisma (`db.note`) e as relações que os alcançariam por `select`. */
+const PORTAL_FORBIDDEN_ACCESSORS = PORTAL_FORBIDDEN_MODELS.map((m) => m[0]!.toLowerCase() + m.slice(1))
+const PORTAL_FORBIDDEN_KEYS = [
+  "participants", "traits", "changes", "oneOnOnes", "feedbacks", "notes", "watchItems", "watchItem", "timelineEvents",
+  "developmentPlans", "metricResults", "scoreResults", "priorityValidations", "devReturns", "competencies", "mentoring",
+  "mentoredBy", "author", "user", "summary", "decisions", "managerSummary", "authorUserId", "replacesAgreementId",
+]
+
+describe("estrutural: portal do colaborador isolado (D38) — protege o futuro", () => {
+  const present = PORTAL_FILES.filter((f) => {
+    try {
+      return statSync(join(SRC, f)).isFile()
+    } catch {
+      return false
+    }
+  })
+
+  test("o arquivo de leituras do portal existe", () => assert.ok(present.includes("server/queries/member-portal.ts")))
+
+  test("só importa db.ts, member-scope.ts, src/lib e os tipos do Prisma", () => {
+    const violations: string[] = []
+    for (const file of present) {
+      const source = readFileSync(join(SRC, file), "utf8")
+      for (const m of source.matchAll(/(?:import|export)[^"']*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g)) {
+        const spec = (m[1] ?? m[2])!
+        if (spec === "@prisma/client") continue
+        const target = spec.startsWith("@/")
+          ? spec.slice(2)
+          : spec.startsWith(".")
+            ? relative(SRC, resolve(dirname(join(SRC, file)), spec)).split(sep).join("/")
+            : null
+        const clean = target?.replace(/\.(ts|tsx)$/, "")
+        const ok = clean === "server/db" || clean === "server/member-scope" || (clean?.startsWith("lib/") ?? false)
+        if (!ok) violations.push(`${file}: importa "${spec}"`)
+      }
+    }
+    assert.deepEqual(violations, [], "o portal não importa queries, actions, escopo nem timeline do gestor")
+  })
+
+  test("não menciona nenhum modelo proibido — nem em comentário", () => {
+    const violations: string[] = []
+    for (const file of present) {
+      const source = readFileSync(join(SRC, file), "utf8")
+      for (const name of PORTAL_FORBIDDEN_MODELS) if (new RegExp(`\\b${name}\\b`).test(source)) violations.push(`${file}: ${name}`)
+      for (const name of PORTAL_FORBIDDEN_ACCESSORS) if (new RegExp(`\\.${name}\\b`).test(source)) violations.push(`${file}: .${name}`)
+      for (const key of PORTAL_FORBIDDEN_KEYS) if (new RegExp(`\\b${key}\\s*:`).test(source)) violations.push(`${file}: ${key}:`)
+      if (/\binclude\s*:/.test(source)) violations.push(`${file}: include (use select explícito)`)
+      if (/requireMemberContext\(|requireTeamContext\(|getCurrentUser\(/.test(source)) violations.push(`${file}: obtém o contexto sozinho`)
+    }
+    assert.deepEqual(violations, [])
+  })
+
+  test("toda leitura de combinado no portal usa select explícito", () => {
+    const source = readFileSync(join(SRC, "server/queries/member-portal.ts"), "utf8")
+    for (const m of source.matchAll(/db\.agreement\.(\w+)\(/g)) {
+      assert.match(callBody(source, (m.index ?? 0) + m[0].length - 1), /select:\s*\{/, `agreement.${m[1]} sem select`)
+    }
   })
 })
 
@@ -971,5 +1051,239 @@ describe("banco: dois times isolados (T1, T2) — critério de aceite do P22", a
 
   test("o módulo PRIORITY_VALIDATION existe na lista de módulos válidos (sanidade)", () => {
     assert.ok(MODULE_KEYS.includes(MODULES.PRIORITY_VALIDATION))
+  })
+})
+
+/* ══════════════════════ 3. BANCO: PORTAL DO COLABORADOR (P25) ══════════════════════ */
+
+const MP = "isom_"
+const MP_ORG = `${MP}org`
+const MP_T1 = `${MP}t1`
+const MP_T2 = `${MP}t2`
+const MP_TEAMS = [MP_T1, MP_T2]
+const MP_USERS = { mgr: `${MP}mgr`, a1: `${MP}a1`, a2: `${MP}a2`, a3: `${MP}a3` }
+const MP_MARK = "Berílio"
+const MP_PASSWORD = "senha-do-portal-123"
+const INVITED_EMAIL = `${MP}a4@teste.local`
+
+async function cleanupPortal() {
+  const d = dbIncludingDeleted
+  const inTeams = { teamId: { in: MP_TEAMS } }
+  await d.agreementCheckin.deleteMany({ where: inTeams })
+  await d.agreementSelfReport.deleteMany({ where: inTeams })
+  await d.memberProposal.deleteMany({ where: inTeams })
+  await d.timelineEvent.deleteMany({ where: inTeams })
+  await d.watchItem.deleteMany({ where: inTeams })
+  await d.feedback.deleteMany({ where: inTeams })
+  await d.note.deleteMany({ where: inTeams })
+  await d.oneOnOne.deleteMany({ where: inTeams })
+  await d.developmentPlan.deleteMany({ where: inTeams })
+  await d.memberTrait.deleteMany({ where: inTeams })
+  await d.agreement.updateMany({ where: inTeams, data: { replacesAgreementId: null } })
+  await d.agreement.deleteMany({ where: inTeams })
+  await d.dailyParticipant.deleteMany({ where: inTeams })
+  await d.daily.deleteMany({ where: inTeams })
+  await d.teamMember.deleteMany({ where: inTeams })
+  await d.seniority.deleteMany({ where: inTeams })
+  await d.auditLog.deleteMany({ where: { OR: [inTeams, { organizationId: MP_ORG }] } })
+  await d.teamAccess.deleteMany({ where: inTeams })
+  await d.team.deleteMany({ where: { id: { in: MP_TEAMS } } })
+  await d.user.deleteMany({ where: { OR: [{ id: { in: Object.values(MP_USERS) } }, { email: INVITED_EMAIL }] } })
+  await d.organization.deleteMany({ where: { id: MP_ORG } })
+}
+
+describe("banco: portal do colaborador (P25) — critério de aceite", async () => {
+  const d = dbIncludingDeleted
+  const id = (name: string) => `${MP}${name}`
+  const text = (what: string, who: string) => `${what} ${MP_MARK} ${who}`
+  /** Tudo o que A1 NÃO pode receber: de A2, de T2 e o registro gerencial sobre ele mesmo. */
+  const forbiddenIds: string[] = []
+  const forbiddenText: string[] = []
+  let a1: MemberContext
+
+  before(async () => {
+    await cleanupPortal()
+    await d.organization.create({ data: { id: MP_ORG, name: "Portal (teste)", slug: "isom-org" } })
+    const passwordHash = await hashPassword(MP_PASSWORD)
+    for (const [key, uid] of Object.entries(MP_USERS)) {
+      await d.user.create({ data: { id: uid, email: `${uid}@teste.local`, name: `Conta ${key}`, role: "VIEWER", organizationId: MP_ORG, passwordHash } })
+    }
+    for (const [teamId, slug] of [[MP_T1, "isom-t1"], [MP_T2, "isom-t2"]] as const) {
+      await d.team.create({ data: { id: teamId, organizationId: MP_ORG, name: slug, slug, managerUserId: MP_USERS.mgr } })
+      await d.seniority.create({ data: { teamId, organizationId: MP_ORG, id: `${teamId}_sen`, key: "JUNIOR", label: "Júnior", order: 1 } })
+    }
+    await d.teamAccess.createMany({
+      data: [
+        { userId: MP_USERS.mgr, teamId: MP_T1, level: "MANAGER" },
+        { userId: MP_USERS.a1, teamId: MP_T1, level: "MEMBER" },
+        { userId: MP_USERS.a2, teamId: MP_T1, level: "MEMBER" },
+        { userId: MP_USERS.a3, teamId: MP_T2, level: "MEMBER" },
+      ],
+    })
+    const person = (pid: string, teamId: string, userId: string | null, who: string) =>
+      d.teamMember.create({
+        data: { id: pid, teamId, userId, fullName: text("Pessoa", who), preferredName: text("Pessoa", who), position: "Analista", seniorityId: `${teamId}_sen`, joinedAt: day(-300), avatarSeed: who },
+      })
+    await person(id("p_a1"), MP_T1, MP_USERS.a1, "A1")
+    await person(id("p_a2"), MP_T1, MP_USERS.a2, "A2")
+    await person(id("p_a3"), MP_T2, MP_USERS.a3, "A3")
+    await person(id("p_a4"), MP_T1, null, "A4")
+
+    const agreement = (aid: string, teamId: string, memberId: string, who: string, extra: object = {}) =>
+      d.agreement.create({
+        data: { id: aid, teamId, memberId, title: text("Combinado", who), origin: "MANAGER", originalDueDate: day(-3), dueDate: day(-3), authorUserId: MP_USERS.mgr, ...extra },
+      })
+    // A1: aberto (com anotação do gestor que nunca pode sair), revisado na daily, encerrado.
+    await agreement(id("ag_a1_open"), MP_T1, id("p_a1"), "A1", { managerNote: "SEGREDO-DO-GESTOR" })
+    await agreement(id("ag_a1_reviewed"), MP_T1, id("p_a1"), "A1")
+    await agreement(id("ag_a1_done"), MP_T1, id("p_a1"), "A1", { status: "DONE", completedAt: day(-5), outcome: "Entregue" })
+    await agreement(id("ag_a2"), MP_T1, id("p_a2"), "A2")
+    await agreement(id("ag_a3"), MP_T2, id("p_a3"), "A3")
+    forbiddenIds.push(id("ag_a2"), id("ag_a3"), id("p_a2"), id("p_a3"))
+    forbiddenText.push(text("Combinado", "A2"), text("Combinado", "A3"), "SEGREDO-DO-GESTOR")
+
+    // Daily CLOSED de ontem no T1: revisão de A1 (Parcial, relatou Feito) e de A2; resumo e decisões que nunca saem.
+    await d.daily.create({ data: { id: id("daily_t1"), teamId: MP_T1, date: day(-1), summary: "RESUMO-SECRETO", decisions: "DECISAO-SECRETA", authorUserId: MP_USERS.mgr } })
+    await d.daily.create({ data: { id: id("daily_t2"), teamId: MP_T2, date: day(-1), summary: "RESUMO-T2", authorUserId: MP_USERS.mgr } })
+    forbiddenText.push("RESUMO-SECRETO", "DECISAO-SECRETA", "RESUMO-T2")
+    forbiddenIds.push(id("daily_t2"))
+    await d.agreementCheckin.create({
+      data: { teamId: MP_T1, agreementId: id("ag_a1_reviewed"), dailyId: id("daily_t1"), outcome: "PARTIAL", blockerText: text("Impeditivo", "A1"), newDueDate: day(1), authorUserId: MP_USERS.mgr },
+    })
+    await d.agreementCheckin.create({
+      data: { id: id("ck_a2"), teamId: MP_T1, agreementId: id("ag_a2"), dailyId: id("daily_t1"), outcome: "NOT_DONE", blockerText: text("Impeditivo", "A2"), authorUserId: MP_USERS.mgr },
+    })
+    forbiddenIds.push(id("ck_a2"))
+    forbiddenText.push(text("Impeditivo", "A2"))
+    await d.agreementSelfReport.create({ data: { teamId: MP_T1, memberId: id("p_a1"), agreementId: id("ag_a1_reviewed"), outcome: "DONE", dailyId: id("daily_t1") } })
+    await d.agreementSelfReport.create({ data: { teamId: MP_T1, memberId: id("p_a1"), agreementId: id("ag_a1_open"), outcome: "PARTIAL", blockerText: text("Relato", "A1") } })
+    await d.memberProposal.create({ data: { teamId: MP_T1, memberId: id("p_a1"), title: text("Proposta", "A1"), dailyId: id("daily_t1"), status: "DISCARDED", managerNote: "Resposta à proposta" } })
+    await d.memberProposal.create({ data: { id: id("prop_a2"), teamId: MP_T1, memberId: id("p_a2"), title: text("Proposta", "A2"), dailyId: id("daily_t1") } })
+    forbiddenIds.push(id("prop_a2"))
+    forbiddenText.push(text("Proposta", "A2"))
+
+    // Registro gerencial SOBRE A1 — inclusive o compartilhado (D40).
+    const fbp = await d.feedback.create({ data: { id: id("fb_priv"), teamId: MP_T1, memberId: id("p_a1"), date: day(-2), category: "BEHAVIOR", behavior: text("Feedback privado", "A1"), visibility: "PRIVATE", authorUserId: MP_USERS.mgr } })
+    const fbs = await d.feedback.create({ data: { id: id("fb_shared"), teamId: MP_T1, memberId: id("p_a1"), date: day(-2), category: "RECOGNITION", behavior: text("Feedback compartilhado", "A1"), visibility: "SHARED", authorUserId: MP_USERS.mgr } })
+    const note = await d.note.create({ data: { id: id("note"), teamId: MP_T1, memberId: id("p_a1"), occurredAt: new Date(), title: text("Anotação", "A1"), body: text("Corpo da anotação", "A1"), visibility: "PRIVATE", authorUserId: MP_USERS.mgr } })
+    await d.oneOnOne.create({ data: { id: id("ooo"), teamId: MP_T1, memberId: id("p_a1"), date: day(-4), topics: text("Assuntos do 1:1", "A1"), authorUserId: MP_USERS.mgr } })
+    await d.watchItem.create({
+      data: { id: id("watch"), teamId: MP_T1, organizationId: MP_ORG, title: text("Observação", "A1"), heat: "HIGH", origin: "MANUAL", visibility: "SHARED", memberId: id("p_a1"), createdByUserId: MP_USERS.mgr, lastReviewedAt: day(-1), heatChangedAt: day(-1) },
+    })
+    await d.developmentPlan.create({ data: { id: id("pdi"), teamId: MP_T1, memberId: id("p_a1"), currentSituation: text("Situação do PDI", "A1"), objective: text("Objetivo do PDI", "A1"), status: "ACTIVE", startedAt: day(-30) } })
+    await d.memberTrait.create({ data: { id: id("trait"), teamId: MP_T1, memberId: id("p_a1"), kind: "DEVELOPMENT", text: text("Ponto a desenvolver", "A1"), observedAt: day(-10) } })
+    await recordTimelineEvents(d, { teamId: MP_T1 }, [timelineEventFor.feedback(fbp), timelineEventFor.feedback(fbs), timelineEventFor.note(note)])
+    const events = await d.timelineEvent.findMany({ where: { teamId: MP_T1 }, select: { id: true } })
+    forbiddenIds.push(id("fb_priv"), id("fb_shared"), id("note"), id("ooo"), id("watch"), id("pdi"), id("trait"), ...events.map((e) => e.id))
+    forbiddenText.push(
+      text("Feedback privado", "A1"), text("Feedback compartilhado", "A1"), text("Anotação", "A1"), text("Corpo da anotação", "A1"),
+      text("Assuntos do 1:1", "A1"), text("Observação", "A1"), text("Situação do PDI", "A1"), text("Objetivo do PDI", "A1"), text("Ponto a desenvolver", "A1"),
+    )
+
+    a1 = await memberContextFor(MP_USERS.a1, MP_T1)
+  })
+
+  after(async () => {
+    await cleanupPortal()
+    await db.$disconnect()
+    await dbIncludingDeleted.$disconnect()
+  })
+
+  /** Toda função exportada de member-portal.ts, chamada com o contexto de A1. */
+  const MEMBER_QUERIES: Record<string, (c: MemberContext) => Promise<unknown>> = {
+    getMyOpenAgreements: (c) => memberPortal.getMyOpenAgreements(c),
+    getMyLastDailyRecord: (c) => memberPortal.getMyLastDailyRecord(c),
+    getMyAgreementHistory: (c) => memberPortal.getMyAgreementHistory(c, 50),
+  }
+
+  test("meta: toda função exportada do portal está na tabela", () => {
+    const source = readFileSync(join(SRC, "server/queries/member-portal.ts"), "utf8")
+    const exported = [...source.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]!)
+    assert.deepEqual(exported.filter((name) => !(name in MEMBER_QUERIES)), [])
+  })
+
+  test("1–5. A1 recebe só o que é dele: nada de A2, de T2, de registro gerencial, de managerNote, de resumo ou decisões", async () => {
+    for (const [name, run] of Object.entries(MEMBER_QUERIES)) {
+      const out = dump(await run(a1)) ?? ""
+      for (const fid of forbiddenIds) assert.ok(!out.includes(fid), `${name}: vazou ${fid}`)
+      for (const t of forbiddenText) assert.ok(!out.includes(t), `${name}: vazou "${t}"`)
+      assert.ok(!/"managerNote"\s*:/.test(out), `${name}: chave managerNote`)
+      assert.ok(!/"(summary|decisions)"\s*:/.test(out), `${name}: chave summary/decisions`)
+    }
+  })
+
+  test("A1 vê os próprios combinados, o relato pendente e a última daily com relato × registro", async () => {
+    const open = await memberPortal.getMyOpenAgreements(a1)
+    assert.deepEqual(open.map((a) => a.id).sort(), [id("ag_a1_open"), id("ag_a1_reviewed")].sort())
+    assert.equal(open.find((a) => a.id === id("ag_a1_open"))?.pendingReport?.outcome, "PARTIAL")
+    const last = await memberPortal.getMyLastDailyRecord(a1)
+    assert.equal(last?.daily.id, id("daily_t1"))
+    assert.deepEqual(last?.reviewed.map((r) => [r.agreementId, r.outcome, r.reportedOutcome]), [[id("ag_a1_reviewed"), "PARTIAL", "DONE"]])
+    assert.equal(last?.proposals[0]?.reply, "Resposta à proposta")
+    const history = await memberPortal.getMyAgreementHistory(a1)
+    assert.deepEqual(history.map((a) => a.id), [id("ag_a1_done")])
+  })
+
+  test("6. A1 com a pessoa desativada recebe erro", async () => {
+    await d.teamMember.update({ where: { id: id("p_a1") }, data: { status: "INACTIVE" } })
+    await assert.rejects(memberContextFor(MP_USERS.a1, MP_T1), { name: "MemberAccessError" })
+    await d.teamMember.update({ where: { id: id("p_a1") }, data: { status: "ACTIVE", deletedAt: new Date() } })
+    await assert.rejects(memberContextFor(MP_USERS.a1, MP_T1), { name: "MemberAccessError" })
+    await d.teamMember.update({ where: { id: id("p_a1") }, data: { deletedAt: null } })
+  })
+
+  test("7. A1 com a conta inativa recebe erro (e não entra pelo login)", async () => {
+    await d.user.update({ where: { id: MP_USERS.a1 }, data: { isActive: false } })
+    await assert.rejects(memberContextFor(MP_USERS.a1, MP_T1), { name: "MemberAccessError" })
+    assert.equal(await verifyCredentials(`${MP_USERS.a1}@teste.local`, MP_PASSWORD), null)
+    await d.user.update({ where: { id: MP_USERS.a1 }, data: { isActive: true } })
+  })
+
+  test("8. A1 nas rotas do gestor é mandado para /me, e as queries do gestor lançam com o contexto dele", async () => {
+    for (const pathname of ["/", "/team", "/agreements", "/dailies/new", "/watch", "/settings"]) {
+      assert.deepEqual(routeRequest({ pathname, loggedIn: true, memberOnly: true }), { kind: "redirect", to: MEMBER_HOME })
+    }
+    await assert.rejects(teamContextFor(MP_USERS.a1, MP_T1), { name: "TeamAccessError" })
+    const asManager = a1 as unknown as TeamContext
+    await assert.rejects(agreements.listAgreements(asManager, parseAgreementFilters(new URLSearchParams("view=all"))), { name: "ForbiddenError" })
+    await assert.rejects(records.listRecords(asManager, parseRecordFilters({ period: "all" })), { name: "ForbiddenError" })
+    await assert.rejects(timeline.getTimelinePage(asManager, id("p_a1"), parseTimelineFilters(new URLSearchParams()), null), { name: "ForbiddenError" })
+  })
+
+  test("9. o gestor em /me volta para a home dele (o portal só entra com a superfície do colaborador)", async () => {
+    assert.deepEqual(routeRequest({ pathname: "/me", loggedIn: true, memberOnly: false }), { kind: "redirect", to: "/" })
+    assert.deepEqual(routeRequest({ pathname: "/me", loggedIn: true, memberOnly: false, surface: "member" }), { kind: "allow" })
+    await assert.rejects(memberContextFor(MP_USERS.mgr, MP_T1), { name: "MemberAccessError" })
+  })
+
+  test("10. A1 montando o contexto do T2 recebe ERRO, não lista vazia", async () => {
+    await assert.rejects(memberContextFor(MP_USERS.a1, MP_T2), (error: unknown) => error instanceof MemberAccessError && error.reason === "no-access")
+  })
+
+  test("allowlist em dois níveis: só colaborador entra fora da lista; gestor fora da lista não", async () => {
+    assert.equal(await accountTier(MP_USERS.a1, false), "member")
+    assert.equal(await accountTier(MP_USERS.mgr, false), "privileged")
+    const member = await verifyCredentials(`${MP_USERS.a1}@teste.local`, MP_PASSWORD)
+    assert.equal(member?.memberOnly, true)
+    assert.equal(await verifyCredentials(`${MP_USERS.mgr}@teste.local`, MP_PASSWORD), null)
+  })
+
+  test("member:invite liga o login à pessoa; member:deactivate tira o acesso sem apagar nada", async () => {
+    const actor = { organizationId: MP_ORG, adminUserId: MP_USERS.mgr }
+    const invited = await inviteMember({ teamId: MP_T1, memberId: id("p_a4"), email: INVITED_EMAIL }, actor)
+    assert.ok(invited.password, "senha gerada e devolvida uma vez")
+    const user = await d.user.findUniqueOrThrow({ where: { email: INVITED_EMAIL }, select: { id: true, passwordHash: true } })
+    assert.ok(user.passwordHash && user.passwordHash !== invited.password, "só o hash é gravado")
+    const ctx = await memberContextFor(user.id, MP_T1)
+    assert.equal(ctx.memberId, id("p_a4"))
+    await assert.rejects(inviteMember({ teamId: MP_T1, memberId: id("p_a4"), email: INVITED_EMAIL }, actor), /já tem login/)
+
+    const off = await deactivateMemberAccount(INVITED_EMAIL, actor)
+    assert.equal(off.revoked, 1)
+    await assert.rejects(memberContextFor(user.id, MP_T1), { name: "MemberAccessError" })
+    const access = await d.teamAccess.findUniqueOrThrow({ where: { userId_teamId: { userId: user.id, teamId: MP_T1 } } })
+    assert.ok(access.revokedAt, "revogar preenche revokedAt e não apaga a linha")
+    assert.equal((await d.teamMember.findUniqueOrThrow({ where: { id: id("p_a4") } })).userId, user.id, "a pessoa não muda")
+    await d.teamMember.update({ where: { id: id("p_a4") }, data: { userId: null } })
   })
 })

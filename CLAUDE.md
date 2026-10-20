@@ -6,6 +6,8 @@ Instruções de projeto para sessões de Claude Code. Leia por completo antes de
 
 Prontuário é o sistema de gestão de um time de suporte com 9 analistas. A metáfora é o registro clínico e o livro-razão, não um dashboard de BI: entrada datada, calha de margem, régua temporal, escala de severidade. Serve os gestores de time de uma organização, um time por vez. Cada gestor vê e registra apenas o próprio time; o gestor acima deles tem leitura em vários times e escolhe qual está olhando. O isolamento entre times é requisito de produto, não detalhe de implementação: o que é de um setor não aparece em outro. Não há cliente externo, não há usuário anônimo, não há endpoint público. O produto existe para responder uma pergunta todo dia: "quem precisa da minha atenção hoje?" — respondida pelo motor de alertas em `src/server/alerts.ts`. Tudo que não serve a essa pergunta ou ao registro histórico é escopo fora do MVP.
 
+A partir do portal do colaborador, a plataforma tem dois públicos na mesma base: o gestor, que registra e acompanha no desktop, e o colaborador, que relata os próprios combinados antes da daily, no celular. São superfícies separadas, com namespace de código separado, e o colaborador nunca alcança registro gerencial — inclusive o que é sobre ele.
+
 ## Documentos do projeto
 
 Precedência em conflito: CLAUDE.md > MANUAL-COMPLETO.md > PLANO-TECNICO.md.
@@ -71,6 +73,14 @@ Dois gates independentes, verificados em sequência, implementados em arquivos s
 1. ESCOPO DE TIME — `TeamAccess (userId, teamId, level)`. Duro. Sem acesso, o dado não existe. O time ativo da sessão é revalidado contra `TeamAccess` em TODA requisição, em `requireTeamContext` de `src/server/scope.ts`. Nunca confiado do cookie ou do JWT, nunca cacheado na sessão, nunca resolvido para um padrão quando inválido (D30).
 2. MÓDULO — `TeamModule (teamId, moduleKey)`. Duro. Gating em três camadas: navegação, rota e Server Action/query. Esconder do menu não é autorização (D32).
 3. VISIBILIDADE — `PRIVATE | SHARED`. Macio. `MANAGER` no time vê os dois, `VIEWER` vê só `SHARED` (D34). Em `visibilityFilter`, arquivo separado de `teamScope`.
+
+Níveis de `TeamAccess`:
+
+- `MANAGER` — lê e escreve no time, vê `PRIVATE`.
+- `VIEWER` — só lê, só `SHARED`.
+- `MEMBER` — o colaborador. Lê e escreve APENAS os próprios combinados e as próprias propostas. Opera por allowlist em namespace separado (`member-portal`), nunca por filtro sobre as queries do gestor (D38). Exige `TeamMember` ativo com `userId` ligado ao usuário; pessoa desativada não entra, mesmo com login válido. O nível vem do time ativo, não do usuário: a mesma conta pode ser MEMBER em um time e MANAGER em outro. O contexto do colaborador é montado por `requireMemberContext` em `src/server/member-scope.ts`, arquivo separado de `src/server/scope.ts`.
+
+Allowlist em dois níveis, assimetria deliberada: conta com `isPlatformAdmin` ou com nível MANAGER ou VIEWER em qualquer time exige o e-mail em `ALLOWED_EMAILS`, e essa fricção de deploy é desejada. Conta cujo único nível é MEMBER dispensa `ALLOWED_EMAILS` e depende de `User.isActive`, `TeamAccess` válido e `TeamMember` ativo — serão dezenas de pessoas e exigir deploy por contratação tornaria o sistema impraticável. O acesso do colaborador é criado por `pnpm member:invite` e encerrado por `pnpm member:deactivate` (ou desativando a pessoa), sem tocar na Vercel.
 
 `isPlatformAdmin` permite criar time, criar usuário, conceder acesso e ligar módulo. Não dá acesso a dado de time nenhum — até o administrador precisa de `TeamAccess`.
 
@@ -158,6 +168,8 @@ pnpm user:create         # criar usuário (único meio de criar conta)
 pnpm user:password       # redefinir senha de usuário
 pnpm team:create         # abrir um time novo (P24): time, gestor, acessos, módulos e só o mínimo semeado
 pnpm team:access         # conceder ou revogar acesso a um time, por e-mail e slug
+pnpm member:invite       # P25: login do portal para pessoas ativas sem login (uma, várias ou todas)
+pnpm member:deactivate   # P25: desativa a conta e revoga o acesso ao portal, por e-mail (não apaga nada)
 pnpm test                # node:test (tests/), em série, no banco de TESTE (.env.test) — nunca no de produção
 pnpm test:db:prepare     # migrations + seed no banco de teste (.env.test)
 pnpm db:verify-teams     # verificação do P22 (teamId nulo por tabela, TeamAccess por usuário); só leitura
@@ -181,6 +193,8 @@ A sidebar tem 8 itens: Hoje, Em observação, Equipe, Combinados, Validação de
 Quem tem acesso a mais de um time vê o nome do time ativo permanentemente na barra de contexto, nunca apenas em dropdown fechado nem apenas na sidebar — ler o registro de um time pensando que é de outro é erro gerencial real. Trocar de time redireciona para a home do time novo, nunca para a rota equivalente. Ação indisponível por nível de acesso fica AUSENTE da interface, não desabilitada.
 A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, item não existe.
 
+O grupo de rotas `(member)` tem layout próprio: sem sidebar, sem barra de contexto, sem command palette, sem busca, sem seletor de time. É projetado MOBILE-FIRST, a 390px primeiro — único lugar do sistema onde o celular manda (D45). Controle indisponível por travamento ou por nível de acesso fica AUSENTE, não desabilitado. Aviso de daily registrada é faixa fixa com botão, nunca recarregamento automático.
+
 ## Regras de modelagem
 
 - `TimelineEvent` é um **índice denormalizado**, nunca fonte de verdade. Os registros vivem nas tabelas concretas (`Feedback`, `OneOnOne`, `Daily`, `Agreement`, `Note`, `MemberChange`, `DevelopmentPlan`...). A `TimelineEvent` é a linha-espelho.
@@ -189,7 +203,15 @@ A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, i
 - `Seniority` é tabela, não enum — o produto vai crescer para níveis como "Especialista" ou "Tech Lead" (D3).
 - O enum de `Agreement.status` NÃO contém `OVERDUE`. Os valores são OPEN, IN_PROGRESS, DONE, CANCELLED. Vencido é sempre derivado em query (`dueDate < hoje AND status IN (OPEN, IN_PROGRESS)`), nunca persistido, nunca escrito por cron (D9).
 - `TimelineEvent.visibility` SEMPRE espelha a visibilidade do registro de origem. Alterar a visibilidade de um `Feedback`, `OneOnOne` ou `Note` atualiza a `TimelineEvent` correspondente na mesma transação. Uma linha-espelho SHARED apontando para um registro PRIVATE é vazamento e é bug crítico.
-- `TeamMember` não é `User`. Os 9 analistas não autenticam no sistema — não criar fluxo de convite, sessão ou autorização para eles (D1).
+- `TeamMember` não é `User` (D1). A pessoa existe sem login; quando tem acesso, é um `User` anexado por `TeamMember.userId`, com nível `MEMBER`, que só alcança o portal do colaborador (D37, D38). Não há convite por e-mail nem cadastro público: o acesso é criado por `pnpm member:invite`. O colaborador nunca entra nas telas, queries ou actions do gestor.
+- `TeamMember.userId` é opcional e único. A pessoa existe sem login (D1, D37).
+- `AgreementSelfReport` com `dailyId` nulo é relato pendente; preenchido é histórico capturado por aquela daily. Índice único parcial garante um relato pendente por combinado.
+- A captura acontece no clique de "Registrar nova daily": todos os relatos e propostas pendentes do time recebem o `dailyId` em uma transação.
+- `AgreementCheckin` grava o valor final decidido pelo gestor, mais `selfReportId` e `divergedFromSelfReport`. O `AgreementSelfReport` nunca é sobrescrito (D39).
+- `divergedFromSelfReport` compara apenas o `outcome`. Editar a redação do impeditivo não é divergência.
+- `MemberProposal` só vira `Agreement` no aceite, com `origin = MEMBER`. Descartada permanece `DISCARDED`, nunca apagada (D42).
+- `Daily.status = DRAFT` é marcador de travamento, não salvamento progressivo. A daily continua salvando em transação única. `DRAFT` com `openedAt` há mais de 4 horas deixa de travar, derivado em query (D41).
+- Descartar uma daily DRAFT devolve relatos e propostas ao estado pendente.
 - Soft delete (`deletedAt`) apenas onde há valor histórico: `TeamMember`, `Agreement`, registros. Não em tabelas de junção (D10).
 - `tags` em `TimelineEvent` é `text[]` nativo do Postgres com índice GIN — não criar tabela de tags separada.
 - A daily do dia D puxa os combinados criados na daily anterior mais os em aberto com `dueDate <= hoje`. Revisar grava `AgreementCheckin` (D11).
@@ -230,15 +252,15 @@ A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, i
 
 ## Regras de segurança e privacidade
 
-- `ALLOWED_EMAILS` é uma allowlist rígida verificada no callback de signIn, ANTES de qualquer verificação de senha. Nenhum e-mail fora dela autentica, mesmo com passwordHash válido no banco. Não é redundante com a criação por CLI: é o kill switch operacional — remover um e-mail da variável de ambiente revoga o acesso imediatamente, sem tocar no banco de produção — e a segunda barreira caso alguém com acesso ao banco insira uma linha em `User`.
+- `ALLOWED_EMAILS` é uma allowlist rígida verificada no callback de signIn, ANTES de qualquer verificação de senha, para toda conta com `isPlatformAdmin` ou nível MANAGER/VIEWER em algum time. Nenhum desses e-mails fora dela autentica, mesmo com passwordHash válido no banco. Conta cujo único nível é MEMBER é a exceção deliberada (ver "Modelo de acesso"): dispensa a lista e depende de `User.isActive`, `TeamAccess` válido e `TeamMember` ativo. Não é redundante com a criação por CLI: é o kill switch operacional — remover um e-mail da variável de ambiente revoga o acesso imediatamente, sem tocar no banco de produção — e a segunda barreira caso alguém com acesso ao banco insira uma linha em `User`.
 - Autenticação é e-mail + senha com hash bcryptjs cost 12. Senha nunca em texto.
-- Não existe cadastro público, convite ou recuperação de senha. Usuários são criados exclusivamente por `pnpm user:create` e `pnpm user:password`.
+- Não existe cadastro público, convite por e-mail ou recuperação de senha. Usuários são criados exclusivamente por `pnpm user:create`, `pnpm user:password` e, para colaboradores, `pnpm member:invite`.
 - Erro de login genérico e idêntico para e-mail inexistente e senha errada: "E-mail ou senha inválidos".
 - `bcrypt.compare` roda SEMPRE, inclusive com e-mail inexistente (contra hash descartável), para não vazar quais contas existem por tempo de resposta.
 - 5 tentativas falhas bloqueiam a conta por 15 minutos.
 - Toda tentativa de login, sucesso ou falha, gera entrada no `AuditLog`.
 - O domínio de produção na Vercel é público no plano Hobby. A tela de login é a única barreira. Deployment Protection cobre apenas os previews.
-- Acesso é por time (P22, D30, D34): `TeamAccess.level` MANAGER (lê e escreve, vê PRIVATE) ou VIEWER (só lê, só SHARED). `User.role` (OWNER/MANAGER/VIEWER) é obsoleto e não decide nada; `pnpm user:create` ainda pergunta o papel só para escolher o nível do acesso que concede.
+- Acesso é por time (P22, D30, D34): `TeamAccess.level` MANAGER (lê e escreve, vê PRIVATE), VIEWER (só lê, só SHARED) ou MEMBER (só o portal do colaborador, só os próprios combinados e propostas — D37, D38). `User.role` (OWNER/MANAGER/VIEWER) é obsoleto e não decide nada; `pnpm user:create` ainda pergunta o papel só para escolher o nível do acesso que concede.
 - `VIEWER` **nunca** lê um registro com `visibility: PRIVATE`, em nenhuma superfície — timeline, busca, command palette, exportação futura. Essa checagem vive nas queries de `src/server/queries/`, não em filtro de UI.
 - Toda escrita grava uma entrada em `AuditLog` (`action`, `entity`, `entityId`, `before`, `after`, `userId`, `at`). Sem exceção, inclusive para escritas administrativas em `/settings`.
 - Nenhum endpoint público. Sem REST, sem rota de API além de `api/auth/[...nextauth]`. Toda mutação é Server Action autenticada (D8).
@@ -251,6 +273,12 @@ A sidebar monta os itens a partir dos módulos habilitados: módulo desligado, i
 - A suíte `tests/isolation.test.ts` é obrigatória e precisa passar antes de qualquer merge. Inclui o teste estrutural que varre queries e actions em busca de `where` sem `teamId`. A lista de exceções é explícita e comentada; a regra nunca é desligada.
 - Tentativa de acessar time sem permissão resulta em ERRO, nunca em lista vazia. Lista vazia esconde o bug.
 - Desligar um módulo não apaga dado: torna inacessível pela interface.
+- `src/server/queries/member-portal.ts` e `src/actions/member-portal.ts` NÃO IMPORTAM nada de `src/server/queries/`, `src/actions/`, `src/server/scope.ts` nem `src/server/timeline.ts`. Duplicar helper é preferível a importar. Teste estrutural obrigatório em `tests/isolation.test.ts` falha se importarem, e falha também se mencionarem nome de modelo proibido, inclusive em comentário (D38).
+- O portal usa `select` explícito em toda query de `Agreement`. Nunca `include`, nunca spread do objeto. É o que impede campo novo de aparecer sozinho no portal.
+- `Agreement.managerNote`, `Daily.summary` e `Daily.decisions` nunca saem em nenhuma resposta do portal.
+- Modelos que o portal nunca toca: `Note`, `OneOnOne`, `Feedback`, `WatchItem`, `WatchReview`, `TimelineEvent`, `DevelopmentPlan`, `DevelopmentAction`, `MemberTrait`, `MemberChange`, `MemberCompetency`, `Competency`, `MentorshipLink`, `MetricResult`, `ScoreResult`, `PriorityValidation`, `DevReturn`, `DailyParticipant`, `AuditLog`, `TeamAccess` — inclusive os que são sobre a própria pessoa, inclusive os marcados `SHARED` (D40).
+- O travamento da daily é verificado no servidor em toda action do portal. O aviso no cliente é conveniência (D43).
+- O portal não exibe taxa de cumprimento, percentual nem agregado de desempenho, nem da própria pessoa.
 
 ## Contrato de importação de métricas
 
@@ -268,7 +296,7 @@ Nada disto está implementado no MVP (D5, P17): não há importador, rota ou int
 
 | # | Decisão | Motivo |
 |---|---|---|
-| D1 | `TeamMember` ≠ `User`. Os 9 analistas **não são usuários** do sistema | Eles não acessam. Modelar como usuário criaria autorização, convites e sessões inúteis |
+| D1 | `TeamMember` ≠ `User`. A pessoa existe sem login; quando tem acesso, é um `User` anexado por `TeamMember.userId`, com nível `MEMBER`, restrito ao portal do colaborador (D37, D38). Revista em 20/10/2026 com o portal do colaborador (P25) | Cadastro e histórico não dependem de conta. Modelar a pessoa como usuário misturaria quem é registrado com quem registra; o login é anexo, não identidade |
 | D2 | `TimelineEvent` é **índice denormalizado**, não fonte de verdade | Registros vivem em tabelas concretas (`Feedback`, `OneOnOne`...). A timeline é uma linha-espelho escrita na mesma transação. Evita `jsonb` genérico e evita `UNION` de 8 tabelas a cada abertura de perfil |
 | D3 | `Seniority` é **tabela**, não enum | Vai ser necessário "Especialista" ou "Tech Lead" depois. Enum em Postgres é doloroso de alterar |
 | D4 | `visibility: PRIVATE \| SHARED` existe desde a primeira migration | O gestor superior tem acesso de leitura. Sem isso o autor se autocensura e o produto perde a função |
@@ -304,6 +332,15 @@ Nada disto está implementado no MVP (D5, P17): não há importador, rota ou int
 | D34 | `PRIVATE` é visível a quem tem `level = MANAGER` naquele time. `VIEWER` nunca lê `PRIVATE` | Mantém o comportamento atual e já funciona quando um time tiver dois gestores |
 | D35 | Não existe visão consolidada entre times | É a tela que mais convida dado a se misturar, e não foi pedida |
 | D36 | Em tabela escopada por time, `teamId` é a única chave de escopo em query; `organizationId` nunca escopa sozinho | Duas chaves de escopo convidam a usar a errada |
+| D37 | `TeamMember.userId` é opcional e único: o login é anexo à pessoa, nunca a identidade dela | A pessoa precisa existir, com histórico, antes de ter conta e depois de perdê-la. Desativar o acesso não pode apagar nem mudar o prontuário |
+| D38 | O portal do colaborador é uma allowlist em namespace próprio (`member-portal`), que não importa nada das queries e actions do gestor; nunca um filtro aplicado sobre elas | Filtro esquecido numa query do gestor vaza registro gerencial. Namespace separado falha fechado: uma query nova do lado do gestor nunca fica alcançável pelo colaborador |
+| D39 | `AgreementSelfReport` nunca é sobrescrito. O `AgreementCheckin` guarda o valor final do gestor, o `selfReportId` e se divergiu | O relato da pessoa e a decisão do gestor são fatos diferentes. Sobrescrever o relato apagaria a divergência, que é informação |
+| D40 | O portal nunca toca os modelos gerenciais (Note, OneOnOne, Feedback, WatchItem, TimelineEvent, PDI, métricas, validações…), inclusive os sobre a própria pessoa e os `SHARED` | `SHARED` quer dizer compartilhado entre gestores, não com o colaborador. Registro gerencial lido pela pessoa traz de volta a autocensura que o D4 combate |
+| D41 | `Daily.status = DRAFT` só marca travamento; a daily continua salvando em transação única. DRAFT aberta há mais de 4 horas deixa de travar, derivado em query | Daily esquecida aberta não pode travar o time inteiro, e travamento persistido ficaria obsoleto (D9) |
+| D42 | Proposta do colaborador é tabela própria (`MemberProposal`), só vira `Agreement` no aceite do gestor; descartada fica `DISCARDED`, nunca apagada | Proposta não é compromisso até o gestor aceitar. Apagar a descartada esconderia o que a pessoa levantou e o que foi recusado |
+| D43 | O travamento da daily é verificado no servidor em toda action do portal; o aviso no cliente é conveniência | A tela do celular pode estar aberta desde antes da daily começar. Só o servidor sabe o estado atual |
+| D44 | Quando o relato da pessoa difere do registrado na daily, o portal mostra os dois lado a lado ("você relatou" / "registrado na daily"), sem rótulo de erro, ícone de alerta ou a palavra divergência. Quando coincidem, só o registrado | A diferença é informação para conversa, não acusação. Sem ruído quando não há o que dizer |
+| D45 | O grupo `(member)` é mobile-first, projetado a 390px primeiro | O colaborador relata do celular antes da daily. É o único lugar do sistema onde o celular manda |
 
 Qualquer sessão de Claude Code que considerar revisar uma dessas decisões deve parar e perguntar ao usuário antes de agir — não decidir sozinha, mesmo que pareça uma melhoria técnica.
 
@@ -555,6 +592,13 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - O próximo passo entra na observação ATIVA do caso (a ligada ao combinado feito ou a que nasceu dele) — já entrava; agora o formulário diz isso em todo time ("Entra na observação …") e a revisão automática registra "o que mudou → Novo combinado: título". O caso por trás passou a ser lido para todo time; a linha "Em observação" abaixo do título da revisão continua só com o módulo do porquê.
 - Painel da observação: combinado encerrado (feito ou cancelado) aparece riscado, legível e clicável.
 
+**P25 — Identidade do colaborador e portal somente leitura (20/10/2026)**
+- Migration aditiva `20261020120000_member_portal`: `TeamMember.userId` (opcional, único), `TeamAccessLevel.MEMBER`, `User.isActive`, `Daily.status` (DRAFT | CLOSED, padrão CLOSED) + `openedAt`/`openedByUserId`, `@@unique([teamId, date])` em Daily (a regra do C10 no banco; conferido sem duplicatas), `AgreementOrigin.MEMBER`, `AgreementCheckin.selfReportId`/`divergedFromSelfReport`, tabelas `AgreementSelfReport` (índice único parcial: um relato pendente por combinado) e `MemberProposal`, vazias até o P26. Toda daily nasce CLOSED.
+- Acesso: `src/server/member-scope.ts` (`MemberContext`, `memberContextFor`, `requireMemberContext`, `memberOwnScope`) — sessão, `isActive`, TeamAccess MEMBER e pessoa ATIVA ligada à conta, a cada requisição. `teamContextFor` só aceita MANAGER/VIEWER e conta ativa; `teamScope`/`teamSql` lançam com um contexto de colaborador. `requireTeamContext` manda quem é só colaborador para /me. Allowlist em dois níveis em `credentials.ts`, `access.ts` e `member-scope.ts` (`src/server/account-tier.ts`); login de conta inativa é recusado. A sessão leva `memberOnly`; o middleware roteia pela regra pura `src/lib/portal-routing.ts` (só colaborador → /me; gestor em /me → /, salvo com a superfície do colaborador escolhida em `selectTeam`, cookie `active-surface`).
+- Portal: grupo `(member)` com layout próprio, `/me` mobile-first (token `max-w-reading`, 640px): cabeçalho com nome, data e Sair; "Seus combinados" (prazo graduado, "reagendado Nx" a partir de 3, relato pendente "você já relatou"); "Registrado na última daily" (desfecho, impeditivo, novo prazo; relato e registro lado a lado quando diferem — D44; combinados novos; propostas com a resposta do gestor); "Histórico" recolhido. Leituras só em `src/server/queries/member-portal.ts` (select explícito; nenhuma taxa). Componentes em `src/components/member-portal/portal-zones.tsx`, no /ui-lab.
+- Provisionamento: `pnpm member:invite` (`listInvitableMembers`, `inviteMember`) e `pnpm member:deactivate` (`deactivateMemberAccount`) em `src/server/provisioning.ts`, auditados.
+- Testes: dois estruturais novos em `tests/isolation.test.ts` (imports do portal só de db/member-scope/lib/Prisma; nenhum nome de modelo proibido nem relação que os alcance, nem em comentário; select explícito), passando; e o bloco de banco com os dez critérios do P25 + allowlist em dois níveis + invite/deactivate, escrito e ainda NÃO executado (banco de teste expirado).
+
 ## Backlog de curto prazo
 
 As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora, por ordem de valor:
@@ -589,6 +633,8 @@ As 18 fases do MVP estão entregues (tabela em PROGRESS.md). O que ficou de fora
 - P22 — Multi-tenancy no banco e no acesso (D29–D36). _(Entregue e ensaiado no banco de teste; migrations aguardam aplicação em produção.)_
 - P23 — Seleção e troca de time. _(Entregue.)_
 - P24 — Provisionamento de time. _(Entregue. Treinamento e Hardware criados em produção em 09/10/2026.)_
+- P25 — Identidade do colaborador e portal somente leitura: `TeamMember.userId`, nível `MEMBER`, `User.isActive`, `Daily.status` (sempre CLOSED nesta fase), tabelas `AgreementSelfReport` e `MemberProposal` criadas vazias, `requireMemberContext`, `/me` mobile-first (combinados abertos, registrado na última daily, histórico), `pnpm member:invite` / `member:deactivate`, allowlist em dois níveis, suíte de isolamento estendida com os dois testes estruturais do portal. _(Código entregue; a parte de banco da suíte aguarda o banco de teste — BLOCKERS.md.)_
+- P26 — Autorrelato, propostas e travamento: o colaborador relata os próprios combinados e propõe novos antes da daily; captura no "Registrar nova daily"; checkin com `selfReportId` e `divergedFromSelfReport`; aceite e descarte de propostas; travamento DRAFT verificado no servidor. _(Pendente.)_
 
 ## Protocolo de execução autônoma
 

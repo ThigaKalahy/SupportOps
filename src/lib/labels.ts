@@ -103,6 +103,39 @@ export const labels = {
     moduleDisabled: "Este módulo não está ligado neste time.",
     adminOnly: "Só a administração da plataforma altera times, acessos e módulos.",
   },
+  /** Portal do colaborador (P25): /me, somente leitura nesta fase. Sem taxa, sem placar (D7). */
+  memberPortal: {
+    title: "Seus combinados",
+    signOut: "Sair",
+    noMember: "Seu acesso ao portal não está ativo. Fale com o seu gestor.",
+    noAccessTitle: "Sem acesso ao portal",
+    open: {
+      title: "Seus combinados",
+      empty: "Nenhum combinado em aberto.",
+      rescheduled: "reagendado {count}x",
+      reported: "Você já relatou: {outcome}",
+      suggestedDue: "prazo sugerido {date}",
+    },
+    last: {
+      title: "Registrado na última daily",
+      subtitle: "Daily de {date}",
+      none: "Nenhuma daily registrada ainda.",
+      nothingForYou: "Nenhum combinado seu foi revisado nesta daily.",
+      newDue: "novo prazo {date}",
+      youReported: "você relatou: {outcome}",
+      registered: "registrado na daily: {outcome}",
+      created: "Novos combinados para você",
+      proposals: "Suas propostas",
+      reply: "Resposta: {text}",
+      due: "prazo {date}",
+    },
+    history: {
+      title: "Histórico",
+      toggle: "Ver os últimos combinados encerrados",
+      empty: "Nenhum combinado encerrado ainda.",
+      completedAt: "concluído em {date}",
+    },
+  },
   /** Férias (C4): período com início e fim; "de férias" é derivado da data. */
   vacations: {
     title: "Férias",
@@ -147,7 +180,7 @@ export const labels = {
     selectLead: "Escolha o time que você quer acompanhar.",
     listLabel: "Times com acesso",
     keyboardHint: "Setas para percorrer, Enter para abrir.",
-    level: { MANAGER: "gerencia", VIEWER: "somente leitura" },
+    level: { MANAGER: "gerencia", VIEWER: "somente leitura", MEMBER: "colaborador" },
     members: { one: "{count} pessoa", other: "{count} pessoas" },
     noTeamsTitle: "Nenhum time liberado",
     switcherLabel: "Time ativo",
@@ -1819,7 +1852,11 @@ export const labels = {
       user: "Usuário",
       userPlaceholder: "Escolha o usuário",
       levelField: "Nível",
-      levelHelp: { MANAGER: "Registra e lê tudo, inclusive o privado.", VIEWER: "Só lê, e só o que foi compartilhado." },
+      levelHelp: {
+        MANAGER: "Registra e lê tudo, inclusive o privado.",
+        VIEWER: "Só lê, e só o que foi compartilhado.",
+        MEMBER: "Colaborador: só o portal, só os próprios combinados. Criado por pnpm member:invite.",
+      },
       changeLevel: "Mudar para {level}",
       revoke: "Revogar acesso",
       revokeTitle: "Revogar o acesso de {name}?",
@@ -2291,6 +2328,7 @@ export const enumLabels = {
   teamAccessLevel: {
     MANAGER: "Gestor",
     VIEWER: "Leitura",
+    MEMBER: "Colaborador",
   },
   visibility: {
     PRIVATE: "Privado",
@@ -2312,6 +2350,7 @@ export const enumLabels = {
     INCIDENT: "Ocorrência",
     MANAGER: "Gestor",
     OTHER: "Outra",
+    MEMBER: "Proposta do colaborador",
   },
   agreementPriority: {
     LOW: "Baixa",
@@ -2322,6 +2361,12 @@ export const enumLabels = {
     DONE: "Feito",
     PARTIAL: "Parcial",
     NOT_DONE: "Não feito",
+  },
+  /** Proposta do colaborador (P25/P26). */
+  proposalStatus: {
+    PENDING: "Aguardando o gestor",
+    ACCEPTED: "Aceita",
+    DISCARDED: "Descartada",
   },
   metricDirection: {
     HIGHER_IS_BETTER: "Maior é melhor",

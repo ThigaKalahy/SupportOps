@@ -1,4 +1,5 @@
 
+import { accountTier } from "./account-tier.ts"
 import { isAllowedEmail, normalizeEmail } from "./allowlist.ts"
 import { defaultOrganizationId, writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
@@ -8,7 +9,10 @@ import { comparePassword, DUMMY_HASH } from "./password.ts"
  * Verificação de e-mail + senha (provider Credentials do Auth.js).
  *
  * Regras (CLAUDE.md, segurança):
- * 1. E-mail fora de ALLOWED_EMAILS é recusado antes de consultar o banco.
+ * 1. Allowlist em dois níveis (P25): conta com `isPlatformAdmin` ou nível
+ *    MANAGER/VIEWER só entra com o e-mail em ALLOWED_EMAILS; conta cujo ÚNICO nível
+ *    é MEMBER dispensa a lista. Fora dela e sem ser só colaboradora: recusado.
+ *    Conta com `isActive` falso nunca entra.
  * 2. bcrypt.compare roda SEMPRE — inclusive para e-mail inexistente, fora da
  *    allowlist ou conta bloqueada — contra um hash descartável. Retorno
  *    antecipado vazaria, por tempo de resposta, quais contas existem.
@@ -26,9 +30,11 @@ export interface AuthenticatedUser {
   email: string
   name: string
   organizationId: string
+  /** Só colaborador (P25): vai para o portal e dispensa ALLOWED_EMAILS. */
+  memberOnly: boolean
 }
 
-type FailureReason = "not_allowlisted" | "unknown_email" | "no_password" | "locked" | "wrong_password"
+type FailureReason = "not_allowlisted" | "unknown_email" | "no_password" | "inactive" | "locked" | "wrong_password"
 
 export interface CredentialDeps {
   compare: (password: string, hash: string) => Promise<boolean>
@@ -58,12 +64,13 @@ export async function verifyCredentials(
     return null
   }
 
-  if (!isAllowedEmail(email)) {
+  const user = await db.user.findUnique({ where: { email } })
+  const tier = user ? await accountTier(user.id, user.isPlatformAdmin) : "none"
+  if (!isAllowedEmail(email) && tier !== "member") {
     await deps.compare(password, DUMMY_HASH)
     return fail("not_allowlisted")
   }
 
-  const user = await db.user.findUnique({ where: { email } })
   if (!user) {
     await deps.compare(password, DUMMY_HASH)
     return fail("unknown_email")
@@ -71,6 +78,10 @@ export async function verifyCredentials(
   if (!user.passwordHash) {
     await deps.compare(password, DUMMY_HASH)
     return fail("no_password", user)
+  }
+  if (!user.isActive) {
+    await deps.compare(password, user.passwordHash)
+    return fail("inactive", user)
   }
 
   const stillLocked = user.lockedUntil !== null && user.lockedUntil > now
@@ -97,5 +108,5 @@ export async function verifyCredentials(
     { action: "auth.login.success", entity: "User", entityId: user.id, after: { email } },
     { organizationId: user.organizationId, userId: user.id },
   )
-  return { id: user.id, email: user.email, name: user.name, organizationId: user.organizationId }
+  return { id: user.id, email: user.email, name: user.name, organizationId: user.organizationId, memberOnly: tier === "member" }
 }
