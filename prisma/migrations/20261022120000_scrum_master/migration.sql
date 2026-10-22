@@ -1,7 +1,5 @@
 -- C19: scrum master da daily (D46). Aditiva: tabela e enum novos, nada existente muda (D23).
 
-warn The configuration property `package.json#prisma` is deprecated and will be removed in Prisma 7. Please migrate to a Prisma config file (e.g., `prisma.config.ts`).
-For more information, see: https://pris.ly/prisma-config
 
 -- CreateEnum
 CREATE TYPE "ScrumMasterDrawMethod" AS ENUM ('ROULETTE', 'AUTO');
