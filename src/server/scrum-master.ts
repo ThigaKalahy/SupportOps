@@ -36,7 +36,13 @@ type Actor = { teamId: string; organizationId: string; userId: string | null }
  * Sorteia o scrum master do dia, ou devolve o já sorteado. Núcleo comum ao gestor, ao
  * colaborador na roleta (pela ponte src/server/member-daily.ts) e ao sorteio automático.
  */
-export async function drawScrumMasterFor(actor: Actor, method: ScrumMasterDrawMethod, today: Date = todayBusinessDate()): Promise<ScrumMasterDrawResult> {
+export async function drawScrumMasterFor(
+  actor: Actor,
+  method: ScrumMasterDrawMethod,
+  today: Date = todayBusinessDate(),
+  /** TESTE TEMPORÁRIO (23/10/2026, pedido do usuário): força o sorteado pelo nome. Sai junto com SCRUM_MASTER_TEST. */
+  rigged?: string,
+): Promise<ScrumMasterDrawResult> {
   const { teamId } = actor
   const current = await db.scrumMasterDraw.findFirst({
     where: { teamId, date: today, skippedAt: null },
@@ -67,7 +73,7 @@ export async function drawScrumMasterFor(actor: Actor, method: ScrumMasterDrawMe
     round++
     candidates = eligible
   }
-  const winner = candidates[randomInt(candidates.length)]!
+  const winner = (rigged && eligible.find((p) => p.preferredName === rigged)) || candidates[randomInt(candidates.length)]!
 
   try {
     await db.$transaction(async (tx) => {
@@ -91,8 +97,17 @@ export async function drawScrumMasterFor(actor: Actor, method: ScrumMasterDrawMe
 /** Gestor gira a roleta (ou sorteia, sem o módulo) a qualquer hora, em qualquer dia. */
 export async function drawScrumMasterRecord(ctx: TeamContext): Promise<ScrumMasterDrawResult> {
   requireManager(ctx)
+  // TESTE TEMPORÁRIO (23/10/2026, pedido do usuário; remover depois do teste): com a marca
+  // SCRUM_MASTER_TEST no time, a roleta gira quantas vezes quiser e sempre cai no Rodolfo.
+  if (ctx.modules.has(SCRUM_MASTER_TEST)) {
+    await db.scrumMasterDraw.deleteMany({ where: { teamId: ctx.teamId, date: todayBusinessDate() } })
+    return drawScrumMasterFor(ctx, "ROULETTE", todayBusinessDate(), "Rodolfo")
+  }
   return drawScrumMasterFor(ctx, hasModule(ctx, MODULES.DAILY_ROULETTE) ? "ROULETTE" : "AUTO")
 }
+
+/** TESTE TEMPORÁRIO (23/10/2026): marca de teste da roleta, gravada só por script e removida depois. */
+export const SCRUM_MASTER_TEST = "SCRUM_MASTER_TEST"
 
 /**
  * "Sortear de novo" (só gestor): o sorteado não pode conduzir hoje. O sorteio dele fica

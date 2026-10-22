@@ -787,12 +787,22 @@ export async function getScrumMasterToday(ctx: TeamContext, now: Date = new Date
   return {
     // Sem login no portal (ou gestor), a daily do sorteado é registrada pela tela do gestor.
     current: current
-      ? { memberId: current.memberId, name: current.member.preferredName, round: current.round, method: current.method, hasPortal: current.member.userId !== null }
+      ? {
+          memberId: current.memberId,
+          name: current.member.preferredName,
+          round: current.round,
+          method: current.method,
+          hasPortal: current.member.userId !== null,
+          /** Quem está logado é o sorteado (a pessoa ligada à conta). */
+          isMe: current.member.userId === ctx.userId,
+        }
       : null,
     skipped: draws.filter((d) => d.skippedAt !== null).map((d) => d.member.preferredName),
     round: current ? { done: doneInRound, total: eligible } : null,
     roulette: hasModule(ctx, MODULES.DAILY_ROULETTE),
     windowOpen: rouletteWindowOpen(now),
+    /** TESTE TEMPORÁRIO (23/10/2026): roleta sem trava, para girar várias vezes. */
+    testMode: ctx.modules.has("SCRUM_MASTER_TEST"),
   }
 }
 

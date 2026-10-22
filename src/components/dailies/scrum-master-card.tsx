@@ -21,7 +21,7 @@ const S = labels.scrumMaster
 export function ScrumMasterCard({ data, canWrite }: { data: ScrumMasterToday; canWrite: boolean }) {
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
-  const [spin, setSpin] = React.useState<{ name: string; candidates: string[] } | null>(null)
+  const [spin, setSpin] = React.useState<{ name: string; candidates: string[]; n: number } | null>(null)
   const [confirming, setConfirming] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const current = spin?.name ?? data.current?.name ?? null
@@ -32,19 +32,22 @@ export function ScrumMasterCard({ data, canWrite }: { data: ScrumMasterToday; ca
     startTransition(async () => {
       const result = await action()
       if (!result.ok) return setError(result.error)
-      setSpin({ name: result.name, candidates: result.candidates })
+      // `n` remonta a roleta: girar de novo e cair no mesmo nome também anima.
+      setSpin((last) => ({ name: result.name, candidates: result.candidates, n: (last?.n ?? 0) + 1 }))
     })
   }
 
   return (
     <Section title={S.title}>
       <Roulette
+        key={spin?.n ?? 0}
         names={spin?.candidates ?? []}
         result={current}
         animate={spin !== null}
         idle={data.roulette ? S.rouletteLabel : S.none}
         onSettled={() => router.refresh()}
       />
+      {data.current?.isMe && (!spin || spin.name === data.current.name) ? <p className="text-sm font-semibold text-ink">{S.youConduct}</p> : null}
       <div className="flex flex-col gap-1 text-xs text-ink-secondary">
         {data.current && data.round ? (
           <p>{fill(S.round, { round: data.current.round, done: data.round.done, total: data.round.total })}</p>
@@ -60,7 +63,7 @@ export function ScrumMasterCard({ data, canWrite }: { data: ScrumMasterToday; ca
       ) : null}
       {canWrite ? (
         <div className="flex flex-wrap gap-2">
-          {current ? (
+          {current && !data.testMode ? (
             <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={() => setConfirming(true)}>
               {S.redraw}
             </Button>

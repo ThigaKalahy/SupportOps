@@ -795,7 +795,7 @@ export const labels = {
     redrawConfirm: "Sortear outra pessoa",
     keep: "Manter {name}",
     result: "{name} conduz a daily hoje",
-    youConduct: "Você conduz a daily hoje.",
+    youConduct: "Você é o scrum master de hoje.",
     conduct: "Conduzir a daily",
     round: "Rodada {round}: {done} de {total} já conduziram",
     skipped: "Não pôde hoje: {names}",
