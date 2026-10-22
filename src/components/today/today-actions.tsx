@@ -19,7 +19,7 @@ type Person = { id: string; preferredName: string }
 type Form = "oneOnOne" | "feedback"
 
 /**
- * Barra de ações da home: registrar daily, novo combinado, validar
+ * Barra de ações da home: registrar daily, prévia da daily (C18), novo combinado, validar
  * prioridade (só com o módulo ligado — D32), registrar 1:1 e dar feedback. Texto curto, sem ícone. 1:1 e
  * feedback perguntam primeiro "com quem?" e abrem o mesmo formulário do perfil.
  */
@@ -32,6 +32,10 @@ export function TodayActions({ members, validation }: { members: Person[]; /** M
     <nav aria-label={labels.today.actionsLabel} className="flex flex-wrap items-center gap-x-1 gap-y-1">
       <Button asChild variant="secondary" size="sm">
         <Link href="/dailies/new">{A.daily}</Link>
+      </Button>
+      {/* C18: a prévia do movimento do time antes da daily. */}
+      <Button asChild variant="ghost" size="sm">
+        <Link href="/agreements/daily-preview">{labels.dailyPreview.open}</Link>
       </Button>
       {quick ? (
         <Button variant="ghost" size="sm" onClick={() => quick.open({})}>
