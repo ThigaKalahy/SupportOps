@@ -4,6 +4,7 @@ import { businessRangeInstants, todayBusinessDate } from "../../lib/dates.ts"
 import { isLockActive } from "../../lib/daily-lock.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { MODULES } from "../../lib/modules.ts"
+import { rouletteWindowOpen } from "../../lib/scrum-master.ts"
 import { db } from "../db.ts"
 import { listActiveCentrals } from "./centrals.ts"
 import { activeWatchByLink } from "./watch.ts"
@@ -763,3 +764,36 @@ export async function getDailyPreview(ctx: TeamContext, today: Date = todayBusin
 }
 
 export type DailyPreview = Awaited<ReturnType<typeof getDailyPreview>>
+
+/**
+ * C19 — scrum master de hoje (D46) para o gestor: quem foi sorteado, quem foi pulado hoje
+ * (faltou), a rodada e quantos já conduziram nela. Sem sorteio: null.
+ */
+export async function getScrumMasterToday(ctx: TeamContext, now: Date = new Date()) {
+  const scope = teamScope(ctx)
+  const today = todayBusinessDate(now)
+  const draws = await db.scrumMasterDraw.findMany({
+    where: { ...scope, date: today },
+    orderBy: { createdAt: "asc" },
+    select: { memberId: true, round: true, method: true, skippedAt: true, member: { select: { preferredName: true, userId: true } } },
+  })
+  const current = draws.find((d) => d.skippedAt === null) ?? null
+  const [doneInRound, eligible] = current
+    ? await Promise.all([
+        db.scrumMasterDraw.count({ where: { ...scope, round: current.round, skippedAt: null } }),
+        db.teamMember.count({ where: { ...scope, status: "ACTIVE", deletedAt: null } }),
+      ])
+    : [0, 0]
+  return {
+    // Sem login no portal (ou gestor), a daily do sorteado é registrada pela tela do gestor.
+    current: current
+      ? { memberId: current.memberId, name: current.member.preferredName, round: current.round, method: current.method, hasPortal: current.member.userId !== null }
+      : null,
+    skipped: draws.filter((d) => d.skippedAt !== null).map((d) => d.member.preferredName),
+    round: current ? { done: doneInRound, total: eligible } : null,
+    roulette: hasModule(ctx, MODULES.DAILY_ROULETTE),
+    windowOpen: rouletteWindowOpen(now),
+  }
+}
+
+export type ScrumMasterToday = Awaited<ReturnType<typeof getScrumMasterToday>>

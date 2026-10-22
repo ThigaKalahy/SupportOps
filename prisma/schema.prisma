@@ -285,6 +285,7 @@ model Team {
   timelineEvents          TimelineEvent[]
   developmentPlans        DevelopmentPlan[]
   memberChanges           MemberChange[]
+  scrumMasterDraws        ScrumMasterDraw[]
   mentorshipLinks         MentorshipLink[]
   memberCompetencies      MemberCompetency[]
   agreementCheckins       AgreementCheckin[]
@@ -478,8 +479,9 @@ model TeamMember {
   transfersIn  AgreementTransfer[] @relation("TransferTo")
   vacations    MemberVacation[]
 
-  selfReports AgreementSelfReport[]
-  proposals   MemberProposal[]
+  selfReports      AgreementSelfReport[]
+  proposals        MemberProposal[]
+  scrumMasterDraws ScrumMasterDraw[]
 
   @@index([teamId, status])
   @@index([seniorityId])
@@ -1616,4 +1618,35 @@ model MemberVacation {
 
   @@index([teamId, memberId, startDate])
   @@index([teamId, endDate])
+}
+
+/// C19: scrum master da daily — quem conduz e registra a daily do dia (D46). Sorteado em
+/// rodada sem repetição: cada pessoa ativa conduz uma vez por rodada (`round`); só quando
+/// todos conduziram começa a próxima. Sorteio pulado (`skippedAt`: a pessoa faltou) não
+/// conta na rodada — ela continua devendo a vez. Um sorteio válido por time e data
+/// (índice único parcial na migration). `drawnByUserId` nulo = sorteio automático.
+model ScrumMasterDraw {
+  id              String                @id @default(cuid())
+  teamId          String
+  date            DateTime              @db.Date
+  memberId        String
+  round           Int
+  method          ScrumMasterDrawMethod
+  drawnByUserId   String?
+  skippedAt       DateTime?             @db.Timestamptz
+  skippedByUserId String?
+  createdAt       DateTime              @default(now()) @db.Timestamptz
+
+  team   Team       @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  member TeamMember @relation(fields: [memberId], references: [id])
+
+  @@index([teamId, date])
+  @@index([teamId, round])
+}
+
+enum ScrumMasterDrawMethod {
+  /// Roleta girada por alguém (módulo DAILY_ROULETTE).
+  ROULETTE
+  /// Escolha automática, sem roleta (times sem o módulo).
+  AUTO
 }

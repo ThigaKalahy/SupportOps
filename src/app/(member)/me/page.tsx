@@ -4,11 +4,13 @@ import { redirect } from "next/navigation"
 import { logoutAction } from "@/actions/auth"
 import { ChangePasswordButton } from "@/components/member-portal/change-password-dialog"
 import { PortalLive } from "@/components/member-portal/portal-live"
+import { ScrumMasterPortal } from "@/components/member-portal/scrum-master-portal"
 import { HistoryZone, LastDailyZone } from "@/components/member-portal/portal-zones"
 import { Button } from "@/components/ui/button"
 import { formatDateLong, todayBusinessDate } from "@/lib/dates"
 import { labels } from "@/lib/labels"
 import { getCurrentUser } from "@/server/access"
+import { hasChosenOwnPassword } from "@/server/account"
 import { MemberAccessError, requireMemberContext, type MemberContext } from "@/server/member-scope"
 import {
   getMyAgreementHistory,
@@ -17,8 +19,10 @@ import {
   getMyLastDailyRecord,
   getMyOpenAgreements,
   getMyPortalState,
+  getMyScrumMaster,
 } from "@/server/queries/member-portal"
 import { accessibleTeamIds } from "@/server/scope"
+import { ensureAutoScrumMaster } from "@/server/scrum-master"
 
 const L = labels.memberPortal
 
@@ -53,13 +57,21 @@ export default async function MemberHomePage() {
     )
   }
 
-  const [open, last, history, reasons, centrals, state] = await Promise.all([
+  // C19: sem a roleta, o scrum master do dia útil é escolhido no primeiro acesso.
+  let scrumMaster = await getMyScrumMaster(ctx)
+  if (!scrumMaster.roulette && !scrumMaster.name) {
+    await ensureAutoScrumMaster({ teamId: ctx.teamId, organizationId: ctx.organizationId, roulette: false })
+    scrumMaster = await getMyScrumMaster(ctx)
+  }
+
+  const [open, last, history, reasons, centrals, state, ownPassword] = await Promise.all([
     getMyOpenAgreements(ctx),
     getMyLastDailyRecord(ctx),
     getMyAgreementHistory(ctx, 20),
     getMyBlockerReasons(ctx),
     getMyCentrals(ctx),
     getMyPortalState(ctx),
+    hasChosenOwnPassword(ctx.userId),
   ])
 
   // P26: a parte viva (relato, propostas, travamento) recomeça quando chega uma daily nova.
@@ -70,7 +82,12 @@ export default async function MemberHomePage() {
       agreements={open}
       reasons={reasons}
       centrals={centrals}
-      header={<PortalHeader name={ctx.preferredName} />}
+      header={
+        <>
+          <PortalHeader name={ctx.preferredName} ownPassword={ownPassword} />
+          <ScrumMasterPortal data={scrumMaster} />
+        </>
+      }
     >
       <LastDailyZone record={last} />
       <HistoryZone agreements={history} />
@@ -79,7 +96,7 @@ export default async function MemberHomePage() {
 }
 
 /** Cabeçalho mínimo: nome, data de hoje, alterar senha (C18) e sair. Alvo de toque de 44px. */
-function PortalHeader({ name }: { name: string }) {
+function PortalHeader({ name, ownPassword = false }: { name: string; ownPassword?: boolean }) {
   return (
     <header className="flex items-start justify-between gap-3 border-b border-line pb-4">
       <div className="min-w-0">
@@ -87,7 +104,7 @@ function PortalHeader({ name }: { name: string }) {
         <p className="text-sm text-ink-secondary first-letter:uppercase">{formatDateLong(todayBusinessDate(), "business")}</p>
       </div>
       <div className="flex min-w-0 flex-wrap justify-end gap-2">
-        <ChangePasswordButton />
+        <ChangePasswordButton chosen={ownPassword} />
         <form action={logoutAction}>
           <Button type="submit" variant="secondary" className="min-h-11">
             {L.signOut}

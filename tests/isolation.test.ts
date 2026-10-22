@@ -130,6 +130,7 @@ import {
   updateWatchItemRecord,
 } from "../src/server/watch.ts"
 import { cancelVacationRecord, createVacationRecord } from "../src/server/vacations.ts"
+import { drawScrumMasterRecord, skipScrumMasterRecord } from "../src/server/scrum-master.ts"
 
 const SRC = join(import.meta.dirname, "..", "src")
 
@@ -167,6 +168,8 @@ const SCOPED_MODELS = [
   "agreementTransfer", "memberVacation",
   // P25/P26
   "agreementSelfReport", "memberProposal",
+  // C19
+  "scrumMasterDraw",
 ]
 const GUARDED_METHODS = ["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "update", "updateMany", "delete", "deleteMany"]
 const CALL = new RegExp(`\\b(?:db|tx|dbIncludingDeleted)\\.(${SCOPED_MODELS.join("|")})\\.(${GUARDED_METHODS.join("|")})\\(`, "g")
@@ -348,7 +351,7 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
 /** Arquivos do portal: allowlist de imports e nenhum nome de modelo gerencial. */
 const PORTAL_FILES = ["server/queries/member-portal.ts", "server/member-portal.ts", "actions/member-portal.ts"]
 /** O que o portal pode importar: o banco, o contexto do colaborador, os próprios arquivos e src/lib. */
-const PORTAL_ALLOWED = ["server/db", "server/member-scope", "server/member-portal", "server/queries/member-portal", "server/member-agreements"]
+const PORTAL_ALLOWED = ["server/db", "server/member-scope", "server/member-portal", "server/queries/member-portal", "server/member-agreements", "server/member-daily"]
 
 /** Modelos que o portal nunca toca (D40) — nem em comentário. */
 const PORTAL_FORBIDDEN_MODELS = [
@@ -451,6 +454,36 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     assert.equal(code.match(/agreement\.create\(/g)?.length, 1)
     assert.ok(code.indexOf("getDailyLock(") > -1 && code.indexOf("getDailyLock(") < code.indexOf("agreement.create("), "travamento antes de gravar")
     assert.ok(/memberId:\s*ctx\.memberId/.test(code), "sempre o combinado da própria pessoa")
+  })
+
+  test("C19/D46: a ponte do scrum master confere o sorteio antes de tudo e só lê o que a daily precisa", () => {
+    const source = readFileSync(join(SRC, "server/member-daily.ts"), "utf8")
+    const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!)
+    const allowed = (spec: string) =>
+      spec === "@prisma/client" || spec.startsWith("../lib/") || ["./dailies.ts", "./db.ts", "./member-scope.ts", "./scope.ts", "./scrum-master.ts"].includes(spec)
+    assert.deepEqual(imports.filter((spec) => !allowed(spec)), [], "só o núcleo da daily, o sorteio, banco, contexto e src/lib")
+    // Do escopo do gestor e do contexto do colaborador, só os TIPOS.
+    for (const m of source.matchAll(/^import (.*) from "\.\/(scope|member-scope)\.ts"/gm)) assert.match(m[1]!, /^type /)
+    const code = stripComments(source)
+    // Leituras: só o que a daily do scrum master mostra — nada gerencial (D40).
+    const reads = [...code.matchAll(/(?:db|tx)\.(\w+)\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/g)]
+    const models = ["scrumMasterDraw", "daily", "teamModule", "agreement", "teamMember", "blockerReason", "central"]
+    assert.deepEqual([...new Set(reads.map((m) => m[1]))].filter((model) => !models.includes(model!)), [])
+    for (const key of ["description", "managerNote", "summary", "decisions", "watchItem", "watchItemId", "note"]) {
+      assert.ok(!new RegExp(`\\b${key}\\s*:\\s*true`).test(code), `não lê ${key}`)
+    }
+    // Toda escrita confere o sorteio de hoje ANTES de montar o contexto de registro.
+    for (const m of code.matchAll(/export async function (openConductDaily|saveConductDaily|discardConductDaily)\(/g)) {
+      const open = code.indexOf("{", m.index! + m[0].length)
+      const next = code.indexOf("\nexport ", open)
+      const body = code.slice(open, next === -1 ? undefined : next)
+      assert.ok(body.includes("isConductor(") && body.indexOf("isConductor(") < body.indexOf("conductorContext("), `${m[1]}: confere o sorteio antes`)
+    }
+    // Sem nota, observação, substituição nem próximo passo no pedido entregue ao núcleo.
+    assert.match(code, /note: "", isBlocker: false/)
+    assert.match(code, /watchIds: \[\]/)
+    assert.match(code, /summary: "",\s*decisions: ""/)
+    assert.match(code, /action: "reschedule"/)
   })
 
   test("toda leitura de combinado no portal usa select explícito", () => {
@@ -685,6 +718,7 @@ const QUERIES: Record<string, Invoke> = {
   getDailyForm: (c) => dailies.getDailyForm(c),
   getDailyOpening: (c) => dailies.getDailyOpening(c, day(0)),
   getDailyPreview: (c) => dailies.getDailyPreview(c, day(0)),
+  getScrumMasterToday: (c) => dailies.getScrumMasterToday(c),
   getDailyDetail: async (c, own, other) => [await dailies.getDailyDetail(c, own.daily), await dailies.getDailyDetail(c, other.daily)],
   listDailies: (c) => dailies.listDailies(c),
   // dev-returns.ts
@@ -816,6 +850,8 @@ const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unk
   importCentralsRecord: (c) => importCentralsRecord(c, { text: "x" }),
   createDailyRecord: (c) => createDailyRecord(c, {}),
   updateDailyRecord: (c, o) => updateDailyRecord(c, { id: o.daily }),
+  drawScrumMasterRecord: (c) => drawScrumMasterRecord(c),
+  skipScrumMasterRecord: (c) => skipScrumMasterRecord(c),
   // P26: abrir na data que já tem daily é recusado (sem efeito); assumir/descartar só DRAFT do próprio time.
   openDailyRecord: (c) => openDailyRecord(c, { date: formatDate(day(-1), "business") }),
   takeOverDailyRecord: (c, o) => takeOverDailyRecord(c, { id: o.daily }),
@@ -1254,6 +1290,8 @@ describe("banco: portal do colaborador (P25) — critério de aceite", async () 
     getMyAgreementHistory: (c) => memberPortal.getMyAgreementHistory(c, 50),
     getMyBlockerReasons: (c) => memberPortal.getMyBlockerReasons(c),
     getMyPortalState: (c) => memberPortal.getMyPortalState(c),
+    getMyCentrals: (c) => memberPortal.getMyCentrals(c),
+    getMyScrumMaster: (c) => memberPortal.getMyScrumMaster(c),
   }
 
   test("meta: toda função exportada do portal está na tabela", () => {

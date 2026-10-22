@@ -16,6 +16,8 @@ export const MODULES = {
   CENTRALS: "CENTRALS",
   /** C9: "Por quê" do combinado (campo na daily, na revisão, no PDF e no WhatsApp) e o caso por trás. */
   AGREEMENT_WHY: "AGREEMENT_WHY",
+  /** C19: roleta do scrum master (das 09h às 10h para o time). Sem ele, a escolha é automática. */
+  DAILY_ROULETTE: "DAILY_ROULETTE",
 } as const
 
 export type ModuleKey = (typeof MODULES)[keyof typeof MODULES]

@@ -60,3 +60,39 @@ export const nextStepSchema = ownAgreementSchema.extend({ agreementId: z.string(
 export const ownCentralSchema = z.object({ name: z.string().max(240) })
 
 export const idSchema = z.string().min(1).max(40)
+
+/**
+ * C19 — a daily conduzida pelo scrum master no portal (D46). Só o que o papel alcança:
+ * desfecho (Feito, Parcial, Não feito com impeditivo, motivo e novo prazo), quem faltou e
+ * os combinados de hoje. Sem nota, observação, substituição, próximo passo, resumo ou
+ * decisões — isso fica com o gestor. As regras de data e impeditivo são as da daily.
+ */
+export const conductDailySchema = z.object({
+  draftId: z.string().min(1).max(40),
+  reviews: z
+    .array(
+      z.object({
+        agreementId: z.string().min(1).max(40),
+        outcome: z.enum(SELF_REPORT_OUTCOMES),
+        blockerText: z.string().trim().max(300, v.tooLong).default(""),
+        blockerReasonId: z.string().max(40).default(""),
+        newDueDate: z.string().trim().max(10).default(""),
+      }),
+    )
+    .max(300),
+  absent: z.array(z.string().min(1).max(40)).max(200).default([]),
+  newAgreements: z
+    .array(
+      z.object({
+        memberId: z.string().max(40),
+        centralId: z.string().max(40).default(""),
+        title: z.string().trim().max(160, v.tooLong),
+        why: z.string().trim().max(300, v.tooLong).default(""),
+        dueDate: z.string().trim().max(10),
+      }),
+    )
+    .max(50)
+    .default([]),
+})
+
+export type ConductDailyInput = z.infer<typeof conductDailySchema>

@@ -60,3 +60,19 @@ export async function changeOwnPassword(
   })
   return { ok: true }
 }
+
+/**
+ * A pessoa já escolheu a própria senha? Derivado, sem coluna nova (D9/D23): a troca mais
+ * recente (`auth.password.change`) é posterior à última gravação da senha. Convite e
+ * `pnpm user:password` gravam a senha sem essa entrada — voltam a "senha provisória".
+ * A folga de 1 minuto cobre a diferença de relógio entre o servidor e o banco.
+ */
+export async function hasChosenOwnPassword(userId: string): Promise<boolean> {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { passwordUpdatedAt: true } })
+  if (!user?.passwordUpdatedAt) return false
+  const change = await db.auditLog.findFirst({
+    where: { userId, entity: "User", entityId: userId, action: "auth.password.change", at: { gte: new Date(user.passwordUpdatedAt.getTime() - 60_000) } },
+    select: { id: true },
+  })
+  return change !== null
+}

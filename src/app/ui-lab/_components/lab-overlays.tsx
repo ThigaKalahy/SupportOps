@@ -6,6 +6,7 @@ import { CalendarPlusIcon, ClipboardListIcon, EllipsisIcon, ListChecksIcon, User
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { DatePickerField } from "@/components/ui/date-picker-field"
+import { Roulette } from "@/components/ui/roulette"
 import { formatDate } from "@/lib/dates"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -272,6 +273,8 @@ export function LabCalendar({ today }: { today: Date }) {
 
   const [due, setDue] = React.useState(formatDate(today, "business"))
   const [suggested, setSuggested] = React.useState("")
+  const ROULETTE_NAMES = ["Bianca", "Bruno", "Davidson", "Mauro", "Pablo", "Pedro", "Rafael", "Rodolfo"]
+  const [drawn, setDrawn] = React.useState<string | null>(null)
 
   return (
     <>
@@ -288,6 +291,16 @@ export function LabCalendar({ today }: { today: Date }) {
       <Specimen state="DatePickerField · opcional (vazio, com Limpar)">
         <div className="w-60">
           <DatePickerField aria-label="Sugerir novo prazo (opcional)" value={suggested} onChange={setSuggested} min={today} optional />
+        </div>
+      </Specimen>
+      <Specimen state="Roulette · parada, girando e no resultado (C19)">
+        <div className="flex w-72 flex-col gap-2">
+          <Roulette names={ROULETTE_NAMES} result={null} idle="Roleta do scrum master" />
+          <Roulette names={ROULETTE_NAMES} result={drawn} animate idle="Roleta do scrum master" />
+          <Button type="button" size="sm" onClick={() => setDrawn(ROULETTE_NAMES[Math.floor(Math.random() * ROULETTE_NAMES.length)]! + (drawn?.endsWith(" ") ? "" : " "))}>
+            Girar a roleta
+          </Button>
+          <Roulette names={ROULETTE_NAMES} result="Pablo" idle="Roleta do scrum master" />
         </div>
       </Specimen>
     </>

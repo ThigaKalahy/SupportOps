@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 
+import { ScrumMasterCard } from "@/components/dailies/scrum-master-card"
 import { AlertList } from "@/components/today/alert-list"
 import { TodayActions } from "@/components/today/today-actions"
 import { DateStamp } from "@/components/ui/date-stamp"
@@ -14,6 +15,8 @@ import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { MODULES } from "@/lib/modules"
 import { canWrite, hasModule, requireTeamContext } from "@/server/scope"
 import { listAgreementMembers } from "@/server/queries/agreements"
+import { getScrumMasterToday } from "@/server/queries/dailies"
+import { ensureAutoScrumMaster } from "@/server/scrum-master"
 import { getTodayPanel } from "@/server/queries/today"
 
 import { loadAlerts } from "./alerts-data"
@@ -36,10 +39,13 @@ export default async function TodayPage() {
   const ctx = await requireTeamContext()
   const today = todayBusinessDate()
   const writer = canWrite(ctx)
-  const [{ alerts, watch }, panel, members] = await Promise.all([
+  // C19: times sem a roleta têm o scrum master escolhido no primeiro acesso do dia útil.
+  await ensureAutoScrumMaster({ teamId: ctx.teamId, organizationId: ctx.organizationId, roulette: hasModule(ctx, MODULES.DAILY_ROULETTE) })
+  const [{ alerts, watch }, panel, members, scrumMaster] = await Promise.all([
     loadAlerts(),
     getTodayPanel(ctx, today),
     writer ? listAgreementMembers(ctx) : Promise.resolve([]),
+    getScrumMasterToday(ctx),
   ])
   const rate = panel.rhythm.adherence
   const sinceDaily = panel.rhythm.lastDaily ? businessDaysBetween(panel.rhythm.lastDaily, today) : null
@@ -61,6 +67,7 @@ export default async function TodayPage() {
         </Section>
 
         <div className="flex min-w-0 flex-col gap-8">
+          <ScrumMasterCard data={scrumMaster} canWrite={writer} />
           <Section title={T.composition} count={panel.total}>
             <SegmentedBar
               label={fill(T.compositionLabel, {

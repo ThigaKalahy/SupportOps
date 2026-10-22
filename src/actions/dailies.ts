@@ -17,6 +17,7 @@ import {
   updateDailyRecord,
   type DailyResult,
 } from "@/server/dailies"
+import { drawScrumMasterRecord, skipScrumMasterRecord, type ScrumMasterDrawResult } from "@/server/scrum-master"
 
 /**
  * Server Action da daily: requireWriteContext → núcleo em src/server/dailies.ts
@@ -80,4 +81,14 @@ export async function exportDailyPdf(dailyId: unknown): Promise<DailyPdfResult> 
     auditOf(ctx),
   )
   return { ok: true, filename: dailyPdfFilename(daily.date, daily.teamName), base64: Buffer.from(bytes).toString("base64") }
+}
+
+/** C19: girar a roleta (ou sortear, sem o módulo) — o gestor, a qualquer hora. */
+export async function drawScrumMaster(): Promise<ScrumMasterDrawResult> {
+  return runAction("scrum-master", async () => drawScrumMasterRecord(await requireWriteContext()), ["/", "/dailies/new"])
+}
+
+/** C19: o sorteado não pode hoje — continua com a vez na rodada e sai outra pessoa. */
+export async function skipScrumMaster(): Promise<ScrumMasterDrawResult> {
+  return runAction("scrum-master", async () => skipScrumMasterRecord(await requireWriteContext()), ["/", "/dailies/new"])
 }

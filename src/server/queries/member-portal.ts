@@ -1,6 +1,7 @@
 import type { AgreementPriority, AgreementStatus, CheckinOutcome, ProposalStatus } from "@prisma/client"
 
 import { todayBusinessDate } from "../../lib/dates.ts"
+import { rouletteWindowOpen } from "../../lib/scrum-master.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
 import { getDailyLock, memberOwnScope, type MemberContext } from "../member-scope.ts"
@@ -238,4 +239,34 @@ export async function getMyPortalState(ctx: MemberContext): Promise<MyPortalStat
     }),
   ])
   return { locked: lock.locked, lastClosedDailyId: last?.id ?? null, lastClosedAt: last?.date ?? null }
+}
+
+/* ─────────────────────────── C19: scrum master do dia ─────────────────────────── */
+
+export interface MyScrumMaster {
+  /** Quem conduz hoje (só o nome); null = ainda ninguém. */
+  name: string | null
+  /** É a própria pessoa: o portal oferece "Conduzir a daily". */
+  isMe: boolean
+  /** Roleta do time ligada, das 09h às 10h e ninguém sorteado: o portal oferece "Girar a roleta". */
+  canSpin: boolean
+  roulette: boolean
+}
+
+/** O scrum master de hoje no time — só o nome de quem conduz, nada além (D40). */
+export async function getMyScrumMaster(ctx: MemberContext, now: Date = new Date()): Promise<MyScrumMaster> {
+  const today = todayBusinessDate(now)
+  const [draw, roulette] = await Promise.all([
+    db.scrumMasterDraw.findFirst({
+      where: { teamId: ctx.teamId, date: today, skippedAt: null },
+      select: { memberId: true, member: { select: { preferredName: true } } },
+    }),
+    db.teamModule.count({ where: { teamId: ctx.teamId, moduleKey: "DAILY_ROULETTE", isEnabled: true } }),
+  ])
+  return {
+    name: draw?.member.preferredName ?? null,
+    isMe: draw?.memberId === ctx.memberId,
+    canSpin: roulette > 0 && !draw && rouletteWindowOpen(now),
+    roulette: roulette > 0,
+  }
 }

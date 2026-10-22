@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { formatDate, formatTime, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
 import { fill, labels, plural } from "@/lib/labels"
 import { canWrite, requireTeamContext } from "@/server/scope"
-import { getDailyForm, getDailyOpening } from "@/server/queries/dailies"
+import { getDailyForm, getDailyOpening, getScrumMasterToday } from "@/server/queries/dailies"
 
 const L = labels.dailies
 
@@ -90,6 +90,8 @@ export default async function NewDailyPage({
   // Passo zero: nenhuma daily aberta. A data (editável), quem já relatou e as propostas.
   const dateText = formatDate(requested, "business")
   const retroactive = requested < todayBusinessDate()
+  // C19: quem conduz hoje (o scrum master registra pelo portal; o gestor pode registrar a qualquer hora).
+  const scrumMaster = retroactive ? null : (await getScrumMasterToday(ctx)).current
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -117,6 +119,7 @@ export default async function NewDailyPage({
             {fill(L.opening.reported, { reported: opening.reported, people: opening.people })} ·{" "}
             {opening.proposals ? plural(L.opening.proposals, opening.proposals) : L.opening.noProposals}
           </p>
+          {scrumMaster ? <p className="text-sm text-ink">{fill(labels.scrumMaster.result, { name: scrumMaster.name })}</p> : null}
           {retroactive ? <p className="text-sm text-ink-secondary">{fill(L.otherDate.retroactive, { date: dateText })}</p> : null}
           <OpenDailyButton date={dateText} />
         </div>
