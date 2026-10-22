@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 
 import { logoutAction } from "@/actions/auth"
+import { ChangePasswordButton } from "@/components/member-portal/change-password-dialog"
 import { PortalLive } from "@/components/member-portal/portal-live"
 import { HistoryZone, LastDailyZone } from "@/components/member-portal/portal-zones"
 import { Button } from "@/components/ui/button"
@@ -77,7 +78,7 @@ export default async function MemberHomePage() {
   )
 }
 
-/** Cabeçalho mínimo: nome, data de hoje e sair. Alvo de toque de 44px. */
+/** Cabeçalho mínimo: nome, data de hoje, alterar senha (C18) e sair. Alvo de toque de 44px. */
 function PortalHeader({ name }: { name: string }) {
   return (
     <header className="flex items-start justify-between gap-3 border-b border-line pb-4">
@@ -85,11 +86,14 @@ function PortalHeader({ name }: { name: string }) {
         <h1 className="truncate text-lg font-semibold text-ink">{name}</h1>
         <p className="text-sm text-ink-secondary first-letter:uppercase">{formatDateLong(todayBusinessDate(), "business")}</p>
       </div>
-      <form action={logoutAction}>
-        <Button type="submit" variant="secondary" className="min-h-11">
-          {L.signOut}
-        </Button>
-      </form>
+      <div className="flex min-w-0 flex-wrap justify-end gap-2">
+        <ChangePasswordButton />
+        <form action={logoutAction}>
+          <Button type="submit" variant="secondary" className="min-h-11">
+            {L.signOut}
+          </Button>
+        </form>
+      </div>
     </header>
   )
 }

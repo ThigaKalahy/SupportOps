@@ -85,6 +85,7 @@ const subrouteLabels: Record<string, string> = {
   new: labels.dailies.new,
   edit: labels.dailies.edit.title,
   adherence: labels.adherence.title,
+  "daily-preview": labels.dailyPreview.title,
   "reclassification-reasons": labels.settings.tabs.reclassificationReasons,
   "blocker-reasons": labels.settings.tabs.blockerReasons,
   "dev-return-reasons": labels.settings.tabs.devReturnReasons,

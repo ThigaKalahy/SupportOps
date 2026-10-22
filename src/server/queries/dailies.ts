@@ -613,3 +613,153 @@ export async function getDailyOpening(ctx: TeamContext, date: Date) {
     proposals,
   }
 }
+
+/**
+ * C18 — Prévia da daily (/agreements/daily-preview): o movimento do time desde a última daily
+ * REGISTRADA, sem esperar a próxima. Os relatos pendentes (o que cada pessoa disse que
+ * fez, fez em parte ou não fez), os combinados criados depois dela e os que entram na
+ * revisão da próxima daily (mesma regra de `getDailyForm`) ainda sem relato. Só leitura,
+ * derivado na hora — nada é gravado (D9). Combinado não carrega visibilidade: o VIEWER vê
+ * o mesmo que o gestor.
+ */
+export async function getDailyPreview(ctx: TeamContext, today: Date = todayBusinessDate()) {
+  const scope = teamScope(ctx)
+  const previous = await db.daily.findFirst({
+    where: { ...scope, status: "CLOSED" },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    select: { id: true, date: true, createdAt: true },
+  })
+  // Sem daily registrada: a última semana.
+  const since = previous?.createdAt ?? new Date(Date.now() - 7 * 86_400_000)
+
+  const agreementSelect = {
+    id: true,
+    title: true,
+    dueDate: true,
+    member: { select: { id: true, preferredName: true } },
+    central: { select: { name: true } },
+  } as const
+
+  const [reports, created, due, people] = await Promise.all([
+    db.agreementSelfReport.findMany({
+      where: { ...scope, dailyId: null },
+      orderBy: { updatedAt: "asc" },
+      select: {
+        id: true,
+        outcome: true,
+        blockerText: true,
+        suggestedDueDate: true,
+        updatedAt: true,
+        blockerReason: { select: { label: true } },
+        agreement: { select: agreementSelect },
+      },
+    }),
+    db.agreement.findMany({
+      where: {
+        ...scope,
+        createdAt: { gt: since },
+        member: { deletedAt: null },
+        // Os criados NA daily anterior são dela, não movimento depois dela.
+        ...(previous ? { OR: [{ sourceDailyId: null }, { sourceDailyId: { not: previous.id } }] } : {}),
+      },
+      orderBy: { createdAt: "asc" },
+      select: { ...agreementSelect, origin: true, status: true, createdAt: true, author: { select: { name: true } } },
+    }),
+    db.agreement.findMany({
+      where: {
+        ...scope,
+        status: { in: ["OPEN", "IN_PROGRESS"] },
+        member: { deletedAt: null },
+        OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: today } }],
+        selfReports: { none: { dailyId: null } },
+      },
+      orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+      select: agreementSelect,
+    }),
+    db.teamMember.findMany({
+      where: { ...scope, status: { in: ["ACTIVE", "OFFBOARDING"] }, vacations: { none: vacationCovering(ctx.teamId, today) } },
+      orderBy: { preferredName: "asc" },
+      select: { id: true, preferredName: true },
+    }),
+  ])
+
+  const deadline = (dueDate: Date) => deadlineSeverity(dueDate, { resolved: false, today })
+  type Person = {
+    id: string
+    name: string
+    reports: {
+      id: string
+      outcome: CheckinOutcome
+      blockerText: string | null
+      reason: string | null
+      suggestedDueDate: Date | null
+      at: Date
+      agreement: { id: string; title: string; central: string | null }
+    }[]
+    created: {
+      id: string
+      title: string
+      central: string | null
+      dueDate: Date
+      origin: (typeof created)[number]["origin"]
+      status: (typeof created)[number]["status"]
+      author: string
+      at: Date
+    }[]
+    unreported: { id: string; title: string; central: string | null; dueDate: Date; deadline: DeadlineSeverity }[]
+  }
+  const byId = new Map<string, Person>()
+  const personOf = (m: { id: string; preferredName: string }) => {
+    let p = byId.get(m.id)
+    if (!p) byId.set(m.id, (p = { id: m.id, name: m.preferredName, reports: [], created: [], unreported: [] }))
+    return p
+  }
+  for (const m of people) personOf(m)
+  for (const r of reports) {
+    personOf(r.agreement.member).reports.push({
+      id: r.id,
+      outcome: r.outcome,
+      blockerText: r.blockerText,
+      reason: r.blockerReason?.label ?? null,
+      suggestedDueDate: r.suggestedDueDate,
+      at: r.updatedAt,
+      agreement: { id: r.agreement.id, title: r.agreement.title, central: r.agreement.central?.name ?? null },
+    })
+  }
+  for (const a of created) {
+    personOf(a.member).created.push({
+      id: a.id,
+      title: a.title,
+      central: a.central?.name ?? null,
+      dueDate: a.dueDate,
+      origin: a.origin,
+      status: a.status,
+      author: a.author.name,
+      at: a.createdAt,
+    })
+  }
+  for (const a of due) {
+    personOf(a.member).unreported.push({ id: a.id, title: a.title, central: a.central?.name ?? null, dueDate: a.dueDate, deadline: deadline(a.dueDate) })
+  }
+
+  const all = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+  const moved = all.filter((p) => p.reports.length + p.created.length + p.unreported.length > 0)
+  const count = (o: CheckinOutcome) => reports.filter((r) => r.outcome === o).length
+  return {
+    previous: previous ? { id: previous.id, date: previous.date, at: previous.createdAt } : null,
+    since,
+    people: moved,
+    quiet: all.filter((p) => !moved.includes(p)).map((p) => p.name),
+    totals: {
+      people: people.length,
+      reported: new Set(reports.map((r) => r.agreement.member.id)).size,
+      done: count("DONE"),
+      partial: count("PARTIAL"),
+      notDone: count("NOT_DONE"),
+      created: created.length,
+      unreported: due.length,
+    },
+  }
+}
+
+export type DailyPreview = Awaited<ReturnType<typeof getDailyPreview>>

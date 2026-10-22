@@ -684,6 +684,7 @@ const QUERIES: Record<string, Invoke> = {
   teamFor: (c) => dailies.teamFor(c),
   getDailyForm: (c) => dailies.getDailyForm(c),
   getDailyOpening: (c) => dailies.getDailyOpening(c, day(0)),
+  getDailyPreview: (c) => dailies.getDailyPreview(c, day(0)),
   getDailyDetail: async (c, own, other) => [await dailies.getDailyDetail(c, own.daily), await dailies.getDailyDetail(c, other.daily)],
   listDailies: (c) => dailies.listDailies(c),
   // dev-returns.ts

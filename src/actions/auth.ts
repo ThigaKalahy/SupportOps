@@ -5,6 +5,7 @@ import { AuthError } from "next-auth"
 import { labels } from "@/lib/labels"
 import { loginSchema } from "@/lib/validators/auth"
 import { getCurrentUser } from "@/server/access"
+import { changeOwnPassword, type ChangePasswordResult } from "@/server/account"
 import { writeAudit } from "@/server/audit"
 import { signIn, signOut } from "@/server/auth"
 
@@ -40,4 +41,11 @@ export async function logoutAction(): Promise<void> {
     )
   }
   await signOut({ redirectTo: "/login" })
+}
+
+/** C18: troca da própria senha (exige a sessão e a senha atual). Não é dado de time. */
+export async function changePasswordAction(input: unknown): Promise<ChangePasswordResult> {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: labels.access.forbidden }
+  return changeOwnPassword(user, input)
 }

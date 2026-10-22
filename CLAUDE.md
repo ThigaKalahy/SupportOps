@@ -256,7 +256,7 @@ O grupo de rotas `(member)` tem layout próprio: sem sidebar, sem barra de conte
 
 - `ALLOWED_EMAILS` é uma allowlist rígida verificada no callback de signIn, ANTES de qualquer verificação de senha, para toda conta com `isPlatformAdmin` ou nível MANAGER/VIEWER em algum time. Nenhum desses e-mails fora dela autentica, mesmo com passwordHash válido no banco. Conta cujo único nível é MEMBER é a exceção deliberada (ver "Modelo de acesso"): dispensa a lista e depende de `User.isActive`, `TeamAccess` válido e `TeamMember` ativo. Não é redundante com a criação por CLI: é o kill switch operacional — remover um e-mail da variável de ambiente revoga o acesso imediatamente, sem tocar no banco de produção — e a segunda barreira caso alguém com acesso ao banco insira uma linha em `User`.
 - Autenticação é e-mail + senha com hash bcryptjs cost 12. Senha nunca em texto.
-- Não existe cadastro público, convite por e-mail ou recuperação de senha. Usuários são criados exclusivamente por `pnpm user:create`, `pnpm user:password` e, para colaboradores, `pnpm member:invite`.
+- Não existe cadastro público, convite por e-mail ou recuperação de senha. Usuários são criados exclusivamente por `pnpm user:create`, `pnpm user:password` e, para colaboradores, `pnpm member:invite`. Com a sessão aberta e a senha atual, a pessoa troca a própria senha (C18).
 - Erro de login genérico e idêntico para e-mail inexistente e senha errada: "E-mail ou senha inválidos".
 - `bcrypt.compare` roda SEMPRE, inclusive com e-mail inexistente (contra hash descartável), para não vazar quais contas existem por tempo de resposta.
 - 5 tentativas falhas bloqueiam a conta por 15 minutos.
@@ -621,6 +621,13 @@ Atualize esta seção ao final de cada fase entregue, listando o que passou a ex
 - Depois de relatar "Feito", o colaborador pode adicionar o "Próximo passo": entra na hora como combinado novo dele (origem MEMBER, linha na timeline), herdando do combinado de origem a central (trocável), a prioridade e a observação ligada (`Agreement.watchItemId`). O portal não lê observação (D40): não herda a observação de origem (`WatchItem.agreementId`) nem grava revisão — isso continua no próximo passo do gestor na daily. `createNextStep`.
 - "Novo combinado" e "Próximo passo" ganham o campo de cliente (CentralCombobox): escolhe a central do time ou cria uma nova pelo nome normalizado, sem duplicar (D20) — `ensureOwnCentral`, auditado `member.central.create`; central desativada não volta por aqui; módulo de centrais desligado, o campo não existe nem no servidor. Leitura `getMyCentrals`. O cliente aparece na linha do combinado no portal.
 - O motivo do impeditivo (catálogo do time) continua só para escolher no relato Parcial/Não feito; criar motivo novo segue com o gestor, em Configurações.
+
+**C17 — Prazo com calendário no portal (20/10/2026)**
+- O prazo de "Novo combinado" e de "Próximo passo" abre um calendário (`DatePickerField`, `src/components/ui/date-picker-field.tsx`, no /ui-lab), já com hoje e sem datas passadas.
+
+**C18 — Prévia da daily e senha do colaborador (21/10/2026)**
+- `/agreements/daily-preview` ("Prévia da daily", botão em /agreements ao lado de "Cumprimento do time"): o movimento do time desde a última daily REGISTRADA — relatos pendentes (feito, parcial, não feito, com impeditivo, motivo, prazo sugerido e a hora), combinados criados depois dela (fora os criados nela) e os que entram na revisão da próxima daily ainda sem relato; StatStrip com "relataram N de M pessoas", uma seção por pessoa, "Sem movimento" no fim. Só leitura, derivado na hora (`getDailyPreview` em `src/server/queries/dailies.ts`); recarrega a cada minuto com a aba visível e no botão "Atualizar".
+- "Alterar senha" no cabeçalho do portal: senha atual, nova (8+ caracteres) e confirmação, em modal do app. `changeOwnPassword` (`src/server/account.ts`) + `changePasswordAction` (`src/actions/auth.ts`) — fora do namespace do portal, que não toca `User` (D40). Exige a sessão e a senha atual (não é recuperação de senha); erro na atual conta como tentativa falha do login (5 → 15 min). Auditado `auth.password.change` / `.failure`, nunca com a senha ou o hash.
 
 ## Backlog de curto prazo
 

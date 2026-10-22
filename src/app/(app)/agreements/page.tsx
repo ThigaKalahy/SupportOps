@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ChartNoAxesColumnIcon } from "lucide-react"
+import { ChartNoAxesColumnIcon, EyeIcon } from "lucide-react"
 
 import { AgreementsView } from "@/components/agreements/agreements-view"
 import { ContextActions } from "@/components/shell/context-actions"
@@ -57,12 +57,20 @@ export default async function AgreementsPage({
         title={labels.nav.agreements}
         subtitle={plural(labels.agreements.count, rows.length)}
         actions={
+          <div className="flex flex-wrap gap-2">
+          <Button asChild variant="secondary" size="sm">
+            <Link href="/agreements/daily-preview">
+              <EyeIcon />
+              {labels.dailyPreview.open}
+            </Link>
+          </Button>
           <Button asChild variant="secondary" size="sm">
             <Link href="/agreements/adherence">
               <ChartNoAxesColumnIcon />
               {labels.adherence.seeTeam}
             </Link>
           </Button>
+          </div>
         }
       />
       <AgreementsView
