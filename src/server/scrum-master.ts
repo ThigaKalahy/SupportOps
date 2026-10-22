@@ -98,10 +98,10 @@ export async function drawScrumMasterFor(
 export async function drawScrumMasterRecord(ctx: TeamContext): Promise<ScrumMasterDrawResult> {
   requireManager(ctx)
   // TESTE TEMPORÁRIO (23/10/2026, pedido do usuário; remover depois do teste): com a marca
-  // SCRUM_MASTER_TEST no time, a roleta gira quantas vezes quiser e sempre cai no Rodolfo.
+  // SCRUM_MASTER_TEST no time, a roleta gira quantas vezes quiser e sempre cai no Pablo.
   if (ctx.modules.has(SCRUM_MASTER_TEST)) {
     await db.scrumMasterDraw.deleteMany({ where: { teamId: ctx.teamId, date: todayBusinessDate() } })
-    return drawScrumMasterFor(ctx, "ROULETTE", todayBusinessDate(), "Rodolfo")
+    return drawScrumMasterFor(ctx, "ROULETTE", todayBusinessDate(), "Pablo")
   }
   return drawScrumMasterFor(ctx, hasModule(ctx, MODULES.DAILY_ROULETTE) ? "ROULETTE" : "AUTO")
 }
