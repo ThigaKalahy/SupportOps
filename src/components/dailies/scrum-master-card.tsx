@@ -63,7 +63,7 @@ export function ScrumMasterCard({ data, canWrite }: { data: ScrumMasterToday; ca
       ) : null}
       {canWrite ? (
         <div className="flex flex-wrap gap-2">
-          {current && !data.testMode ? (
+          {current ? (
             <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={() => setConfirming(true)}>
               {S.redraw}
             </Button>
