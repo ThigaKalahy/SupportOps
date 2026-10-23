@@ -149,6 +149,14 @@ export function nextBusinessDay(date: Date): Date {
   return next;
 }
 
+/**
+ * C20: prazo sempre em dia útil — sábado, domingo ou feriado nacional passa para o próximo
+ * dia útil; dia útil fica como está. Vale para todo prazo de combinado (src/server/db.ts).
+ */
+export function onBusinessDay(date: Date): Date {
+  return isBusinessDay(date) ? date : nextBusinessDay(date);
+}
+
 /** Chave ISO "AAAA-MM-DD" de uma data de negócio. Uso interno — nunca exibir. */
 export function toBusinessDateKey(date: Date): string {
   return format(fromBusinessDate(date), "yyyy-MM-dd");

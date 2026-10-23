@@ -21,14 +21,14 @@ export type { ScrumMasterDrawResult }
  *
  * O colaborador sorteado como scrum master do dia conduz e registra a daily pelo portal. Só
  * ele, só no dia do sorteio, e só o que o papel alcança:
- * - LÊ: os combinados que a daily revisa (título, prazo, pessoa, central, arrasto e o relato),
- *   quem está no time hoje, os motivos de impeditivo e as centrais. Nada de nota, observação,
- *   porquê, resumo, decisões ou registro gerencial.
+ * - LÊ: os combinados que a daily revisa (título, prazo, pessoa, central, arrasto, o relato e,
+ *   com o módulo, a primeira linha do porquê — C20), quem está no time hoje, os motivos de
+ *   impeditivo e as centrais. Nada de nota, observação, resumo, decisões ou registro gerencial.
  * - ESCREVE pelo núcleo da daily do gestor (src/server/dailies.ts), com um contexto de
  *   registro montado AQUI, depois de conferir o sorteio — e com o pedido reduzido: desfecho
- *   com impeditivo, motivo e novo prazo; quem faltou; combinados de hoje. Sem nota, sem
- *   observação, sem substituição, sem próximo passo, sem resumo nem decisões (o gestor
- *   completa depois). Abrir trava o portal do time como a daily do gestor (D41, D43).
+ *   com impeditivo, motivo e novo prazo; próximo passo depois de Feito (C20, sem ler nem
+ *   revisar observação — `conductor`); quem faltou; combinados de hoje. Sem nota, sem
+ *   observação, sem substituição, sem resumo nem decisões (o gestor completa depois). Abrir trava o portal do time como a daily do gestor (D41, D43).
  * O registro sai com o nome dele como autor.
  */
 
@@ -74,6 +74,10 @@ export interface ConductReview {
   dueDate: Date
   member: { id: string; name: string }
   central: string | null
+  /** C20: a central do combinado, para o próximo passo herdar (trocável). */
+  centralId: string | null
+  /** C20: a primeira linha do porquê do combinado — só com o módulo do porquê. */
+  why: string | null
   reschedules: number
   report: { outcome: CheckinOutcome; blockerText: string | null; blockerReasonId: string | null; suggestedDueDate: Date | null } | null
 }
@@ -129,6 +133,8 @@ export async function getConductDaily(ctx: MemberContext, now: Date = new Date()
         title: true,
         dueDate: true,
         member: { select: { id: true, preferredName: true } },
+        description: true,
+        centralId: true,
         central: { select: { name: true } },
         _count: { select: { checkins: { where: { newDueDate: { not: null } } } } },
         selfReports: {
@@ -161,6 +167,8 @@ export async function getConductDaily(ctx: MemberContext, now: Date = new Date()
         dueDate: a.dueDate,
         member: { id: a.member.id, name: a.member.preferredName },
         central: a.central?.name ?? null,
+        centralId: a.centralId,
+        why: on.has(MODULES.AGREEMENT_WHY) ? (a.description?.split("\n")[0]?.trim() || null) : null,
         reschedules: a._count.checkins,
         report: a.selfReports[0] ?? null,
       }))
@@ -199,7 +207,8 @@ export async function saveConductDaily(ctx: MemberContext, input: unknown): Prom
     select: { id: true },
   })
   const absent = new Set(data.absent)
-  const empty = { replacementTitle: "", replacementDueDate: "", nextTitle: "", nextNote: "", nextDueDate: "", nextCentralId: "" }
+  // Sem substituição (o gestor faz depois); próximo passo só depois de Feito (C20).
+  const empty = { replacementTitle: "", replacementDueDate: "" }
   return createDailyRecord(await conductorContext(ctx), {
     date: formatDate(today, "business"),
     draftId: data.draftId,
@@ -213,11 +222,15 @@ export async function saveConductDaily(ctx: MemberContext, input: unknown): Prom
       action: "reschedule",
       newDueDate: r.outcome === "DONE" ? "" : r.newDueDate,
       ...empty,
+      nextTitle: r.outcome === "DONE" ? r.nextTitle : "",
+      nextNote: r.outcome === "DONE" ? r.nextNote : "",
+      nextDueDate: r.outcome === "DONE" ? r.nextDueDate : "",
+      nextCentralId: r.outcome === "DONE" ? r.nextCentralId : "",
     })),
     participants: members.map((m) => ({ memberId: m.id, watchIds: [], present: !absent.has(m.id), note: "", isBlocker: false })),
     newAgreements: data.newAgreements.map((a) => ({ ...a, watchIds: [] })),
     proposals: [],
-  })
+  }, { conductor: true })
 }
 
 /** "Descartar daily": só a DRAFT que este scrum master abriu hoje. */

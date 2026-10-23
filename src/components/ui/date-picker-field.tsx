@@ -5,7 +5,7 @@ import { CalendarIcon } from "lucide-react"
 
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { parseDisplayDate, todayBusinessDate } from "@/lib/dates"
+import { isBusinessDay, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
 import { labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 
@@ -24,7 +24,8 @@ function toText(date: Date): string {
 /**
  * Campo de data com calendário (C17): um botão com a data em DD/MM/AAAA que abre o
  * calendário em pt-BR. O valor é o texto "DD/MM/AAAA" (o mesmo dos schemas). Alvo de
- * toque de 44px; `min` esconde os dias antes dele; `optional` mostra "Limpar".
+ * toque de 44px; `min` esconde os dias antes dele; `optional` mostra "Limpar". Prazo é
+ * sempre dia útil (C20): sábado, domingo e feriado nacional não se escolhem.
  */
 export function DatePickerField({
   value,
@@ -49,6 +50,8 @@ export function DatePickerField({
   const selected = parsed ? toLocal(parsed) : undefined
   const today = toLocal(todayBusinessDate())
   const minLocal = min ? toLocal(min) : undefined
+  // O DayPicker entrega Date local; a regra de dia útil lê a data de negócio (meia-noite UTC).
+  const notBusiness = (day: Date) => !isBusinessDay(new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate())))
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -72,7 +75,7 @@ export function DatePickerField({
           selected={selected}
           defaultMonth={selected ?? today}
           today={today}
-          disabled={minLocal ? { before: minLocal } : undefined}
+          disabled={minLocal ? [{ before: minLocal }, notBusiness] : notBusiness}
           onSelect={(date) => {
             if (!date) return
             onChange(toText(date))

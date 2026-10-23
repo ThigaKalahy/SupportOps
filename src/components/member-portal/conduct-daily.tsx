@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { formatDate, formatDayMonth, todayBusinessDate } from "@/lib/dates"
+import { formatDate, formatDayMonth, onBusinessDay, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { ConductDaily } from "@/server/member-daily"
@@ -27,10 +27,22 @@ const SELECTED: Record<Outcome, string> = {
 }
 const NO_REASON = "__none__"
 const listClass = "flex flex-col divide-y divide-line rounded-lg border border-line bg-surface"
-const todayText = () => formatDate(todayBusinessDate(), "business")
+// C20: prazo sempre em dia útil — no fim de semana ou feriado, o padrão é o próximo dia útil.
+const todayText = () => formatDate(onBusinessDay(todayBusinessDate()), "business")
 
 type Mine = Extract<ConductDaily, { state: "mine" }>
-type Review = { outcome: Outcome | ""; blockerText: string; blockerReasonId: string; newDueDate: string }
+type Review = {
+  outcome: Outcome | ""
+  blockerText: string
+  blockerReasonId: string
+  newDueDate: string
+  /** C20: próximo passo depois de Feito. */
+  nextOpen: boolean
+  nextTitle: string
+  nextNote: string
+  nextDueDate: string
+  nextCentralId: string
+}
 type Row = { key: number; memberId: string; centralId: string; title: string; why: string; dueDate: string }
 
 /** "Abrir a daily" (C19): cria a daily aberta de hoje em nome do scrum master. */
@@ -80,6 +92,11 @@ export function ConductDailyForm({ data }: { data: Mine }) {
           blockerText: r.report?.blockerText ?? "",
           blockerReasonId: r.report?.blockerReasonId ?? "",
           newDueDate: r.report?.suggestedDueDate ? formatDate(r.report.suggestedDueDate, "business") : todayText(),
+          nextOpen: false,
+          nextTitle: "",
+          nextNote: "",
+          nextDueDate: todayText(),
+          nextCentralId: r.centralId ?? "",
         },
       ]),
     ),
@@ -115,7 +132,18 @@ export function ConductDailyForm({ data }: { data: Mine }) {
     startTransition(async () => {
       const result = await saveConductedDaily({
         draftId: data.draftId,
-        reviews: reviewed.map((r) => ({ agreementId: r.id, ...reviews[r.id]! })),
+        reviews: reviewed.map((r) => {
+          const { nextOpen, nextTitle, nextNote, nextDueDate, nextCentralId, ...review } = reviews[r.id]!
+          const next = nextOpen && review.outcome === "DONE"
+          return {
+            agreementId: r.id,
+            ...review,
+            nextTitle: next ? nextTitle : "",
+            nextNote: next ? nextNote : "",
+            nextDueDate: next ? nextDueDate : "",
+            nextCentralId: next ? nextCentralId : "",
+          }
+        }),
         absent: [...absent],
         newAgreements: filled.map(({ memberId, centralId, title, why, dueDate }) => ({ memberId, centralId, title, why, dueDate })),
       })
@@ -166,6 +194,7 @@ export function ConductDailyForm({ data }: { data: Mine }) {
                       <li key={a.id} className="flex flex-col gap-2 px-4 py-3">
                         <div className="flex flex-col gap-0.5">
                           <p className="text-sm text-ink">{a.title}</p>
+                          {a.why ? <p className="text-xs text-ink-secondary">{fill(C.why, { why: a.why })}</p> : null}
                           <p className="flex flex-wrap gap-x-2 text-xs text-ink-secondary">
                             {a.central ? <span>{a.central}</span> : null}
                             <span className="font-mono">{formatDayMonth(a.dueDate, "business")}</span>
@@ -188,6 +217,59 @@ export function ConductDailyForm({ data }: { data: Mine }) {
                             </button>
                           ))}
                         </div>
+                        {r.outcome === "DONE" && !r.nextOpen ? (
+                          <button
+                            type="button"
+                            className="min-h-11 self-start text-sm font-medium text-ink underline-offset-2 hover:underline"
+                            onClick={() => patch(a.id, { nextOpen: true })}
+                          >
+                            {C.next.action}
+                          </button>
+                        ) : null}
+                        {r.outcome === "DONE" && r.nextOpen ? (
+                          <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-sunken/60 p-3">
+                            <p className="text-xs text-ink-secondary">{C.next.hint}</p>
+                            <Input
+                              value={r.nextTitle}
+                              maxLength={160}
+                              autoComplete="off"
+                              autoFocus
+                              placeholder={C.next.title}
+                              aria-label={C.next.title}
+                              aria-invalid={err("nextTitle") ? true : undefined}
+                              className="min-h-11"
+                              onChange={(e) => patch(a.id, { nextTitle: e.target.value })}
+                            />
+                            {err("nextTitle") ? <p className="text-xs text-overdue">{err("nextTitle")}</p> : null}
+                            <Input
+                              value={r.nextNote}
+                              maxLength={300}
+                              autoComplete="off"
+                              placeholder={C.next.note}
+                              aria-label={C.next.note}
+                              aria-invalid={err("nextNote") ? true : undefined}
+                              className="min-h-11"
+                              onChange={(e) => patch(a.id, { nextNote: e.target.value })}
+                            />
+                            {err("nextNote") ? <p className="text-xs text-overdue">{err("nextNote")}</p> : null}
+                            {data.centrals ? (
+                              <CentralCombobox
+                                aria-label={labels.memberPortal.create.centralField}
+                                options={centrals}
+                                value={r.nextCentralId || null}
+                                onValueChange={(id) => patch(a.id, { nextCentralId: id ?? "" })}
+                                onCreate={(option) => setCentrals((all) => (all.some((c) => c.id === option.id) ? all : [...all, option]))}
+                                createCentral={ensureMemberCentral}
+                                inputClassName="min-h-11"
+                              />
+                            ) : null}
+                            <DatePickerField aria-label={C.dueField} value={r.nextDueDate} onChange={(v) => patch(a.id, { nextDueDate: v })} min={data.date} />
+                            {err("nextDueDate") ? <p className="text-xs text-overdue">{err("nextDueDate")}</p> : null}
+                            <Button type="button" variant="ghost" className="min-h-11 self-start" onClick={() => patch(a.id, { nextOpen: false })}>
+                              {C.next.remove}
+                            </Button>
+                          </div>
+                        ) : null}
                         {r.outcome === "PARTIAL" || r.outcome === "NOT_DONE" ? (
                           <div className="flex flex-col gap-2">
                             <Input

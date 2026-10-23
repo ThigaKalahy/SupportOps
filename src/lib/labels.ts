@@ -845,6 +845,14 @@ export const labels = {
     discardConfirm: "Descartar daily",
     discardKeep: "Continuar registrando",
     notConductor: "Só quem foi sorteado como scrum master conduz a daily pelo portal.",
+    why: "Por quê: {why}",
+    next: {
+      action: "Próximo passo",
+      hint: "O combinado foi cumprido e o caso segue: nasce um combinado novo da mesma pessoa, com a mesma central.",
+      title: "Próximo combinado",
+      note: "O que mudou",
+      remove: "Sem próximo passo",
+    },
   },
   /** C18: prévia da daily — o movimento do time desde a última daily registrada. */
   dailyPreview: {

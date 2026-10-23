@@ -79,6 +79,8 @@ async function prepare(
   reviews: ReviewInput[],
   memberIds: Set<string>,
   rows: { centralId: string }[],
+  /** C20: daily do scrum master — não lê observação nem grava revisão nela (D40, D46). */
+  conductor = false,
 ): Promise<Fail | { byId: Map<string, ReviewAgreement>; caseWatch: CaseWatch }> {
   const reviewIds = reviews.map((r) => r.agreementId)
   const reasonIds = [...new Set(reviews.map((r) => r.blockerReasonId).filter(Boolean))]
@@ -120,7 +122,7 @@ async function prepare(
   const caseWatch: CaseWatch = new Map()
   for (const review of reviews) {
     const agreement = byId.get(review.agreementId)
-    if (review.outcome !== "DONE" || !review.nextTitle || !agreement) continue
+    if (conductor || review.outcome !== "DONE" || !review.nextTitle || !agreement) continue
     const linked = agreement.watchItemId ? await findWatchForWrite(ctx, agreement.watchItemId) : null
     const origin = linked?.status === "ACTIVE" ? null : await findActiveWatchForLink(ctx, { agreementId: agreement.id })
     const watch = linked?.status === "ACTIVE" ? linked : origin ? await findWatchForWrite(ctx, origin.id) : null
@@ -280,7 +282,12 @@ async function createRows(tx: Tx, ctx: TeamContext, dailyId: string, rows: RowIn
   return ids
 }
 
-export async function createDailyRecord(ctx: TeamContext, input: unknown): Promise<DailyResult> {
+/**
+ * `conductor` (C20): registro do scrum master pela ponte src/server/member-daily.ts — o
+ * próximo passo herda só o vínculo de observação do combinado feito, sem ler a observação
+ * nem gravar revisão nela.
+ */
+export async function createDailyRecord(ctx: TeamContext, input: unknown, options: { conductor?: boolean } = {}): Promise<DailyResult> {
   requireManager(ctx)
   const parsed = dailySchema.safeParse(input)
   if (!parsed.success) {
@@ -305,7 +312,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown): Promi
   if (taken) return { ok: false, error: fill(labels.dailies.sameDay.taken, { date: data.date }) }
 
   const memberIds = new Set([...data.participants.map((p) => p.memberId), ...data.newAgreements.map((a) => a.memberId)])
-  const prepared = await prepare(ctx, data.reviews, memberIds, [...data.newAgreements, ...nextCentrals(data.reviews)])
+  const prepared = await prepare(ctx, data.reviews, memberIds, [...data.newAgreements, ...nextCentrals(data.reviews)], options.conductor)
   if ("ok" in prepared) return prepared
 
   // P26: relatos e propostas que a daily aberta capturou.

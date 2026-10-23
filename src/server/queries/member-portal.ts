@@ -259,12 +259,13 @@ export async function getMyScrumMaster(ctx: MemberContext, now: Date = new Date(
   const [draw, roulette] = await Promise.all([
     db.scrumMasterDraw.findFirst({
       where: { teamId: ctx.teamId, date: today, skippedAt: null },
-      select: { memberId: true, member: { select: { preferredName: true } } },
+      // C20: o sorteado pode ser um gestor participante — só o nome gravado no sorteio, nunca a conta.
+      select: { memberId: true, participantName: true, member: { select: { preferredName: true } } },
     }),
     db.teamModule.count({ where: { teamId: ctx.teamId, moduleKey: "DAILY_ROULETTE", isEnabled: true } }),
   ])
   return {
-    name: draw?.member.preferredName ?? null,
+    name: draw ? (draw.member?.preferredName ?? draw.participantName ?? null) : null,
     isMe: draw?.memberId === ctx.memberId,
     canSpin: roulette > 0 && !draw && rouletteWindowOpen(now),
     roulette: roulette > 0,

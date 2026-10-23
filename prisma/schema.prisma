@@ -350,13 +350,16 @@ enum TeamAccessLevel {
 /// Revogar preenche `revokedAt` e NUNCA apaga a linha: é o registro de quem pôde
 /// ver o quê. `grantedByUserId` nulo = concedido pela migration do P22.
 model TeamAccess {
-  id              String          @id @default(cuid())
-  userId          String
-  teamId          String
-  level           TeamAccessLevel
-  grantedAt       DateTime        @default(now()) @db.Timestamptz
-  grantedByUserId String?
-  revokedAt       DateTime?       @db.Timestamptz
+  id                String          @id @default(cuid())
+  userId            String
+  teamId            String
+  level             TeamAccessLevel
+  grantedAt         DateTime        @default(now()) @db.Timestamptz
+  grantedByUserId   String?
+  revokedAt         DateTime?       @db.Timestamptz
+  /// C20: gestor (MANAGER) que entra no sorteio de scrum master do time, sem ser pessoa
+  /// cadastrada (não aparece em Equipe, alertas nem presença). Só a roleta lê isto.
+  inScrumMasterDraw Boolean         @default(false)
 
   user      User  @relation("TeamAccessUser", fields: [userId], references: [id])
   team      Team  @relation(fields: [teamId], references: [id], onDelete: Restrict)
@@ -1629,7 +1632,12 @@ model ScrumMasterDraw {
   id              String                @id @default(cuid())
   teamId          String
   date            DateTime              @db.Date
-  memberId        String
+  /// Pessoa do time sorteada; nulo quando o sorteado é um gestor participante (`userId`).
+  memberId        String?
+  /// C20: gestor participante sorteado (TeamAccess.inScrumMasterDraw). Exatamente um dos dois (CHECK).
+  userId          String?
+  /// C20: nome de exibição do gestor sorteado, gravado no sorteio (o portal não lê contas).
+  participantName String?
   round           Int
   method          ScrumMasterDrawMethod
   drawnByUserId   String?
@@ -1637,8 +1645,8 @@ model ScrumMasterDraw {
   skippedByUserId String?
   createdAt       DateTime              @default(now()) @db.Timestamptz
 
-  team   Team       @relation(fields: [teamId], references: [id], onDelete: Restrict)
-  member TeamMember @relation(fields: [memberId], references: [id])
+  team   Team        @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  member TeamMember? @relation(fields: [memberId], references: [id], onDelete: Restrict)
 
   @@index([teamId, date])
   @@index([teamId, round])

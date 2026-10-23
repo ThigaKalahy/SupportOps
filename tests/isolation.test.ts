@@ -469,7 +469,8 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     const reads = [...code.matchAll(/(?:db|tx)\.(\w+)\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/g)]
     const models = ["scrumMasterDraw", "daily", "teamModule", "agreement", "teamMember", "blockerReason", "central"]
     assert.deepEqual([...new Set(reads.map((m) => m[1]))].filter((model) => !models.includes(model!)), [])
-    for (const key of ["description", "managerNote", "summary", "decisions", "watchItem", "watchItemId", "note"]) {
+    // C20: o porquê (`description`) pode ser lido — só a primeira linha, com o módulo.
+    for (const key of ["managerNote", "summary", "decisions", "watchItem", "watchItemId", "note"]) {
       assert.ok(!new RegExp(`\\b${key}\\s*:\\s*true`).test(code), `não lê ${key}`)
     }
     // Toda escrita confere o sorteio de hoje ANTES de montar o contexto de registro.
@@ -484,6 +485,10 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     assert.match(code, /watchIds: \[\]/)
     assert.match(code, /summary: "",\s*decisions: ""/)
     assert.match(code, /action: "reschedule"/)
+    // C20: o próximo passo entra pelo núcleo no modo do scrum master, que não lê nem revisa observação.
+    assert.match(code, /\{ conductor: true \}\)/)
+    const core = stripComments(readFileSync(join(SRC, "server/dailies.ts"), "utf8"))
+    assert.match(core, /if \(conductor \|\| review\.outcome !== "DONE"/, "modo do scrum master pula a observação do caso")
   })
 
   test("toda leitura de combinado no portal usa select explícito", () => {

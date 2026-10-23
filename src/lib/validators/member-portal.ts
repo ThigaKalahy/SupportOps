@@ -63,9 +63,9 @@ export const idSchema = z.string().min(1).max(40)
 
 /**
  * C19 — a daily conduzida pelo scrum master no portal (D46). Só o que o papel alcança:
- * desfecho (Feito, Parcial, Não feito com impeditivo, motivo e novo prazo), quem faltou e
- * os combinados de hoje. Sem nota, observação, substituição, próximo passo, resumo ou
- * decisões — isso fica com o gestor. As regras de data e impeditivo são as da daily.
+ * desfecho (Feito — com próximo passo, C20 —, Parcial, Não feito com impeditivo, motivo e
+ * novo prazo), quem faltou e os combinados de hoje. Sem nota, observação, substituição,
+ * resumo ou decisões — isso fica com o gestor. As regras de data e impeditivo são as da daily.
  */
 export const conductDailySchema = z.object({
   draftId: z.string().min(1).max(40),
@@ -77,6 +77,11 @@ export const conductDailySchema = z.object({
         blockerText: z.string().trim().max(300, v.tooLong).default(""),
         blockerReasonId: z.string().max(40).default(""),
         newDueDate: z.string().trim().max(10).default(""),
+        // C20: próximo passo depois de um Feito (as regras são as da daily: título, o que mudou e prazo).
+        nextTitle: z.string().trim().max(160, v.tooLong).default(""),
+        nextNote: z.string().trim().max(300, v.tooLong).default(""),
+        nextDueDate: z.string().trim().max(10).default(""),
+        nextCentralId: z.string().max(40).default(""),
       }),
     )
     .max(300),

@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs"
 import { describe, test } from "node:test"
 
 import { DEFAULT_THRESHOLDS } from "../src/lib/alert-thresholds.ts"
+import { onBusinessDay } from "../src/lib/dates.ts"
 import { deadlineSeverity } from "../src/lib/severity.ts"
 import { deriveAlerts } from "../src/server/alerts.ts"
 import type { AlertFacts, AlertMember } from "../src/server/queries/alerts.ts"
@@ -92,5 +93,24 @@ describe("C1 — prazo padrão do combinado (D28)", () => {
     assert.match(form, /newRow\(dateText\)/)
     assert.ok(!/nextDaily/.test(readFileSync("src/server/queries/dailies.ts", "utf8")))
     assert.match(readFileSync("src/components/forms/agreement-dialog.tsx", "utf8"), /dueDate: formatDate\(todayBusinessDate\(\), "business"\)/)
+  })
+})
+
+describe("C20 — prazo sempre em dia útil", () => {
+  const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d))
+  test("dia útil fica como está", () => assert.equal(onBusinessDay(utc(2026, 10, 23)).getTime(), utc(2026, 10, 23).getTime()))
+  test("sábado e domingo vão para a segunda", () => {
+    assert.equal(onBusinessDay(utc(2026, 10, 24)).getTime(), utc(2026, 10, 26).getTime())
+    assert.equal(onBusinessDay(utc(2026, 10, 25)).getTime(), utc(2026, 10, 26).getTime())
+  })
+  test("feriado nacional vai para o próximo dia útil (02/11 é segunda; 20/11 é sexta)", () => {
+    assert.equal(onBusinessDay(utc(2026, 11, 2)).getTime(), utc(2026, 11, 3).getTime())
+    assert.equal(onBusinessDay(utc(2026, 11, 20)).getTime(), utc(2026, 11, 23).getTime())
+  })
+  test("toda gravação de prazo passa pela regra (camada do banco)", () => {
+    const source = readFileSync(new URL("../src/server/db.ts", import.meta.url), "utf8")
+    assert.match(source, /Agreement: \["dueDate", "originalDueDate"\]/)
+    assert.match(source, /AgreementCheckin: \["newDueDate"\]/)
+    assert.match(source, /filtered: withBusinessDueDates\(withSoftDelete\(base\)\)/)
   })
 })

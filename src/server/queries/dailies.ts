@@ -775,30 +775,34 @@ export async function getScrumMasterToday(ctx: TeamContext, now: Date = new Date
   const draws = await db.scrumMasterDraw.findMany({
     where: { ...scope, date: today },
     orderBy: { createdAt: "asc" },
-    select: { memberId: true, round: true, method: true, skippedAt: true, member: { select: { preferredName: true, userId: true } } },
+    select: { memberId: true, userId: true, participantName: true, round: true, method: true, skippedAt: true, member: { select: { preferredName: true, userId: true } } },
   })
+  // C20: o sorteado é uma pessoa do time ou um gestor participante (nome gravado no sorteio).
+  const nameOf = (d: (typeof draws)[number]) => d.member?.preferredName ?? d.participantName ?? ""
   const current = draws.find((d) => d.skippedAt === null) ?? null
-  const [doneInRound, eligible] = current
+  const [doneInRound, eligible, managers] = current
     ? await Promise.all([
         db.scrumMasterDraw.count({ where: { ...scope, round: current.round, skippedAt: null } }),
         db.teamMember.count({ where: { ...scope, status: "ACTIVE", deletedAt: null } }),
+        db.teamAccess.count({ where: { ...scope, level: "MANAGER", revokedAt: null, inScrumMasterDraw: true, OR: [{ user: { isActive: true, teamMember: null } }, { user: { isActive: true, teamMember: { teamId: { not: ctx.teamId } } } }] } }),
       ])
-    : [0, 0]
+    : [0, 0, 0]
   return {
     // Sem login no portal (ou gestor), a daily do sorteado é registrada pela tela do gestor.
     current: current
       ? {
           memberId: current.memberId,
-          name: current.member.preferredName,
+          name: nameOf(current),
           round: current.round,
           method: current.method,
-          hasPortal: current.member.userId !== null,
-          /** Quem está logado é o sorteado (a pessoa ligada à conta). */
-          isMe: current.member.userId === ctx.userId,
+          // Gestor sorteado registra pela própria tela; o aviso de "sem portal" é só para pessoas.
+          hasPortal: current.userId !== null || current.member?.userId != null,
+          /** Quem está logado é o sorteado (a pessoa ligada à conta, ou o gestor participante). */
+          isMe: current.userId === ctx.userId || (current.member?.userId != null && current.member.userId === ctx.userId),
         }
       : null,
-    skipped: draws.filter((d) => d.skippedAt !== null).map((d) => d.member.preferredName),
-    round: current ? { done: doneInRound, total: eligible } : null,
+    skipped: draws.filter((d) => d.skippedAt !== null).map(nameOf),
+    round: current ? { done: doneInRound, total: eligible + managers } : null,
     roulette: hasModule(ctx, MODULES.DAILY_ROULETTE),
     windowOpen: rouletteWindowOpen(now),
   }

@@ -18,7 +18,7 @@ import { DatePickerField } from "@/components/ui/date-picker-field"
 import { Input } from "@/components/ui/input"
 import { Section } from "@/components/ui/section"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { formatDate, todayBusinessDate } from "@/lib/dates"
+import { formatDate, onBusinessDay, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { MyOpenAgreement, MyPortalState } from "@/server/queries/member-portal"
@@ -42,7 +42,8 @@ const SELECTED: Record<Outcome, string> = {
 const listClass = "flex flex-col divide-y divide-line rounded-lg border border-line bg-surface"
 
 /** Prazo padrão dos combinados do portal: hoje (D28), em DD/MM/AAAA. */
-const todayText = () => formatDate(todayBusinessDate(), "business")
+// C20: prazo sempre em dia útil — no fim de semana ou feriado, o padrão é o próximo dia útil.
+const todayText = () => formatDate(onBusinessDay(todayBusinessDate()), "business")
 
 /**
  * Parte viva do portal (P26, C14): Zona 1 editável, "Novo combinado", o aviso de daily em
