@@ -1,6 +1,6 @@
 import type { CheckinOutcome } from "@prisma/client"
 
-import { formatDate, todayBusinessDate } from "../lib/dates.ts"
+import { dailyReviewHorizon, formatDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
 import { MODULES } from "../lib/modules.ts"
 import { rouletteWindowOpen } from "../lib/scrum-master.ts"
@@ -112,12 +112,7 @@ export async function getConductDaily(ctx: MemberContext, now: Date = new Date()
     return { state: "other", date: today, name: draft.openedBy?.name ?? "" }
   }
 
-  // A mesma regra da daily do gestor: criados na daily anterior + abertos com prazo até hoje.
-  const previous = await db.daily.findFirst({
-    where: { teamId, status: "CLOSED", date: { lt: today } },
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-    select: { id: true },
-  })
+  // A mesma regra da daily do gestor (C21): abertos com prazo até o próximo dia útil.
   const [modules, agreements, members, reasons] = await Promise.all([
     db.teamModule.findMany({ where: { teamId, isEnabled: true }, select: { moduleKey: true } }),
     db.agreement.findMany({
@@ -125,7 +120,7 @@ export async function getConductDaily(ctx: MemberContext, now: Date = new Date()
         teamId,
         status: { in: ["OPEN", "IN_PROGRESS"] },
         member: { deletedAt: null },
-        OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: today } }],
+        dueDate: { lte: dailyReviewHorizon(today) },
       },
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
       select: {

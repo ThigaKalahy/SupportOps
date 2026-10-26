@@ -157,6 +157,15 @@ export function onBusinessDay(date: Date): Date {
   return isBusinessDay(date) ? date : nextBusinessDay(date);
 }
 
+/**
+ * C21 (decisão do usuário em 26/10/2026): até onde a daily do dia D revisa — os combinados
+ * abertos com prazo até o PRÓXIMO DIA ÚTIL depois de D (vence dia 05, aparece a partir da
+ * daily do dia 04; vence segunda, aparece a partir da sexta). Prazo distante não aparece.
+ */
+export function dailyReviewHorizon(date: Date): Date {
+  return nextBusinessDay(date);
+}
+
 /** Chave ISO "AAAA-MM-DD" de uma data de negócio. Uso interno — nunca exibir. */
 export function toBusinessDateKey(date: Date): string {
   return format(fromBusinessDate(date), "yyyy-MM-dd");

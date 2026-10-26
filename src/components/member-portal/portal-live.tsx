@@ -226,6 +226,8 @@ function ReportRow({
   }
 
   function choose(outcome: Outcome) {
+    // C21: clicar de novo no desfecho em edição desmarca (nada é salvo até escolher).
+    if (editing === outcome) return setEditing(null)
     if (outcome === "DONE") return save(outcome)
     setEditing(outcome)
     requestAnimationFrame(() => blockerRef.current?.focus())

@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs"
 import { describe, test } from "node:test"
 
 import { DEFAULT_THRESHOLDS } from "../src/lib/alert-thresholds.ts"
-import { onBusinessDay } from "../src/lib/dates.ts"
+import { dailyReviewHorizon, onBusinessDay } from "../src/lib/dates.ts"
 import { deadlineSeverity } from "../src/lib/severity.ts"
 import { deriveAlerts } from "../src/server/alerts.ts"
 import type { AlertFacts, AlertMember } from "../src/server/queries/alerts.ts"
@@ -112,5 +112,23 @@ describe("C20 — prazo sempre em dia útil", () => {
     assert.match(source, /Agreement: \["dueDate", "originalDueDate"\]/)
     assert.match(source, /AgreementCheckin: \["newDueDate"\]/)
     assert.match(source, /filtered: withBusinessDueDates\(withSoftDelete\(base\)\)/)
+  })
+})
+
+describe("C21 — a daily só revisa o que vence até o próximo dia útil", () => {
+  const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d))
+  test("vence dia 05, aparece a partir da daily do dia 04", () => {
+    assert.equal(dailyReviewHorizon(utc(2026, 11, 4)).getTime(), utc(2026, 11, 5).getTime())
+  })
+  test("vence na segunda, aparece a partir da daily de sexta", () => {
+    assert.equal(dailyReviewHorizon(utc(2026, 10, 30)).getTime(), utc(2026, 11, 3).getTime(), "02/11 é feriado: da sexta 30/10, o horizonte é terça 03/11")
+    assert.equal(dailyReviewHorizon(utc(2026, 10, 23)).getTime(), utc(2026, 10, 26).getTime())
+  })
+  test("as três telas da daily usam o mesmo horizonte", () => {
+    for (const file of ["../src/server/queries/dailies.ts", "../src/server/member-daily.ts"]) {
+      const source = readFileSync(new URL(file, import.meta.url), "utf8")
+      assert.match(source, /dueDate: \{ lte: dailyReviewHorizon\(/, file)
+      assert.ok(!/sourceDailyId: previous\.id \}\] : \[\]\), \{ dueDate/.test(source), `${file}: regra antiga`)
+    }
   })
 })

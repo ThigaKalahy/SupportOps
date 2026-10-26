@@ -1,6 +1,6 @@
 import type { CheckinOutcome } from "@prisma/client"
 
-import { businessRangeInstants, todayBusinessDate } from "../../lib/dates.ts"
+import { businessRangeInstants, dailyReviewHorizon, todayBusinessDate } from "../../lib/dates.ts"
 import { isLockActive } from "../../lib/daily-lock.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { MODULES } from "../../lib/modules.ts"
@@ -167,7 +167,7 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
               {
                 status: { in: ["OPEN", "IN_PROGRESS"] },
                 AND: [
-                  { OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: date } }] },
+                  { dueDate: { lte: dailyReviewHorizon(date) } },
                   { OR: [{ sourceDailyId: null }, { sourceDailyId: { not: editing.id } }] },
                 ],
                 checkins: { none: { daily: { date: { gt: date } } } },
@@ -179,7 +179,8 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
             ...scope,
             status: { in: ["OPEN", "IN_PROGRESS"] },
             member: { deletedAt: null },
-            OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: date } }],
+            // C21: só o que vence até o próximo dia útil (vencidos inclusive); prazo distante fica de fora.
+            dueDate: { lte: dailyReviewHorizon(date) },
           },
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
       select: {
@@ -671,7 +672,7 @@ export async function getDailyPreview(ctx: TeamContext, today: Date = todayBusin
         ...scope,
         status: { in: ["OPEN", "IN_PROGRESS"] },
         member: { deletedAt: null },
-        OR: [...(previous ? [{ sourceDailyId: previous.id }] : []), { dueDate: { lte: today } }],
+        dueDate: { lte: dailyReviewHorizon(today) },
         selfReports: { none: { dailyId: null } },
       },
       orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],

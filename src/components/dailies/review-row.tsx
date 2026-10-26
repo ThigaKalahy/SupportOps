@@ -119,6 +119,8 @@ export function ReviewRow({
   const idBase = `review-${item.id}`
 
   function choose(outcome: Outcome) {
+    // C21: clicar de novo no desfecho escolhido desmarca — o combinado volta a ficar sem desfecho.
+    if (state.outcome === outcome) return onChange({ outcome: null, nextOpen: false })
     onChange({ outcome })
     if (outcome === "DONE") onDone()
     else requestAnimationFrame(() => blockerRef.current?.focus())

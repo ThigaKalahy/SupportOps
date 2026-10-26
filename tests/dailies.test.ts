@@ -292,7 +292,7 @@ describe("registro de daily", () => {
     assert.ok(text.includes("_Substituído por: Combinado novo no lugar do antigo"))
   })
 
-  test("a daily seguinte revisa os combinados criados nesta, qualquer que seja o prazo", async () => {
+  test("a daily seguinte revisa os combinados criados nesta que vencem até o próximo dia útil (C21)", async () => {
     const nextDay = nextBusinessDay(today)
     const form = await getDailyForm(ownerViewer, nextDay)
     const items = form!.review.flatMap((g) => g.items)
