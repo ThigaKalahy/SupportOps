@@ -1,4 +1,6 @@
 import type { AlertThresholds } from "./alert-thresholds.ts"
+import { addBusinessDays, todayBusinessDate } from "./dates.ts"
+import { labels, plural } from "./labels.ts"
 import type { Severity } from "./severity.ts"
 
 /**
@@ -100,4 +102,61 @@ export function showsOnHome(heat: WatchHeat, state: ReviewState): boolean {
 /** Ordem da tela: grau (alto primeiro), depois o mais esquecido. */
 export function compareWatch(a: { heat: WatchHeat; lastReviewedAt: Date }, b: { heat: WatchHeat; lastReviewedAt: Date }): number {
   return WATCH_HEATS.indexOf(a.heat) - WATCH_HEATS.indexOf(b.heat) || a.lastReviewedAt.getTime() - b.lastReviewedAt.getTime()
+}
+
+/* ─────────────────────────── C22: prazo e urgência ─────────────────────────── */
+
+/** Prazo sugerido para uma observação nova: hoje + N dias úteis do grau (Configurações › Limiares). */
+export function defaultWatchDue(heat: WatchHeat, today: Date, t: AlertThresholds): Date {
+  const days = heat === "HIGH" ? t.watchHighDueDays : heat === "MEDIUM" ? t.watchMediumDueDays : t.watchLowDueDays
+  return addBusinessDays(today, days)
+}
+
+export interface WatchUrgency {
+  /** 0 vermelho · 1 laranja · 2 âmbar · 3 em dia — a ordem da lista. */
+  rank: 0 | 1 | 2 | 3
+  severity: Severity
+  /** Laranja: `attention` forte (DESIGN.md, escala graduada). */
+  strong: boolean
+  /** Dias até o prazo (negativo = vencido); null sem prazo. */
+  daysToDue: number | null
+}
+
+/**
+ * Urgência DERIVADA (D9), nunca gravada: o prazo e a revisão juntos.
+ * - vermelho: prazo vencido, ou revisão muito atrasada (acima do dobro) em fogo alto;
+ * - laranja: vence hoje ou amanhã, ou sem revisão;
+ * - âmbar: vence em até 5 dias;
+ * - em dia: o resto.
+ */
+export function watchUrgency(
+  item: { heat: WatchHeat; lastReviewedAt: Date; dueDate: Date | null },
+  now: Date,
+  t: AlertThresholds,
+  today: Date = todayBusinessDate(now),
+): WatchUrgency {
+  const review = reviewState(item, now, t)
+  const daysToDue = item.dueDate ? Math.round((item.dueDate.getTime() - today.getTime()) / DAY) : null
+  if ((daysToDue !== null && daysToDue < 0) || (review.status === "late" && item.heat === "HIGH")) {
+    return { rank: 0, severity: "overdue", strong: false, daysToDue }
+  }
+  if ((daysToDue !== null && daysToDue <= 1) || review.status !== "ok") return { rank: 1, severity: "attention", strong: true, daysToDue }
+  if (daysToDue !== null && daysToDue <= 5) return { rank: 2, severity: "attention", strong: false, daysToDue }
+  return { rank: 3, severity: "neutral", strong: false, daysToDue }
+}
+
+/** Ordem por urgência (C22): mais urgente primeiro; empate pelo grau e pelo mais esquecido. */
+export function compareWatchUrgency(
+  a: { heat: WatchHeat; lastReviewedAt: Date; urgency: WatchUrgency },
+  b: { heat: WatchHeat; lastReviewedAt: Date; urgency: WatchUrgency },
+): number {
+  return a.urgency.rank - b.urgency.rank || (a.urgency.daysToDue ?? 9999) - (b.urgency.daysToDue ?? 9999) || compareWatch(a, b)
+}
+
+/** "vence hoje", "vence em 3 dias", "venceu há 2 dias". */
+export function dueLabel(daysToDue: number): string {
+  const D = labels.watch.due
+  if (daysToDue === 0) return D.today
+  if (daysToDue > 0) return plural(D.in, daysToDue)
+  return plural(D.overdue, -daysToDue)
 }

@@ -6,6 +6,7 @@ import type { TeamAccessLevel } from "@prisma/client"
 
 import { grantTeamAccess, revokeTeamAccess, setTeamModule } from "@/actions/teams"
 import { FormError } from "@/components/forms/form-kit"
+import { ApiKeysBlock, type ApiKeyRow } from "@/components/settings/api-keys"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -31,6 +32,8 @@ export interface TeamAdminTeam {
   members: number
   modules: { key: ModuleKey; enabled: boolean }[]
   access: { userId: string; name: string; email: string; level: TeamAccessLevel; grantedAt: Date }[]
+  /** C22: chaves da API do time. */
+  apiKeys: ApiKeyRow[]
 }
 
 export interface TeamAdminUser {
@@ -179,6 +182,12 @@ function TeamBlock({ team, users, currentUserId }: { team: TeamAdminTeam; users:
           )}
         </div>
       </div>
+
+      <ApiKeysBlock
+        teamId={team.id}
+        keys={team.apiKeys}
+        owners={team.access.filter((a) => a.level === "MANAGER").map((a) => ({ userId: a.userId, name: a.name }))}
+      />
 
       <GrantDialog team={team} users={candidates} open={granting} onOpenChange={setGranting} />
       <RevokeDialog team={team} access={revoking} onOpenChange={(open) => !open && setRevoking(null)} />

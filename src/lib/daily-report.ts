@@ -3,7 +3,7 @@ import type { CheckinOutcome, WatchHeat } from "@prisma/client"
 import { formatDate, formatDateTime, formatDayMonth } from "./dates.ts"
 import { enumLabel, fill, labels, plural } from "./labels.ts"
 import { PdfDocument, type PdfRun } from "./pdf.ts"
-import { WATCH_HEATS } from "./watch.ts"
+import { compareWatchUrgency, dueLabel, WATCH_HEATS, type WatchUrgency } from "./watch.ts"
 import { centralSlug } from "./centrals.ts"
 
 /**
@@ -71,6 +71,17 @@ export interface DailyReportWatch {
   /** Dias desde a última revisão, quando passou da cadência do grau. */
   unreviewedDays: number | null
   coldHighDays: number | null
+  /** C22: prazo para resolver e a urgência derivada (prazo + revisão). */
+  dueDate: Date | null
+  urgency: WatchUrgency
+}
+
+/** C22: cores da escala de severidade (tokens do DESIGN.md) para o PDF. */
+const URGENCY_COLOR: Record<WatchUrgency["rank"], readonly [number, number, number] | undefined> = {
+  0: [0xa3 / 255, 0x3a / 255, 0x32 / 255],
+  1: [0x9e / 255, 0x4f / 255, 0x14 / 255],
+  2: [0x94 / 255, 0x65 / 255, 0x0c / 255],
+  3: undefined,
 }
 
 const P = labels.dailies.pdf
@@ -206,7 +217,8 @@ export function buildDailyPdf(daily: DailyReportInput, watch: DailyReportWatch[]
     doc.paragraph([{ text: P.watchEmpty, gray: 0.4 }])
   } else {
     doc.paragraph([{ text: fill(P.watchSubtitle, { count: plural(P.watchCount, watch.length) }), gray: 0.4 }], { size: 9, after: 6 })
-    const sorted = [...watch].sort((a, b) => a.lastReviewedAt.getTime() - b.lastReviewedAt.getTime())
+    // C22: dentro de cada grau, o mais urgente (prazo e revisão) primeiro.
+    const sorted = [...watch].sort(compareWatchUrgency)
     for (const heat of WATCH_HEATS) {
       const group = sorted.filter((w) => w.heat === heat)
       if (!group.length) continue
@@ -221,11 +233,19 @@ export function buildDailyPdf(daily: DailyReportInput, watch: DailyReportWatch[]
         } else if (item.context?.trim() && heat !== "LOW") {
           runs.push({ text: `. ${clip(item.context, CONTEXT_MAX)}`, gray: 0.25 })
         }
+        const color = URGENCY_COLOR[item.urgency.rank]
+        if (item.dueDate && item.urgency.daysToDue !== null) {
+          runs.push({
+            text: ` · ${fill(P.watchDue, { date: formatDayMonth(item.dueDate, "business"), when: dueLabel(item.urgency.daysToDue) })}`,
+            font: "bold",
+            ...(color ? { color } : { gray: 0.35 }),
+          })
+        }
         const status: string[] = []
         if (item.coldHighDays !== null) status.push(fill(P.watchColdHigh, { days: item.coldHighDays }))
         else if (item.unreviewedDays !== null) status.push(fill(P.watchUnreviewed, { days: item.unreviewedDays }))
         if (status.length) runs.push({ text: ` · ${status.join(" · ")}`, font: "italic", gray: 0.35 })
-        doc.paragraph(runs, { bullet: true, after: 2 })
+        doc.paragraph(runs, { bullet: true, bulletColor: color, after: 2 })
       }
       doc.space(6)
     }

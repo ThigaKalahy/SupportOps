@@ -157,6 +157,13 @@ export function onBusinessDay(date: Date): Date {
   return isBusinessDay(date) ? date : nextBusinessDay(date);
 }
 
+/** C22: N dias úteis depois de uma data de negócio (pula fins de semana e feriados nacionais). */
+export function addBusinessDays(date: Date, days: number): Date {
+  let out = new Date(date);
+  for (let i = 0; i < days; i++) out = nextBusinessDay(out);
+  return out;
+}
+
 /**
  * C21 (decisão do usuário em 26/10/2026): até onde a daily do dia D revisa — os combinados
  * abertos com prazo até o PRÓXIMO DIA ÚTIL depois de D (vence dia 05, aparece a partir da

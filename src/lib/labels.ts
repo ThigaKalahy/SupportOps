@@ -96,6 +96,19 @@ export const labels = {
     readOnly: "Somente leitura",
     readOnlyHint: "Seu acesso é de leitura. Registros privados do gestor não aparecem para você.",
   },
+  /** C22: mensagens da API de combinados (vão no JSON de resposta). */
+  api: {
+    invalidJson: "Corpo da requisição inválido: envie um objeto JSON.",
+    notFound: "Combinado não encontrado neste time.",
+    dueDateNotEditable: "O prazo só muda na daily (reagendar), para não esconder o arrasto. Os outros campos foram ignorados.",
+    allMembersNotAllowed: "Pela API, crie um combinado por pessoa (memberId de uma pessoa do time).",
+    invalidStatus: "Status aceitos na alteração: DONE (concluir, com outcome opcional) ou CANCELLED (com reason obrigatório).",
+    invalidQuery: "Parâmetro inválido: {name}.",
+    nothingToChange: "Nada para alterar: envie title, description, priority, memberId (ou memberEmail) ou status.",
+    memberNotFound: "Nenhuma pessoa deste time com esse e-mail.",
+    memberAmbiguous: "Mais de uma pessoa deste time com esse e-mail: use o memberId.",
+    memberMismatch: "memberId e memberEmail apontam para pessoas diferentes.",
+  },
   /** C18: a pessoa troca a própria senha (a do convite deixa de valer). */
   account: {
     changePassword: "Alterar senha",
@@ -432,6 +445,9 @@ export const labels = {
       dailyNever: "Nenhuma daily registrada ainda",
       readiness: "Atende ao nível esperado de {seniority} em todas as {total} competências",
       watchUnreviewed: "Sem revisão: \u201c{title}\u201d ({heat}, revisar a cada {cadence} dias)",
+      watchDue: "Prazo vencido há {days}: “{title}”",
+      watchDueDays: { one: "1 dia", other: "{count} dias" },
+      watchDueToday: "Vence hoje: “{title}”",
       watchColdHigh: "\u201c{title}\u201d: fogo alto há {days} dias sem mudar de grau",
       watchStalled: "Em observação e nunca revisada: \u201c{title}\u201d",
       watchNoMember: "Sem pessoa",
@@ -1377,6 +1393,7 @@ export const labels = {
       watchAbove: "aparece acima, em {name}",
       watchAboveDaily: "aparece acima",
       watchUnreviewed: "sem revisão há {days} dias",
+      watchDue: "prazo {date} ({when})",
       watchColdHigh: "fogo alto há {days} dias sem mudar de grau",
       footer: "Manager Ops · gerado em {date}",
       page: "Página {page} de {total}",
@@ -1639,6 +1656,22 @@ export const labels = {
   },
   /** P21 — Em observação (D24–D27). */
   watch: {
+    /** C22: prazo para resolver e urgência. */
+    due: {
+      today: "vence hoje",
+      in: { one: "vence amanhã", other: "vence em {count} dias" },
+      overdue: { one: "venceu ontem", other: "venceu há {count} dias" },
+      field: "Prazo para resolver",
+      none: "sem prazo",
+      clear: "Sem prazo",
+      extendReason: "Por que estender o prazo?",
+      extendPlaceholder: "Ex.: aguardando publicação da correção",
+      extendRequired: "Diga por que o prazo foi estendido (ex.: aguardando publicação).",
+      extended: "Prazo estendido de {from} para {to}: {reason}",
+      pastNotAllowed: "O prazo não pode ficar no passado.",
+      alert: "Observação com prazo vencido há {days}: {title}",
+      alertToday: "Observação vence hoje: {title}",
+    },
     title: "Em observação",
     /** Combinados que tratam a observação (C7). */
     agreements: {
@@ -2045,6 +2078,35 @@ export const labels = {
       team: "Times e acessos",
     },
     teamAdmin: {
+      /** C22: chaves da API de combinados. */
+      apiKeys: {
+        title: "Chaves da API",
+        direction: "Para integrar outra ferramenta aos combinados do time: listar, criar, alterar e excluir. A chave age em nome do dono, só no time dela, e toda chamada fica na auditoria.",
+        empty: "Nenhuma chave neste time.",
+        create: "Gerar chave",
+        createTitle: "Gerar chave da API",
+        createDescription: "A chave aparece uma única vez. Guarde num lugar seguro e entregue só a quem vai integrar.",
+        name: "Nome",
+        namePlaceholder: "Ex.: Planilha do Jeff",
+        owner: "Em nome de",
+        ownerHint: "Quem gerencia o time. Se essa pessoa perder o acesso, a chave para de funcionar.",
+        ownerMustManage: "O dono precisa ter acesso de gestor ativo neste time.",
+        generate: "Gerar",
+        cancel: "Cancelar",
+        created: "Chave gerada. Copie agora: ela não aparece de novo.",
+        copy: "Copiar chave",
+        copied: "Copiada",
+        done: "Já copiei",
+        columns: { name: "Nome", owner: "Em nome de", prefix: "Início", created: "Criada em", lastUsed: "Último uso", status: "Situação" },
+        never: "nunca usada",
+        active: "Ativa",
+        revoked: "Revogada em {date}",
+        revoke: "Revogar",
+        revokeTitle: "Revogar a chave?",
+        revokeDescription: "A chave “{name}” para de funcionar na hora. O que já foi feito com ela continua na auditoria.",
+        revokeConfirm: "Revogar chave",
+        unauthorized: "Chave de API inválida ou sem acesso.",
+      },
       direction:
         "Times da organização, os módulos de cada um e quem tem acesso. Acesso dá entrada no time; o nível decide se a pessoa registra (gestor) ou só lê (leitura).",
       moduleNote: "Desligar um módulo não apaga nada: os registros continuam no banco e só deixam de aparecer na interface deste time.",
@@ -2234,6 +2296,9 @@ export const labels = {
         watchHighCadenceDays: { name: "Em observação — fogo alto", help: "Revisar a cada N dias.", unit: "dias" },
         watchMediumCadenceDays: { name: "Em observação — fogo médio", help: "Revisar a cada N dias.", unit: "dias" },
         watchLowCadenceDays: { name: "Em observação — fogo baixo", help: "Revisar a cada N dias.", unit: "dias" },
+        watchHighDueDays: { name: "Prazo sugerido — fogo alto", help: "Dias úteis para resolver uma observação nova de fogo alto.", unit: "dias úteis" },
+        watchMediumDueDays: { name: "Prazo sugerido — fogo médio", help: "Dias úteis para resolver uma observação nova de fogo médio.", unit: "dias úteis" },
+        watchLowDueDays: { name: "Prazo sugerido — fogo baixo", help: "Dias úteis para resolver uma observação nova de fogo baixo.", unit: "dias úteis" },
         watchStaleHighDays: {
           name: "Fogo alto frio",
           help: "Dias em fogo alto sem mudar de grau: ou não era fogo alto, ou o assunto está travado.",
@@ -2577,6 +2642,7 @@ export const enumLabels = {
     MANAGER: "Gestor",
     OTHER: "Outra",
     MEMBER: "Colaborador",
+    API: "Integração",
   },
   agreementPriority: {
     LOW: "Baixa",

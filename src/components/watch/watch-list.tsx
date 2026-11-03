@@ -17,15 +17,17 @@ import { FieldGroup } from "@/components/ui/field-group"
 import { Input } from "@/components/ui/input"
 import { MetaLabel } from "@/components/ui/meta-label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { DatePickerField } from "@/components/ui/date-picker-field"
 import { SeverityDot } from "@/components/ui/severity-dot"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { StatusPill } from "@/components/ui/status-pill"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/toast"
+import { formatDate, parseDisplayDate, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import { WATCH_PARAMS } from "@/lib/watch-filters"
-import { cooler, HEAT_SEVERITY, hotter, WATCH_HEATS, type WatchHeat } from "@/lib/watch"
+import { HEAT_SEVERITY, WATCH_HEATS, cooler, dueLabel, hotter, type WatchHeat } from "@/lib/watch"
 import type { WatchDetail, WatchRow } from "@/server/queries/watch"
 
 const W = labels.watch
@@ -103,6 +105,20 @@ export function WatchList({
   )
 }
 
+/** C22: o prazo da observação ativa, colorido pela urgência ("vence em 3 dias", "venceu há 2 dias"). */
+function DueTag({ row }: { row: WatchRow }) {
+  if (row.urgency.daysToDue === null) return <span className="text-ink-secondary">{W.due.none}</span>
+  const text = dueLabel(row.urgency.daysToDue)
+  if (row.urgency.rank === 3) return <span>{text}</span>
+  return <StatusPill severity={row.urgency.severity} strong={row.urgency.strong} label={text} />
+}
+
+/** Rótulo acessível do ponto: o prazo (quando há) e o estado de revisão. */
+function urgencyLabel(row: WatchRow): string {
+  const due = row.urgency.daysToDue === null ? W.due.none : dueLabel(row.urgency.daysToDue)
+  return `${due} · ${reviewLabel(row)}`
+}
+
 function reviewLabel(row: WatchRow): string {
   return row.review.status === "late" ? W.review.late : row.review.status === "due" ? W.review.due : W.review.ok
 }
@@ -156,7 +172,8 @@ function WatchLine({ row, canWrite, onOpen, onEdit }: { row: WatchRow; canWrite:
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <span className="mt-1.5 shrink-0">
           {active ? (
-            <SeverityDot severity={row.review.severity} label={reviewLabel(row)} />
+            // C22: a cor é a urgência — prazo e revisão juntos.
+            <SeverityDot severity={row.urgency.severity} strong={row.urgency.strong} label={urgencyLabel(row)} />
           ) : (
             <SeverityDot severity="calm" label={row.status === "RESOLVED" ? W.tabs.resolved : W.tabs.archived} />
           )}
@@ -169,6 +186,7 @@ function WatchLine({ row, canWrite, onOpen, onEdit }: { row: WatchRow; canWrite:
         </div>
         <div className="flex shrink-0 items-center gap-3 text-xs text-ink-secondary">
           {active ? null : <StatusPill severity={HEAT_SEVERITY[row.heat]} label={W.heat[row.heat]} />}
+          {active ? <DueTag row={row} /> : null}
           <span className="font-mono" title={reviewLabel(row)}>
             {daysText(row.review.daysSinceReview)}
           </span>
@@ -412,6 +430,13 @@ function WatchDetailSheet({
               <SheetDescription>{fill(D.created, { date: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(detail.createdAt) })} · {detail.createdBy}</SheetDescription>
             </SheetHeader>
             <WatchLinks row={detail} />
+            {detail.status === "ACTIVE" ? (
+              <p className="flex flex-wrap items-center gap-2 text-sm text-ink-secondary">
+                <span>{W.due.field}:</span>
+                {detail.dueDate ? <span className="font-mono text-ink">{formatDate(detail.dueDate, "business")}</span> : null}
+                <DueTag row={detail} />
+              </p>
+            ) : null}
             {detail.coldHighDays !== null ? <p className="text-sm text-overdue">{fill(W.coldHigh, { days: detail.coldHighDays })}</p> : null}
             {editing && editable ? (
               <WatchEditForm
@@ -420,6 +445,9 @@ function WatchDetailSheet({
                 onSaved={(title, context, central) => {
                   setDetail({ ...detail, title, context, central })
                   setEditing(false)
+                  // C22: o prazo (e a revisão gravada ao estender) vêm do servidor.
+                  setVersion((v) => v + 1)
+                  router.refresh()
                 }}
               />
             ) : detail.context ? (
@@ -528,6 +556,11 @@ function WatchEditForm({
   const [title, setTitle] = React.useState(detail.title)
   const [context, setContext] = React.useState(detail.context ?? "")
   const [centralId, setCentralId] = React.useState(detail.central?.id ?? "")
+  // C22: prazo para resolver; estender (para depois do atual) pede o motivo.
+  const [due, setDue] = React.useState(detail.dueDate ? formatDate(detail.dueDate, "business") : "")
+  const [dueReason, setDueReason] = React.useState("")
+  const dueParsed = parseDisplayDate(due)
+  const extending = detail.dueDate !== null && dueParsed !== null && dueParsed.getTime() > detail.dueDate.getTime()
   const [extraCentrals, setExtraCentrals] = React.useState<{ id: string; name: string }[]>([])
   const options = React.useMemo(() => {
     const all = [...(centrals ?? []), ...extraCentrals]
@@ -542,7 +575,7 @@ function WatchEditForm({
     event?.preventDefault()
     setError(null)
     startTransition(async () => {
-      const result = await updateWatch({ id: detail.id, title, context, ...(centrals ? { centralId } : {}) })
+      const result = await updateWatch({ id: detail.id, title, context, dueDate: due, dueReason, ...(centrals ? { centralId } : {}) })
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {})
         return setError(result.error)
@@ -585,6 +618,16 @@ function WatchEditForm({
       <FieldGroup label={E.contextField} optional error={errors.context}>
         <Textarea value={context} onChange={(e) => setContext(e.target.value)} rows={4} maxLength={1000} />
       </FieldGroup>
+      <FieldGroup label={W.due.field} optional error={errors.dueDate}>
+        {(control) => (
+          <DatePickerField {...control} aria-label={W.due.field} value={due} onChange={setDue} min={todayBusinessDate()} optional placeholder={W.due.none} />
+        )}
+      </FieldGroup>
+      {extending ? (
+        <FieldGroup label={W.due.extendReason} required error={errors.dueReason}>
+          <Input value={dueReason} onChange={(e) => setDueReason(e.target.value)} maxLength={300} placeholder={W.due.extendPlaceholder} />
+        </FieldGroup>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-overdue">
           {error}

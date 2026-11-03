@@ -17,6 +17,8 @@ export interface PdfRun {
   font?: PdfFont
   /** Cinza de 0 (preto) a 1 (branco). */
   gray?: number
+  /** C22: cor RGB (0–1), para a escala de severidade; vence o cinza. */
+  color?: readonly [number, number, number]
 }
 
 const PAGE = { width: 595.28, height: 841.89 }
@@ -115,6 +117,7 @@ interface Word {
   text: string
   font: PdfFont
   gray: number
+  color?: readonly [number, number, number]
   /** Espaço antes da palavra (falso na primeira de um trecho colado ao anterior). */
   space: boolean
 }
@@ -148,15 +151,19 @@ export class PdfDocument {
     this.y -= points
   }
 
-  private drawText(x: number, baseline: number, text: string, font: PdfFont, size: number, gray: number) {
-    this.ops.push(`BT ${num(gray)} g /${FONT_REF[font]} ${num(size)} Tf ${num(x)} ${num(baseline)} Td ${pdfString(text)} Tj ET`)
+  private drawText(x: number, baseline: number, text: string, font: PdfFont, size: number, gray: number, color?: readonly [number, number, number]) {
+    const fillColor = color ? `${color.map(num).join(" ")} rg` : `${num(gray)} g`
+    this.ops.push(`BT ${fillColor} /${FONT_REF[font]} ${num(size)} Tf ${num(x)} ${num(baseline)} Td ${pdfString(text)} Tj ET`)
   }
 
   /**
    * Parágrafo com quebra automática. `indent` desloca o bloco; `bullet`
    * desenha um marcador na margem do bloco e recua o texto (recuo pendente).
    */
-  paragraph(runs: PdfRun[], options: { size?: number; indent?: number; bullet?: boolean; leading?: number; after?: number } = {}) {
+  paragraph(
+    runs: PdfRun[],
+    options: { size?: number; indent?: number; bullet?: boolean; bulletColor?: readonly [number, number, number]; leading?: number; after?: number } = {},
+  ) {
     const size = options.size ?? 10
     const leading = options.leading ?? size * 1.4
     const indent = options.indent ?? 0
@@ -170,7 +177,7 @@ export class PdfDocument {
       parts.forEach((part, i) => {
         if (!part) return
         const glued = i === 0 && !text.startsWith(" ") && words.length > 0
-        words.push({ text: part, font: run.font ?? "regular", gray: run.gray ?? 0, space: !glued })
+        words.push({ text: part, font: run.font ?? "regular", gray: run.gray ?? 0, color: run.color, space: !glued })
       })
     }
     if (words.length === 0) return
@@ -193,11 +200,11 @@ export class PdfDocument {
     lines.forEach((line, index) => {
       this.ensure(leading)
       const baseline = this.y - size
-      if (index === 0 && options.bullet) this.drawText(MARGIN.x + indent + 2, baseline, "•", "regular", size, 0.35)
+      if (index === 0 && options.bullet) this.drawText(MARGIN.x + indent + 2, baseline, "•", "regular", size, 0.35, options.bulletColor)
       let x = MARGIN.x + textIndent
       for (const word of line) {
         if (word.space) x += textWidth(" ", word.font, size)
-        this.drawText(x, baseline, word.text, word.font, size, word.gray)
+        this.drawText(x, baseline, word.text, word.font, size, word.gray, word.color)
         x += textWidth(word.text, word.font, size)
       }
       this.y -= leading

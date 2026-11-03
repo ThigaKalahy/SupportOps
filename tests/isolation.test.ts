@@ -45,7 +45,8 @@ import { parseTimelineFilters } from "../src/lib/timeline-filters.ts"
 import { parseValidationFilters } from "../src/lib/validation-filters.ts"
 import { parseWatchFilters } from "../src/lib/watch-filters.ts"
 import { getAlerts } from "../src/server/alerts.ts"
-import { createAgreementRecord, completeAgreementRecord, cancelAgreementRecord, transferAgreementRecord, updateAgreementRecord } from "../src/server/agreements.ts"
+import { createAgreementRecord, completeAgreementRecord, cancelAgreementRecord, deleteAgreementRecord, transferAgreementRecord, updateAgreementRecord } from "../src/server/agreements.ts"
+import { createApiKeyRecord, revokeApiKeyRecord } from "../src/server/api-keys.ts"
 import { ensureCentralRecord, importCentralsRecord } from "../src/server/centrals.ts"
 import { createDailyRecord, discardDailyRecord, openDailyRecord, takeOverDailyRecord, updateDailyRecord } from "../src/server/dailies.ts"
 import { db, dbIncludingDeleted } from "../src/server/db.ts"
@@ -73,6 +74,7 @@ import {
 import { createValidationRecord, deleteValidationRecord, updateValidationRecord } from "../src/server/priority-validations.ts"
 import * as adherence from "../src/server/queries/adherence.ts"
 import * as agreements from "../src/server/queries/agreements.ts"
+import * as apiQ from "../src/server/queries/api.ts"
 import * as alertsQ from "../src/server/queries/alerts.ts"
 import * as centrals from "../src/server/queries/centrals.ts"
 import * as dailies from "../src/server/queries/dailies.ts"
@@ -170,6 +172,8 @@ const SCOPED_MODELS = [
   "agreementSelfReport", "memberProposal",
   // C19
   "scrumMasterDraw",
+  // C22
+  "apiKey",
 ]
 const GUARDED_METHODS = ["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "update", "updateMany", "delete", "deleteMany"]
 const CALL = new RegExp(`\\b(?:db|tx|dbIncludingDeleted)\\.(${SCOPED_MODELS.join("|")})\\.(${GUARDED_METHODS.join("|")})\\(`, "g")
@@ -445,7 +449,7 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     assert.deepEqual(imports.filter((spec) => !allowed(spec)), [], "só banco, contexto do colaborador, timeline e src/lib")
     const code = stripComments(source)
     // Leituras: só o próprio combinado, as centrais do time e o módulo de centrais.
-    const reads = [...code.matchAll(/(?:db|tx)\.(\w+)\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/g)]
+    const reads = [...code.matchAll(/\b(?:db|tx)\.(\w+)\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/g)]
     assert.deepEqual([...new Set(reads.map((m) => m[1]))].filter((model) => !["agreement", "central", "teamModule"].includes(model!)), [])
     for (const m of reads.filter((r) => r[1] === "agreement")) {
       assert.match(callBody(code, (m.index ?? 0) + m[0].length - 1), /memberOwnScope\(ctx\)/, "combinado lido só da própria pessoa")
@@ -489,6 +493,27 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     assert.match(code, /\{ conductor: true \}\)/)
     const core = stripComments(readFileSync(join(SRC, "server/dailies.ts"), "utf8"))
     assert.match(core, /if \(conductor \|\| review\.outcome !== "DONE"/, "modo do scrum master pula a observação do caso")
+  })
+
+  test("C22: toda rota da API passa pela casca (chave, contexto do dono, auditoria) e não toca o banco direto", () => {
+    const routes = sourceFiles(join(SRC, "app", "api", "v1")).filter((f) => f.endsWith("route.ts"))
+    assert.ok(routes.length >= 4, "rotas da API encontradas")
+    const violations: string[] = []
+    for (const file of routes) {
+      const source = readFileSync(file, "utf8")
+      for (const m of source.matchAll(/export async function (GET|POST|PATCH|DELETE|PUT)\(/g)) {
+        const open = source.indexOf("{", m.index! + m[0].length)
+        const next = source.indexOf("\nexport ", open)
+        if (!source.slice(open, next === -1 ? undefined : next).includes("handleApi(")) violations.push(`${rel(file)}:${m[1]} sem handleApi`)
+      }
+      if (/from "@\/server\/db"|requireTeamContext\(|teamContextFor\(/.test(source)) violations.push(`${rel(file)}: banco ou contexto direto`)
+    }
+    assert.deepEqual(violations, [])
+    // A chave nunca vai para o banco nem para o log: só o prefixo e o SHA-256.
+    const keys = stripComments(readFileSync(join(SRC, "server", "api-keys.ts"), "utf8"))
+    assert.match(keys, /keyHash: hash\(key\)/)
+    assert.match(keys, /timingSafeEqual/)
+    assert.ok(!/after: \{[^}]*\bkey\b[,:}]/.test(keys), "a chave não entra na auditoria")
   })
 
   test("toda leitura de combinado no portal usa select explícito", () => {
@@ -723,6 +748,12 @@ const QUERIES: Record<string, Invoke> = {
   getDailyForm: (c) => dailies.getDailyForm(c),
   getDailyOpening: (c) => dailies.getDailyOpening(c, day(0)),
   getDailyPreview: (c) => dailies.getDailyPreview(c, day(0)),
+  // api.ts (C22)
+  listAgreementsForApi: (c) => apiQ.listAgreementsForApi(c, { limit: 200 }),
+  getAgreementForApi: async (c, own, other) => [await apiQ.getAgreementForApi(c, own.agreement), await apiQ.getAgreementForApi(c, other.agreement)],
+  listMembersForApi: (c) => apiQ.listMembersForApi(c),
+  listCentralsForApi: (c) => apiQ.listCentralsForApi(c),
+  resolveMemberForApi: async (c, own, other) => [await apiQ.resolveMemberForApi(c, own.member, ""), await apiQ.resolveMemberForApi(c, other.member, "")],
   getScrumMasterToday: (c) => dailies.getScrumMasterToday(c),
   getDailyDetail: async (c, own, other) => [await dailies.getDailyDetail(c, own.daily), await dailies.getDailyDetail(c, other.daily)],
   listDailies: (c) => dailies.listDailies(c),
@@ -848,6 +879,9 @@ const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unk
   updateAgreementRecord: (c, o) => updateAgreementRecord(c, { id: o.agreement, title: "x" }),
   cancelAgreementRecord: (c, o) => cancelAgreementRecord(c, { id: o.agreement, reason: "x" }),
   transferAgreementRecord: (c, o) => transferAgreementRecord(c, { id: o.agreement, memberId: o.member, reason: "férias" }),
+  deleteAgreementRecord: (c, o) => deleteAgreementRecord(c, { id: o.agreement }),
+  createApiKeyRecord: (c) => createApiKeyRecord(c, { teamId: T1, userId: USERS.m1, name: "chave" }),
+  revokeApiKeyRecord: (c) => revokeApiKeyRecord(c, { teamId: T1, id: "qualquer" }),
   updateWatchItemRecord: (c, o) => updateWatchItemRecord(c, { id: o.watch, title: "x" }),
   createVacationRecord: (c, o) => createVacationRecord(c, { memberId: o.member, startDate: "01/01/2030", endDate: "05/01/2030" }),
   cancelVacationRecord: (c) => cancelVacationRecord(c, { id: "qualquer" }),

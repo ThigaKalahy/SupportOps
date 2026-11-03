@@ -61,6 +61,8 @@ enum AgreementOrigin {
   OTHER
   /// Proposta do colaborador aceita pelo gestor (P26, D42).
   MEMBER
+  /// C22: criado pela API de combinados (chave do time).
+  API
 }
 
 /// Prioridade de COMBINADO. Não confundir com PriorityLevel, que é a escala de
@@ -221,6 +223,8 @@ model User {
   teamAccesses        TeamAccess[]         @relation("TeamAccessUser")
   grantedTeamAccesses TeamAccess[]         @relation("TeamAccessGrantedBy")
   teamModuleChanges   TeamModule[]
+  apiKeys             ApiKey[]             @relation("ApiKeyOwner")
+  createdApiKeys      ApiKey[]             @relation("ApiKeyCreatedBy")
   agreementTransfers  AgreementTransfer[]
   memberVacations     MemberVacation[]
   auditLogs           AuditLog[]
@@ -286,6 +290,7 @@ model Team {
   developmentPlans        DevelopmentPlan[]
   memberChanges           MemberChange[]
   scrumMasterDraws        ScrumMasterDraw[]
+  apiKeys                 ApiKey[]
   mentorshipLinks         MentorshipLink[]
   memberCompetencies      MemberCompetency[]
   agreementCheckins       AgreementCheckin[]
@@ -1531,6 +1536,9 @@ model WatchItem {
   reviewCount          Int         @default(0)
   /// Preenchido na criação; muda quando o grau muda.
   heatChangedAt        DateTime    @db.Timestamptz
+  /// C22: prazo para resolver ("resolver até"), sugerido pelo grau em dias úteis e editável;
+  /// estender exige motivo, gravado como revisão. Nulo = sem prazo (observações anteriores ao C22).
+  dueDate              DateTime?   @db.Date
   resolvedAt           DateTime?   @db.Timestamptz
   resolutionNote       String?
   updatedAt            DateTime    @updatedAt @db.Timestamptz
@@ -1657,4 +1665,27 @@ enum ScrumMasterDrawMethod {
   ROULETTE
   /// Escolha automática, sem roleta (times sem o módulo).
   AUTO
+}
+
+/// C22: chave da API de combinados (exceção à D8 autorizada pelo usuário em 03/11/2026).
+/// Uma chave vale para UM time e age em nome do dono (`userId`, MANAGER no time): o escopo,
+/// a autoria e a auditoria saem dele, conferidos a cada chamada. A chave inteira nunca é
+/// gravada — só o prefixo (para reconhecer na lista) e o SHA-256. Revogar preenche `revokedAt`.
+model ApiKey {
+  id              String    @id @default(cuid())
+  teamId          String
+  name            String
+  prefix          String    @unique
+  keyHash         String
+  userId          String
+  createdByUserId String
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+  lastUsedAt      DateTime? @db.Timestamptz
+  revokedAt       DateTime? @db.Timestamptz
+
+  team      Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  user      User @relation("ApiKeyOwner", fields: [userId], references: [id])
+  createdBy User @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([teamId, revokedAt])
 }

@@ -237,7 +237,7 @@ export function AgreementDialog({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {AGREEMENT_ORIGINS.map((o) => (
+                        {AGREEMENT_ORIGINS.filter((o) => o !== "API").map((o) => (
                           <SelectItem key={o} value={o}>
                             {enumLabel("agreementOrigin", o)}
                           </SelectItem>

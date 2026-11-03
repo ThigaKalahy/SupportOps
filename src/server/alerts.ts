@@ -204,6 +204,7 @@ export type AlertKind =
   | "devReturnsRecurring"
   | "devReturnUnresolved"
   | "watchUnreviewed"
+  | "watchDue"
   | "watchColdHigh"
   | "watchStalled"
   | "proposalUnanswered"
@@ -557,6 +558,22 @@ export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds,
     if (w.memberId && !member) continue
     const href = `/watch?open=${w.id}`
     const base = { member, nav: "watch" as const, informative: false, action: { kind: "link" as const, label: L.actions.openWatch, href } }
+    // C22: prazo vencido (vermelho) ou vencendo hoje (laranja) vem antes de tudo.
+    const daysToDue = w.dueDate ? Math.round((w.dueDate.getTime() - today.getTime()) / 86_400_000) : null
+    if (daysToDue !== null && daysToDue <= 0) {
+      const late = -daysToDue
+      alerts.push({
+        ...base,
+        id: `watchDue:${w.id}`,
+        kind: "watchDue",
+        severity: late > 0 ? "overdue" : "attention",
+        strong: late === 0,
+        text: late > 0 ? fill(L.watchDue, { title: w.title, days: plural(L.watchDueDays, late) }) : fill(L.watchDueToday, { title: w.title }),
+        age: ago(late),
+        ageDays: late,
+      })
+      continue
+    }
     const cold = coldHighDays({ ...w, status: "ACTIVE" }, now, t)
     if (cold !== null) {
       alerts.push({ ...base, id: `watchColdHigh:${w.id}`, kind: "watchColdHigh", severity: "overdue", strong: false, text: fill(L.watchColdHigh, { title: w.title, days: cold }), age: ago(cold), ageDays: cold })

@@ -103,6 +103,8 @@ export interface AlertWatchItem {
   lastReviewedAt: Date
   heatChangedAt: Date
   reviewCount: number
+  /** C22: prazo para resolver (nulo = sem prazo). */
+  dueDate?: Date | null
 }
 
 export interface AlertDevReturn {
@@ -217,7 +219,7 @@ export async function getAlertFacts(ctx: TeamContext, today: Date, t: AlertThres
           OR: [{ memberId: null }, { member: people }],
           ...visibilityFilter(ctx),
         },
-        select: { id: true, memberId: true, title: true, heat: true, createdAt: true, lastReviewedAt: true, heatChangedAt: true, reviewCount: true },
+        select: { id: true, memberId: true, title: true, heat: true, createdAt: true, lastReviewedAt: true, heatChangedAt: true, reviewCount: true, dueDate: true },
       }),
     ])
 

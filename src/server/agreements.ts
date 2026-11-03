@@ -7,6 +7,7 @@ import {
   ALL_MEMBERS,
   cancelAgreementSchema,
   completeAgreementSchema,
+  deleteAgreementSchema,
   createAgreementSchema,
   editAgreementSchema,
   transferAgreementSchema,
@@ -17,7 +18,7 @@ import { resolveCentralId } from "./centrals.ts"
 import { linkPendingWatchItems } from "./watch.ts"
 import { findWatchForWrite } from "./queries/watch.ts"
 import { db } from "./db.ts"
-import { moveAgreementEvents, recordTimelineEvents, syncTimelineContent, timelineEventFor } from "./timeline.ts"
+import { moveAgreementEvents, recordTimelineEvents, removeTimelineEvents, syncTimelineContent, timelineEventFor } from "./timeline.ts"
 import { requireManager, teamScope, type TeamContext } from "./scope.ts"
 
 /**
@@ -36,7 +37,7 @@ import { requireManager, teamScope, type TeamContext } from "./scope.ts"
 export async function createAgreementRecord(
   ctx: TeamContext,
   input: unknown,
-): Promise<ActionResult | { ok: true; count: number }> {
+): Promise<Extract<ActionResult, { ok: false }> | { ok: true; count?: number; ids: string[] }> {
   requireManager(ctx)
   const parsed = createAgreementSchema.safeParse(input)
   if (!parsed.success) {
@@ -65,6 +66,8 @@ export async function createAgreementRecord(
   const watch = data.watchItemId ? await findWatchForWrite(ctx, data.watchItemId) : null
   if (data.watchItemId && (!watch || watch.status !== "ACTIVE")) return { ok: false, error: labels.watch.agreements.notActive }
 
+  // C22: os ids criados voltam para quem chamou (a API responde com o combinado novo).
+  const ids: string[] = []
   await db.$transaction(async (tx) => {
     for (const [i, member] of members.entries()) {
       const created = await tx.agreement.create({
@@ -82,6 +85,7 @@ export async function createAgreementRecord(
           authorUserId: ctx.userId,
         },
       })
+      ids.push(created.id)
       await recordTimelineEvents(tx, ctx, [timelineEventFor.agreementCreated(created)])
       // P21: observação marcada no dialog antes de salvar passa a apontar para o combinado (o primeiro, com "Todos").
       if (i === 0) {
@@ -107,7 +111,7 @@ export async function createAgreementRecord(
       )
     }
   })
-  return all ? { ok: true, count: members.length } : { ok: true }
+  return all ? { ok: true, count: members.length, ids } : { ok: true, ids }
 }
 
 export async function completeAgreementRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
@@ -277,3 +281,34 @@ export async function transferAgreementRecord(ctx: TeamContext, input: unknown):
   return { ok: true }
 }
 
+
+/**
+ * C22 — exclusão LÓGICA de um combinado (usada pela API; decisão do usuário em 03/11/2026):
+ * preenche `deletedAt`, tira as linhas da timeline que apontam para ele e audita com o antes.
+ * Nada é apagado: o registro, os checkins e as transferências ficam no banco (D10).
+ */
+export async function deleteAgreementRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  const parsed = deleteAgreementSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: labels.validation.generic, fieldErrors: fieldErrorsOf(parsed.error) }
+  const before = await db.agreement.findFirst({
+    where: { id: parsed.data.id, ...teamScope(ctx) },
+    select: { id: true, memberId: true, title: true, status: true, dueDate: true },
+  })
+  if (!before) return { ok: false, error: labels.validation.generic }
+  await db.$transaction(async (tx) => {
+    await tx.agreement.update({ where: { id: before.id, ...teamScope(ctx) }, data: { deletedAt: new Date() } })
+    await removeTimelineEvents(tx, ctx, { kind: "agreement", id: before.id })
+    await writeAudit(
+      {
+        action: "agreement.delete",
+        entity: "Agreement",
+        entityId: before.id,
+        before: { memberId: before.memberId, title: before.title, status: before.status, dueDate: before.dueDate.toISOString().slice(0, 10) },
+        after: { deleted: true },
+      },
+      auditOf(ctx, tx),
+    )
+  })
+  return { ok: true }
+}

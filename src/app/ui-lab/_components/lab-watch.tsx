@@ -6,7 +6,7 @@ import { ProfileWatchBlock } from "@/components/watch/profile-watch-block"
 import { StatusPill } from "@/components/ui/status-pill"
 import { DEFAULT_THRESHOLDS } from "@/lib/alert-thresholds"
 import { labels } from "@/lib/labels"
-import { coldHighDays, HEAT_SEVERITY, reviewState, WATCH_HEATS, type WatchHeat } from "@/lib/watch"
+import { HEAT_SEVERITY, WATCH_HEATS, coldHighDays, reviewState, type WatchHeat, watchUrgency } from "@/lib/watch"
 import type { WatchRow } from "@/server/queries/watch"
 
 import { Specimen } from "./specimen"
@@ -43,10 +43,16 @@ function row(id: string, title: string, heat: WatchHeat, reviewedDaysAgo: number
     updatedAt: daysAgo(reviewedDaysAgo),
     agreementCount: 0,
     openAgreementCount: 0,
+    dueDate: null as Date | null,
     ...patch,
   }
   const now = new Date()
-  return { ...base, review: reviewState(base, now, DEFAULT_THRESHOLDS), coldHighDays: coldHighDays(base, now, DEFAULT_THRESHOLDS) }
+  return {
+    ...base,
+    review: reviewState(base, now, DEFAULT_THRESHOLDS),
+    urgency: watchUrgency(base, now, DEFAULT_THRESHOLDS),
+    coldHighDays: coldHighDays(base, now, DEFAULT_THRESHOLDS),
+  }
 }
 
 const ROWS: WatchRow[] = [
@@ -55,6 +61,7 @@ const ROWS: WatchRow[] = [
     origin: "AGREEMENT",
     agreementCount: 5,
     openAgreementCount: 3,
+    dueDate: daysAgo(2),
   }),
   row("w2", "Escalonamentos da Central Alfa voltando sem diagnóstico", "HIGH", 1, 3, { member: null, central: { id: "c1", name: "Central Alfa" }, origin: "MANUAL" }),
   row("w3", "Larissa insegura com chamados de hardware", "MEDIUM", 9, 9, { member: { id: "m1", preferredName: "Larissa" }, reviewCount: 0 }),

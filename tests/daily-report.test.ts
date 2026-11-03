@@ -36,7 +36,7 @@ const daily: DailyReportInput = {
   ],
 }
 const ago = (d: number) => new Date(Date.UTC(2026, 9, 8 - d))
-const base = { visibility: "PRIVATE" as const, central: null, agreementId: null, dailyId: null, unreviewedDays: null, coldHighDays: null, context: null }
+const base = { visibility: "PRIVATE" as const, central: null, agreementId: null, dailyId: null, unreviewedDays: null, coldHighDays: null, dueDate: null, urgency: { rank: 3 as const, severity: "neutral" as const, strong: false, daysToDue: null }, context: null }
 const watch: DailyReportWatch[] = [
   { ...base, title: "SLA da Smarttrucks travando a esteira", heat: "HIGH", member: { id: "c", preferredName: "Clarice" }, agreementId: "a4", context: "Contexto que não deve repetir", lastReviewedAt: ago(1) },
   { ...base, title: "Ritmo de fechamento de esteiras", heat: "HIGH", member: { id: "n", preferredName: "Natália" }, context: "Três suspensões na mesma semana; entender se é o cliente ou a abordagem.", lastReviewedAt: ago(4), unreviewedDays: 4 },

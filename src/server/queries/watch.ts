@@ -6,7 +6,7 @@ import { MODULES } from "../../lib/modules.ts"
 import type { WatchFilters, WatchTab } from "../../lib/watch-filters.ts"
 import { todayBusinessDate } from "../../lib/dates.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
-import { coldHighDays, compareWatch, reviewState, type ReviewState } from "../../lib/watch.ts"
+import { coldHighDays, compareWatch, compareWatchUrgency, reviewState, watchUrgency, type ReviewState, type WatchUrgency } from "../../lib/watch.ts"
 import { db } from "../db.ts"
 import { hasModule, teamScope, type TeamContext } from "../scope.ts"
 import { visibilityFilter } from "../visibility.ts"
@@ -107,6 +107,9 @@ export interface WatchRow {
   resolutionNote: string | null
   updatedAt: Date
   review: ReviewState
+  /** C22: prazo para resolver (nulo = sem prazo) e a urgência derivada (prazo + revisão). */
+  dueDate: Date | null
+  urgency: WatchUrgency
   /** Dias em fogo alto sem mudar de grau, quando passou do limiar. */
   coldHighDays: number | null
   /** Combinados que tratam a observação (C7), contando o de origem; e quantos estão abertos. */
@@ -125,6 +128,7 @@ const rowSelect = {
   createdAt: true,
   lastReviewedAt: true,
   heatChangedAt: true,
+  dueDate: true,
   reviewCount: true,
   resolvedAt: true,
   resolutionNote: true,
@@ -187,6 +191,9 @@ function toRow(r: RawRow, ctx: TeamContext, now: Date, t: AlertThresholds): Watc
     updatedAt: r.updatedAt,
     link: linkOf(r, ctx),
     review: reviewState(r, now, t),
+    dueDate: r.dueDate,
+    // Só observação ativa tem urgência; resolvida e arquivada ficam "em dia".
+    urgency: r.status === "ACTIVE" ? watchUrgency(r, now, t) : { rank: 3, severity: "neutral", strong: false, daysToDue: null },
     coldHighDays: coldHighDays(r, now, t),
     ...agreementCounts(r),
   }
@@ -234,7 +241,8 @@ export async function listWatchItems(ctx: TeamContext, filters: WatchFilters, t:
   const counts = Object.fromEntries((["active", "unreviewed", "resolved", "archived", "all"] as const).map((tab) => [tab, all.filter((r) => inTab(r, tab)).length])) as WatchCounts
   const list = all.filter((r) => inTab(r, filters.tab))
   if (filters.tab === "resolved" || filters.tab === "archived") list.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-  else list.sort((a, b) => Number(a.status !== "ACTIVE") - Number(b.status !== "ACTIVE") || compareWatch(a, b))
+  // C22: ativas pela urgência (prazo + revisão), o mais urgente no topo de cada grau.
+  else list.sort((a, b) => Number(a.status !== "ACTIVE") - Number(b.status !== "ACTIVE") || compareWatchUrgency(a, b))
   return { rows: list, counts }
 }
 
@@ -346,6 +354,7 @@ export async function activeWatchForReport(ctx: TeamContext, t: AlertThresholds,
       visibility: true,
       lastReviewedAt: true,
       heatChangedAt: true,
+      dueDate: true,
       agreementId: true,
       dailyId: true,
       member: { select: { id: true, preferredName: true } },
@@ -366,6 +375,8 @@ export async function activeWatchForReport(ctx: TeamContext, t: AlertThresholds,
       lastReviewedAt: r.lastReviewedAt,
       unreviewedDays: review.status === "ok" ? null : review.daysSinceReview,
       coldHighDays: coldHighDays(r, now, t),
+      dueDate: r.dueDate,
+      urgency: watchUrgency(r, now, t),
     }
   })
 }

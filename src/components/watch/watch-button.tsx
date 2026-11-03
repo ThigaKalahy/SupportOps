@@ -14,7 +14,10 @@ import { StatusPill } from "@/components/ui/status-pill"
 import { Textarea } from "@/components/ui/textarea"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
-import { HEAT_SEVERITY, WATCH_HEATS, type WatchHeat, type WatchOrigin } from "@/lib/watch"
+import { HEAT_SEVERITY, WATCH_HEATS, defaultWatchDue, type WatchHeat, type WatchOrigin } from "@/lib/watch"
+import { useThresholds } from "@/components/shell/thresholds-context"
+import { DatePickerField } from "@/components/ui/date-picker-field"
+import { formatDate, todayBusinessDate } from "@/lib/dates"
 
 const W = labels.watch
 const B = W.button
@@ -87,6 +90,14 @@ export function WatchButton({
   const [title, setTitle] = React.useState(defaults.title)
   const [context, setContext] = React.useState(defaults.context ?? "")
   const [heat, setHeat] = React.useState<WatchHeat>(defaults.heat ?? "MEDIUM")
+  // C22: prazo para resolver, sugerido pelo grau (dias úteis) até a pessoa mexer nele.
+  const thresholds = useThresholds()
+  const suggestedDue = React.useCallback(
+    (h: WatchHeat) => formatDate(defaultWatchDue(h, todayBusinessDate(), thresholds), "business"),
+    [thresholds],
+  )
+  const [due, setDue] = React.useState(() => suggestedDue(defaults.heat ?? "MEDIUM"))
+  const [dueTouched, setDueTouched] = React.useState(false)
   // C7: cliente (central), pré-preenchido com a do registro de origem (combinado, validação...).
   const centrals = useQuickAgreement()?.centrals ?? null
   const [centralId, setCentralId] = React.useState(link.centralId ?? "")
@@ -131,13 +142,15 @@ export function WatchButton({
     }
     setError(null)
     startTransition(async () => {
-      const result = await createAction({ title, heat, context, origin, ...link, ...(centralId ? { centralId } : {}) })
+      const result = await createAction({ title, heat, context, dueDate: due, origin, ...link, ...(centralId ? { centralId } : {}) })
       if (!result.ok) return setError(result.error)
       if (repeatable) {
         setTitle(defaults.title)
         setContext(defaults.context ?? "")
         setHeat(defaults.heat ?? "MEDIUM")
         setCentralId(link.centralId ?? "")
+        setDue(suggestedDue(defaults.heat ?? "MEDIUM"))
+        setDueTouched(false)
       } else setExisting({ id: result.id, heat })
       onCreated?.(result.id, heat)
       setOpen(false)
@@ -259,13 +272,30 @@ export function WatchButton({
                       aria-checked={heat === h}
                       variant={heat === h ? "secondary" : "ghost"}
                       className={cn("flex-1", heat === h && heatText[h], heat === h && "border-current")}
-                      onClick={() => setHeat(h)}
+                      onClick={() => {
+                        setHeat(h)
+                        if (!dueTouched) setDue(suggestedDue(h))
+                      }}
                     >
                       {W.heat[h]}
                     </Button>
                   ))}
                 </div>
               </fieldset>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-ink">{W.due.field}</span>
+                <DatePickerField
+                  aria-label={W.due.field}
+                  value={due}
+                  min={todayBusinessDate()}
+                  optional
+                  placeholder={W.due.none}
+                  onChange={(value) => {
+                    setDue(value)
+                    setDueTouched(true)
+                  }}
+                />
+              </div>
               {centrals ? (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-sm font-medium text-ink">{W.central}</span>

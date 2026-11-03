@@ -1,6 +1,7 @@
 import type { Prisma, WatchHeat } from "@prisma/client"
 
-import { labels } from "../lib/labels.ts"
+import { formatDate, parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
+import { fill, labels } from "../lib/labels.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import {
   createWatchSchema,
@@ -11,12 +12,13 @@ import {
   visibilityWatchSchema,
   watchRefSchema,
 } from "../lib/validators/watch.ts"
-import { cooler, hotter } from "../lib/watch.ts"
+import { cooler, defaultWatchDue, hotter } from "../lib/watch.ts"
 
 import { auditOf, writeAudit } from "./audit.ts"
 import { resolveCentralId } from "./centrals.ts"
 import { db } from "./db.ts"
 import { recordTimelineEvents, syncTimelineContent, syncTimelineVisibility, timelineEventFor } from "./timeline.ts"
+import { getThresholds } from "./queries/thresholds.ts"
 import { findActiveWatchForLink, findWatchForWrite, resolveWatchLinks, WATCH_LINKS } from "./queries/watch.ts"
 import { requireManager, teamScope, type TeamContext } from "./scope.ts"
 
@@ -59,6 +61,9 @@ export async function createWatchItemRecord(ctx: TeamContext, input: unknown): P
   if (!resolved) return { ok: false, error: labels.validation.generic }
   const existing = await findActiveWatchForLink(ctx, { ...data, memberId: resolved.memberId ?? "" })
   if (existing) return { ok: true, id: existing.id, existed: true }
+  // C22: prazo informado; sem campo, o sugerido pelo grau (dias úteis); vazio, sem prazo.
+  const dueDate =
+    data.dueDate === undefined ? defaultWatchDue(data.heat, todayBusinessDate(), await getThresholds(ctx)) : data.dueDate ? parseDisplayDate(data.dueDate) : null
 
   const now = new Date()
   const created = await db.$transaction(async (tx) => {
@@ -69,6 +74,7 @@ export async function createWatchItemRecord(ctx: TeamContext, input: unknown): P
         title: data.title,
         context: textOrNull(data.context),
         heat: data.heat,
+        dueDate,
         origin: data.origin,
         // D25: nasce PRIVATE, sem exceção e sem configuração que mude o padrão.
         visibility: "PRIVATE",
@@ -86,7 +92,7 @@ export async function createWatchItemRecord(ctx: TeamContext, input: unknown): P
         timelineEventFor.watchCreated({ ...item, memberId: item.memberId, authorUserId: ctx.userId }),
       ])
     }
-    await audit(ctx, "create", item.id, undefined, { title: item.title, heat: item.heat, origin: item.origin, memberId: item.memberId }, tx)
+    await audit(ctx, "create", item.id, undefined, { title: item.title, heat: item.heat, origin: item.origin, memberId: item.memberId, dueDate: item.dueDate }, tx)
     return item
   })
   return { ok: true, id: created.id, existed: false }
@@ -219,8 +225,23 @@ export async function updateWatchItemRecord(ctx: TeamContext, input: unknown): P
   // C7: central (cliente) — ausente não mexe; vazio tira; id precisa ser do time, ativa, com o módulo ligado.
   const centralId = parsed.data.centralId === undefined ? item.centralId : await resolveCentralId(ctx, parsed.data.centralId)
   if (centralId === undefined) return { ok: false, error: labels.validation.generic, fieldErrors: { centralId: labels.validation.generic } }
+  // C22: prazo — ausente não mexe; vazio tira; estender (para depois do atual) exige o motivo,
+  // que entra no histórico da observação como revisão (ex.: "aguardando publicação").
+  const dueDate = parsed.data.dueDate === undefined ? item.dueDate : parsed.data.dueDate ? parseDisplayDate(parsed.data.dueDate) : null
+  const extended = item.dueDate !== null && dueDate !== null && dueDate.getTime() > item.dueDate.getTime()
+  if (extended && parsed.data.dueReason.length < 3) {
+    return { ok: false, error: labels.watch.due.extendRequired, fieldErrors: { dueReason: labels.watch.due.extendRequired } }
+  }
   await db.$transaction(async (tx) => {
-    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { title, context, centralId } })
+    await tx.watchItem.update({ where: { id: item.id, ...teamScope(ctx) }, data: { title, context, centralId, dueDate } })
+    if (extended) {
+      const note = fill(labels.watch.due.extended, {
+        from: formatDate(item.dueDate!, "business"),
+        to: formatDate(dueDate!, "business"),
+        reason: parsed.data.dueReason,
+      })
+      await recordWatchReview(tx, ctx, item, note)
+    }
     if (item.memberId) {
       // O grau do título da timeline é o de quando a observação nasceu.
       const first = await tx.watchReview.findFirst({
@@ -238,7 +259,7 @@ export async function updateWatchItemRecord(ctx: TeamContext, input: unknown): P
       })
       await syncTimelineContent(tx, ctx, { kind: "watchItem", id: item.id }, { title: createdRow.title, summary: context }, "WATCH")
     }
-    await audit(ctx, "update", item.id, { title: item.title, context: item.context, centralId: item.centralId }, { title, context, centralId }, tx)
+    await audit(ctx, "update", item.id, { title: item.title, context: item.context, centralId: item.centralId, dueDate: item.dueDate }, { title, context, centralId, dueDate }, tx)
   })
   return { ok: true }
 }

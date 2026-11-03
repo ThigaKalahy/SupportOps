@@ -77,6 +77,8 @@ const BUSINESS_DATE_FIELDS: Partial<Record<Prisma.ModelName, readonly string[]>>
   AgreementCheckin: ["newDueDate"],
   AgreementSelfReport: ["suggestedDueDate"],
   MemberProposal: ["suggestedDueDate"],
+  // C22: prazo da observação segue a mesma regra.
+  WatchItem: ["dueDate"],
 }
 const WRITE_OPERATIONS: ReadonlySet<string> = new Set(["create", "createMany", "update", "updateMany", "upsert"])
 

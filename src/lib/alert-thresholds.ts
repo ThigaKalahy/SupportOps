@@ -32,6 +32,10 @@ export interface AlertThresholds {
   watchLowCadenceDays: number
   /** Fogo alto frio: em fogo alto há mais de N dias sem mudar de grau. */
   watchStaleHighDays: number
+  /** C22: prazo sugerido para resolver a observação, por grau, em DIAS ÚTEIS. */
+  watchHighDueDays: number
+  watchMediumDueDays: number
+  watchLowDueDays: number
 }
 
 export const DEFAULT_THRESHOLDS: AlertThresholds = {
@@ -48,6 +52,10 @@ export const DEFAULT_THRESHOLDS: AlertThresholds = {
   watchMediumCadenceDays: 7,
   watchLowCadenceDays: 21,
   watchStaleHighDays: 30,
+  // Decisão do usuário em 03/11/2026: alto 24h úteis, médio 5 e baixo 10 dias úteis.
+  watchHighDueDays: 1,
+  watchMediumDueDays: 5,
+  watchLowDueDays: 10,
 }
 
 type ScalarKey = Exclude<keyof AlertThresholds, "oneOnOneDays">
@@ -66,6 +74,9 @@ export const THRESHOLD_LIMITS: Record<ScalarKey, { min: number; max: number }> =
   watchMediumCadenceDays: { min: 2, max: 30 },
   watchLowCadenceDays: { min: 7, max: 90 },
   watchStaleHighDays: { min: 7, max: 120 },
+  watchHighDueDays: { min: 1, max: 10 },
+  watchMediumDueDays: { min: 1, max: 30 },
+  watchLowDueDays: { min: 1, max: 60 },
 }
 
 export const ONE_ON_ONE_LIMITS = { min: 7, max: 120 } as const

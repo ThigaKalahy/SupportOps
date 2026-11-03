@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { labels } from "../labels.ts"
+import { parseDisplayDate, todayBusinessDate } from "../dates.ts"
 import { WATCH_HEATS, WATCH_ORIGINS } from "../watch.ts"
 
 import { optionalText } from "./fields.ts"
@@ -18,10 +19,23 @@ const W = labels.watch
 
 const link = z.string().max(40).default("")
 
+/**
+ * C22: prazo para resolver, "DD/MM/AAAA". Ausente = o servidor sugere pelo grau; vazio = sem
+ * prazo. Nunca no passado (o banco leva sábado, domingo e feriado para o próximo dia útil).
+ */
+const dueDate = z
+  .string()
+  .trim()
+  .max(10)
+  .optional()
+  .refine((value) => !value || parseDisplayDate(value) !== null, v.date)
+  .refine((value) => !value || (parseDisplayDate(value) ?? todayBusinessDate()) >= todayBusinessDate(), W.due.pastNotAllowed)
+
 export const createWatchSchema = z.object({
   title: z.string().trim().min(1, W.validation.title).max(160, v.tooLong),
   heat: z.enum(WATCH_HEATS),
   context: optionalText(1000).default(""),
+  dueDate,
   origin: z.enum(WATCH_ORIGINS),
   memberId: link,
   centralId: link,
@@ -56,6 +70,9 @@ export const editWatchSchema = z.object({
   context: optionalText(1000).default(""),
   /** Central/cliente (C7): ausente = não mexe; "" = tira; id = troca. */
   centralId: z.string().max(40).optional(),
+  /** C22: ausente = não mexe; "" = tira o prazo. Estender exige `dueReason`. */
+  dueDate,
+  dueReason: z.string().trim().max(300, v.tooLong).default(""),
 })
 
 export const visibilityWatchSchema = z.object({ id: z.string().min(1), visibility: z.enum(["PRIVATE", "SHARED"]) })

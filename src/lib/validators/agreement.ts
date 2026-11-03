@@ -12,7 +12,7 @@ import { optionalText, upcomingDisplayDate } from "./fields.ts"
 
 const v = labels.validation
 
-export const AGREEMENT_ORIGINS = ["DAILY", "ONE_ON_ONE", "FEEDBACK", "MEETING", "INCIDENT", "MANAGER", "OTHER"] as const
+export const AGREEMENT_ORIGINS = ["DAILY", "ONE_ON_ONE", "FEEDBACK", "MEETING", "INCIDENT", "MANAGER", "OTHER", "API"] as const
 export const AGREEMENT_PRIORITIES = ["LOW", "NORMAL", "HIGH"] as const
 
 /** Responsável "Todos do time": um combinado por pessoa disponível, cada um cobrado na daily. */
@@ -69,3 +69,6 @@ export const transferAgreementSchema = z.object({
   memberId: z.string().min(1, v.required),
   reason: z.string().trim().min(3, v.tooShort).max(300, v.tooLong),
 })
+
+/** C22: exclusão lógica (API): o combinado sai das telas e da timeline, mas fica no banco. */
+export const deleteAgreementSchema = z.object({ id: z.string().min(1).max(40) })

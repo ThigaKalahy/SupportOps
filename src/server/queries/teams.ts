@@ -29,6 +29,18 @@ export interface AdminTeam {
   members: number
   modules: { key: ModuleKey; enabled: boolean }[]
   access: AdminTeamAccess[]
+  /** C22: chaves da API do time (a chave em si nunca sai do servidor — só o início). */
+  apiKeys: AdminApiKey[]
+}
+
+export interface AdminApiKey {
+  id: string
+  name: string
+  prefix: string
+  owner: string
+  createdAt: Date
+  lastUsedAt: Date | null
+  revokedAt: Date | null
 }
 
 export interface TeamAdminData {
@@ -53,6 +65,10 @@ export async function listTeamsForAdmin(ctx: TeamContext): Promise<TeamAdminData
         orderBy: { grantedAt: "asc" },
         select: { level: true, grantedAt: true, user: { select: { id: true, name: true, email: true } } },
       },
+      apiKeys: {
+        orderBy: { createdAt: "desc" },
+        select: { id: true, name: true, prefix: true, createdAt: true, lastUsedAt: true, revokedAt: true, user: { select: { name: true } } },
+      },
     },
   })
   const teamIds = teams.map((t) => t.id)
@@ -74,6 +90,7 @@ export async function listTeamsForAdmin(ctx: TeamContext): Promise<TeamAdminData
         members: members.get(t.id) ?? 0,
         modules: MODULE_KEYS.map((key) => ({ key, enabled: enabled.has(key) })),
         access: t.accesses.map((a) => ({ userId: a.user.id, name: a.user.name, email: a.user.email, level: a.level, grantedAt: a.grantedAt })),
+        apiKeys: t.apiKeys.map((k) => ({ id: k.id, name: k.name, prefix: k.prefix, owner: k.user.name, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, revokedAt: k.revokedAt })),
       }
     }),
     users,
