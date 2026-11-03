@@ -1818,6 +1818,9 @@ model AuditConversation {
   endedAt          DateTime?               @db.Timestamptz
   messageCount     Int                     @default(0)
   parseWarnings    Json?
+  /// Fase C: o que o leitor extraiu além das mensagens (contato do cliente, avaliação, tags,
+  /// 1ª resposta, chamados, transferências, áudios e anexos). Nunca inventado: ausente = nulo.
+  meta             Json?
   status           AuditConversationStatus @default(IMPORTED)
   statusChangedAt  DateTime                @default(now()) @db.Timestamptz
   /// Pega por uma execução (trava contra duplicidade; vencida após 5 min).

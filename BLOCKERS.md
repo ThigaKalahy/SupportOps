@@ -97,6 +97,6 @@ Enquanto isso: o critério de aceite do P25 — a suíte de isolamento inteira �
 
 ## [ ] Auditoria de Atendimentos — insumos para as Fases C e D
 Fase: C23 (Auditoria de Atendimentos)
-Preciso de: (1) 2 ou 3 arquivos TXT reais de conversa, de preferência anonimizados, para o leitor (Fase C); (2) a variável `OPENAI_API_KEY` cadastrada na Vercel (Production), os preços por milhão de tokens do modelo na sua conta e o orçamento do mês/por lote (Fase D); (3) confirmação de que o envio das conversas à OpenAI está alinhado com contrato, LGPD e política interna.
+Preciso de: (1) ~~TXT de exemplo~~ recebidos em 05/11/2026 (Fase C entregue); (2) a variável `OPENAI_API_KEY` cadastrada na Vercel (Production), os preços por milhão de tokens do modelo na sua conta e o orçamento do mês/por lote (Fase D); (3) confirmação de que o envio das conversas à OpenAI está alinhado com contrato, LGPD e política interna.
 Onde consigo: (1) exportar do sistema de atendimento; (2) Vercel › Project › Settings › Environment Variables, e a página de preços da OpenAI da sua conta; (3) jurídico/RH.
 Enquanto isso: o módulo existe desligado, em simulação, com orçamento zero; nada é importado nem avaliado.

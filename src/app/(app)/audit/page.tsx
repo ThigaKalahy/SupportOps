@@ -1,13 +1,17 @@
 import type { Metadata } from "next"
+import Link from "next/link"
+import { UploadIcon } from "lucide-react"
 
 import { AuditConfigForm } from "@/components/audit/audit-config-form"
 import { TriageTabs } from "@/components/priority-validations/triage-tabs"
+import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { Section } from "@/components/ui/section"
 import { formatDateTime } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { requireAuditPage } from "@/server/audit/access"
 import { getAuditConfig } from "@/server/audit/config"
+import { listAuditBatches } from "@/server/audit/queries"
 
 const A = labels.audit
 
@@ -21,7 +25,7 @@ export const metadata: Metadata = {
  */
 export default async function AuditPage() {
   const ctx = await requireAuditPage()
-  const config = await getAuditConfig(ctx)
+  const [config, batches] = await Promise.all([getAuditConfig(ctx), listAuditBatches(ctx)])
   const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" })
   const S = A.status
 
@@ -36,8 +40,39 @@ export default async function AuditPage() {
   return (
     <div className="flex flex-col gap-6">
       <TriageTabs modules={ctx.modules} audit />
-      <PageHeader title={A.title} subtitle={A.subtitle} />
-      <p className="max-w-3xl rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">{A.phase}</p>
+      <PageHeader
+        title={A.title}
+        subtitle={A.subtitle}
+        actions={
+          <Button asChild size="sm">
+            <Link href="/audit/import">
+              <UploadIcon />
+              {A.batches.new}
+            </Link>
+          </Button>
+        }
+      />
+      <p className="max-w-3xl rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">{A.phaseC}</p>
+
+      <Section title={A.batches.title} count={batches.length}>
+        {batches.length === 0 ? (
+          <p className="text-sm text-ink-secondary">{A.batches.empty}</p>
+        ) : (
+          <ul className="flex max-w-4xl flex-col divide-y divide-line rounded-lg border border-line bg-surface">
+            {batches.map((b) => (
+              <li key={b.id} className="px-3 py-2">
+                <Link href={`/audit/batches/${b.id}`} className="text-sm font-medium text-ink hover:underline">
+                  {b.name}
+                </Link>
+                <p className="text-xs text-ink-secondary">
+                  {formatDateTime(b.createdAt)} ·{" "}
+                  {fill(A.batches.counts, { files: b.fileCount, imported: b.importedCount, duplicates: b.duplicateCount, failed: b.failedCount })}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
 
       <Section title={S.title}>
         <dl className="grid max-w-3xl gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">

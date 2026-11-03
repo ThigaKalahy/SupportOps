@@ -46,3 +46,30 @@ export const auditConfigSchema = z.object({
 })
 
 export type AuditConfigInput = z.input<typeof auditConfigSchema>
+
+/* ─────────────── Fase C: importação ─────────────── */
+
+/** Arquivos por chamada (o navegador envia em pacotes; o servidor não confia no tamanho). */
+export const AUDIT_IMPORT_CHUNK = 10
+
+export const createAuditBatchSchema = z.object({ name: z.string().trim().min(2, v.tooShort).max(120, v.tooLong) })
+
+export const importAuditFilesSchema = z.object({
+  batchId: z.string().min(1).max(40),
+  files: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(255),
+        text: z.string().max(512 * 1024),
+        encoding: z.string().max(40),
+      }),
+    )
+    .max(AUDIT_IMPORT_CHUNK),
+  /** Recusados no navegador (ZIP inseguro, tipo errado…): entram no relatório, nunca somem. */
+  rejected: z.array(z.object({ name: z.string().max(255), reason: z.string().max(200) })).max(200).default([]),
+})
+
+export const auditAliasSchema = z.object({
+  alias: z.string().trim().min(1).max(160),
+  memberId: z.string().min(1).max(40),
+})

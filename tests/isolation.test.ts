@@ -534,7 +534,7 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     for (const name of readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "access.ts")) {
       const source = readFileSync(join(dir, name), "utf8")
       for (const m of source.matchAll(/^export async function (\w+)\(([^)]*)/gm)) {
-        assert.match(m[2]!, /^ctx: AuditContext/, `server/audit/${name}:${m[1]} precisa receber ctx: AuditContext`)
+        assert.match(m[2]!.trim(), /^ctx: AuditContext/, `server/audit/${name}:${m[1]} precisa receber ctx: AuditContext`)
       }
     }
     // Toda página do módulo começa por requireAuditPage (404 sem acesso).
