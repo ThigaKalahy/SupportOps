@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { DevReturnSummary } from "@/components/dev-returns/dev-return-summary"
 import { DevReturnsWorkspace } from "@/components/dev-returns/dev-returns-workspace"
 import { TriageTabs } from "@/components/priority-validations/triage-tabs"
+import { canSeeAudit } from "@/server/audit/access"
 import { ContextActions } from "@/components/shell/context-actions"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageHeader } from "@/components/ui/page-header"
@@ -66,7 +67,7 @@ export default async function DevReturnsPage({
         <DevReturnsToolbar filters={filters} members={formData.members} reasons={formData.reasons} centrals={centrals} />
       </ContextActions>
       <PageHeader title={D.title} subtitle={subtitle} />
-      <TriageTabs modules={ctx.modules} />
+      <TriageTabs modules={ctx.modules} audit={await canSeeAudit(ctx)} />
       {writer && formData.reasons.length === 0 ? (
         <p className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink">{D.form.noReasons}</p>
       ) : null}

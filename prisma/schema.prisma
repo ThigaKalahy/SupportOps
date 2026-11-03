@@ -291,6 +291,17 @@ model Team {
   memberChanges           MemberChange[]
   scrumMasterDraws        ScrumMasterDraw[]
   apiKeys                 ApiKey[]
+  auditAccesses           AuditAccess[]
+  auditConfig             AuditConfig?
+  auditBatches            AuditBatch[]
+  auditConversations      AuditConversation[]
+  auditMessages           AuditMessage[]
+  auditRuns               AuditRun[]
+  auditScores             AuditCriterionScore[]
+  auditEvidences          AuditEvidence[]
+  auditReviews            AuditReview[]
+  auditFeedbacks          AuditFeedbackSuggestion[]
+  auditAliases            AuditAnalystAlias[]
   mentorshipLinks         MentorshipLink[]
   memberCompetencies      MemberCompetency[]
   agreementCheckins       AgreementCheckin[]
@@ -487,9 +498,12 @@ model TeamMember {
   transfersIn  AgreementTransfer[] @relation("TransferTo")
   vacations    MemberVacation[]
 
-  selfReports      AgreementSelfReport[]
-  proposals        MemberProposal[]
-  scrumMasterDraws ScrumMasterDraw[]
+  selfReports        AgreementSelfReport[]
+  proposals          MemberProposal[]
+  scrumMasterDraws   ScrumMasterDraw[]
+  auditConversations AuditConversation[]
+  auditFeedbacks     AuditFeedbackSuggestion[]
+  auditAliases       AuditAnalystAlias[]
 
   @@index([teamId, status])
   @@index([seniorityId])
@@ -1688,4 +1702,314 @@ model ApiKey {
   createdBy User @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([teamId, revokedAt])
+}
+
+// ═══════════════════ C23 — AUDITORIA DE ATENDIMENTOS (D47) ═══════════════════
+// Módulo do Suporte, de UM usuário (AuditAccess), atrás do módulo ATTENDANCE_AUDIT.
+// Tabelas próprias, sem mexer nas existentes. A IA nunca escreve TimelineEvent, Feedback,
+// MemberTrait nem nada do prontuário: nota e feedback ficam aqui, como sugestão (D47).
+// Ids de usuário (quem importou, revisou) são texto, sem FK — como em ScrumMasterDraw.
+
+/// Quem pode abrir o módulo no time. Só por script (`pnpm audit:grant`), nunca automático.
+model AuditAccess {
+  id              String    @id @default(cuid())
+  teamId          String
+  userId          String
+  grantedByUserId String?
+  grantedAt       DateTime  @default(now()) @db.Timestamptz
+  revokedAt       DateTime? @db.Timestamptz
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, userId])
+}
+
+/// Configuração do módulo no time (uma linha). Nasce DESLIGADA, em SIMULAÇÃO e com orçamento zero.
+model AuditConfig {
+  id                      String   @id @default(cuid())
+  teamId                  String   @unique
+  /// Interruptor das avaliações. Desligado: importa e lê, não avalia.
+  enabled                 Boolean  @default(false)
+  /// Simulação: percorre o fluxo inteiro sem chamar a OpenAI (custo zero).
+  simulation              Boolean  @default(true)
+  model                   String   @default("gpt-5.4-nano")
+  criteriaVersion         String   @default("v1")
+  /// Conversas por execução (piloto: 5; ampliar só com validação explícita).
+  maxPerRun               Int      @default(5)
+  concurrency             Int      @default(1)
+  requestsPerMinute       Int      @default(10)
+  tokensPerMinute         Int      @default(60000)
+  maxInputTokens          Int      @default(12000)
+  maxOutputTokens         Int      @default(2500)
+  /// Orçamento interno em US$ (zero = nada é avaliado). Alertas em 50/80/100%; bloqueia no teto.
+  monthlyBudgetUsd        Decimal  @default(0) @db.Decimal(10, 4)
+  batchBudgetUsd          Decimal  @default(0) @db.Decimal(10, 4)
+  /// Preços em US$ por milhão de tokens. Sem preço, não há estimativa — e não se avalia.
+  inputPricePerMTok       Decimal? @db.Decimal(10, 4)
+  cachedInputPricePerMTok Decimal? @db.Decimal(10, 4)
+  outputPricePerMTok      Decimal? @db.Decimal(10, 4)
+  maskPersonalData        Boolean  @default(true)
+  /// Depois de N dias, o texto bruto e as mensagens saem; notas e evidências ficam.
+  retentionDays           Int      @default(180)
+  updatedAt               DateTime @updatedAt @db.Timestamptz
+  updatedByUserId         String?
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+}
+
+enum AuditBatchStatus {
+  OPEN
+  PROCESSING
+  STOPPED
+  DONE
+}
+
+/// Lote de importação: os arquivos importados juntos, com o relatório (nada some sem registro).
+model AuditBatch {
+  id              String           @id @default(cuid())
+  teamId          String
+  name            String
+  status          AuditBatchStatus @default(OPEN)
+  /// "Parar": nenhuma conversa nova é pega; as em andamento terminam.
+  stopRequested   Boolean          @default(false)
+  fileCount       Int              @default(0)
+  importedCount   Int              @default(0)
+  duplicateCount  Int              @default(0)
+  failedCount     Int              @default(0)
+  warningCount    Int              @default(0)
+  report          Json?
+  budgetUsd       Decimal?         @db.Decimal(10, 4)
+  createdByUserId String
+  createdAt       DateTime         @default(now()) @db.Timestamptz
+
+  team          Team                @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  conversations AuditConversation[]
+
+  @@index([teamId, createdAt])
+}
+
+enum AuditConversationStatus {
+  IMPORTED
+  QUEUED
+  PROCESSING
+  DONE
+  FAILED
+  REVIEW_NEEDED
+}
+
+/// Uma conversa (um TXT). O texto original fica separado do resultado estruturado (mensagens).
+model AuditConversation {
+  id               String                  @id @default(cuid())
+  teamId           String
+  batchId          String
+  fileName         String
+  /// SHA-256 do conteúdo: duplicata no time é recusada (e registrada no relatório).
+  contentHash      String
+  encoding         String
+  rawText          String?
+  externalId       String?
+  customerName     String?
+  /// Analista como aparece no arquivo; `memberId` só quando reconhecido com segurança (alias).
+  analystName      String?
+  memberId         String?
+  /// Mais de um analista: a responsabilidade não vai para um só.
+  multipleAnalysts Boolean                 @default(false)
+  startedAt        DateTime?               @db.Timestamptz
+  endedAt          DateTime?               @db.Timestamptz
+  messageCount     Int                     @default(0)
+  parseWarnings    Json?
+  status           AuditConversationStatus @default(IMPORTED)
+  statusChangedAt  DateTime                @default(now()) @db.Timestamptz
+  /// Pega por uma execução (trava contra duplicidade; vencida após 5 min).
+  claimedAt        DateTime?               @db.Timestamptz
+  attempts         Int                     @default(0)
+  lastError        String?
+  /// Nota final (0–100) da avaliação vigente.
+  finalScore       Decimal?                @db.Decimal(5, 2)
+  needsReview      Boolean                 @default(false)
+  createdAt        DateTime                @default(now()) @db.Timestamptz
+
+  team      Team                      @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  batch     AuditBatch                @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  member    TeamMember?               @relation(fields: [memberId], references: [id])
+  messages  AuditMessage[]
+  runs      AuditRun[]
+  reviews   AuditReview[]
+  feedbacks AuditFeedbackSuggestion[]
+
+  @@unique([teamId, contentHash])
+  @@index([teamId, status])
+  @@index([teamId, batchId])
+  @@index([teamId, memberId])
+}
+
+enum AuditSender {
+  CUSTOMER
+  ANALYST
+  SYSTEM
+  UNKNOWN
+}
+
+/// Mensagem extraída, na ordem original (posição 1, 2, 3…). As evidências apontam a posição.
+model AuditMessage {
+  id             String      @id @default(cuid())
+  teamId         String
+  conversationId String
+  position       Int
+  sender         AuditSender
+  authorName     String?
+  sentAt         DateTime?   @db.Timestamptz
+  text           String
+
+  team         Team              @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  conversation AuditConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, position])
+  @@index([teamId, conversationId])
+}
+
+enum AuditRunStatus {
+  SUCCESS
+  SIMULATED
+  INVALID_RESPONSE
+  ERROR
+}
+
+/// Uma execução de avaliação (IA ou simulação), com consumo e custo estimado.
+model AuditRun {
+  id              String         @id @default(cuid())
+  teamId          String
+  conversationId  String
+  model           String
+  criteriaVersion String
+  status          AuditRunStatus
+  attempt         Int            @default(1)
+  startedAt       DateTime       @default(now()) @db.Timestamptz
+  durationMs      Int            @default(0)
+  inputTokens     Int            @default(0)
+  cachedTokens    Int            @default(0)
+  outputTokens    Int            @default(0)
+  reasoningTokens Int            @default(0)
+  costUsd         Decimal        @default(0) @db.Decimal(10, 6)
+  /// Resposta validada pelo schema (só SUCCESS/SIMULATED). Nunca a transcrição.
+  response        Json?
+  error           String?
+
+  team         Team                  @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  conversation AuditConversation     @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  scores       AuditCriterionScore[]
+  evidences    AuditEvidence[]
+
+  @@index([teamId, startedAt])
+  @@index([teamId, conversationId])
+}
+
+/// Nota de um critério numa execução: bruta, peso, "não se aplica" e a justificativa.
+model AuditCriterionScore {
+  id            String   @id @default(cuid())
+  teamId        String
+  runId         String
+  criterion     String
+  weight        Int
+  score         Decimal? @db.Decimal(5, 2)
+  applicable    Boolean  @default(true)
+  justification String
+
+  team Team     @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  run  AuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, criterion])
+  @@index([teamId, criterion])
+}
+
+/// Evidência citada pela IA, conferida contra a mensagem original (`verified`).
+model AuditEvidence {
+  id              String  @id @default(cuid())
+  teamId          String
+  runId           String
+  criterion       String?
+  /// POSITIVE | IMPROVEMENT | CRITICAL
+  kind            String
+  messagePosition Int?
+  quote           String
+  verified        Boolean @default(false)
+
+  team Team     @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  run  AuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, runId])
+}
+
+enum AuditReviewAction {
+  CONFIRMED
+  CORRECTED
+  RECLASSIFIED
+  NOTE
+  INCORRECT
+}
+
+/// Revisão humana: nunca sobrescreve a avaliação original (como a D39 com o relato).
+model AuditReview {
+  id               String            @id @default(cuid())
+  teamId           String
+  conversationId   String
+  runId            String?
+  action           AuditReviewAction
+  criterion        String?
+  scoreBefore      Decimal?          @db.Decimal(5, 2)
+  scoreAfter       Decimal?          @db.Decimal(5, 2)
+  note             String
+  reviewedByUserId String
+  reviewedAt       DateTime          @default(now()) @db.Timestamptz
+
+  team         Team              @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  conversation AuditConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, conversationId])
+}
+
+enum AuditFeedbackKind {
+  REINFORCEMENT
+  CORRECTIVE
+  FEEDFORWARD
+  DEVELOPMENT
+}
+
+/// Sugestão de feedback (SCI). Só vira Feedback no prontuário por ação do gestor (D47).
+model AuditFeedbackSuggestion {
+  id             String            @id @default(cuid())
+  teamId         String
+  memberId       String?
+  conversationId String?
+  kind           AuditFeedbackKind
+  situation      String
+  behavior       String
+  impact         String
+  suggestion     String
+  evidence       Json?
+  createdAt      DateTime          @default(now()) @db.Timestamptz
+  usedAt         DateTime?         @db.Timestamptz
+
+  team         Team               @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  member       TeamMember?        @relation(fields: [memberId], references: [id])
+  conversation AuditConversation? @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, memberId])
+}
+
+/// Nome do analista nos TXT → pessoa do time. Sem alias, "analista não reconhecido"
+/// (nunca casado por aproximação).
+model AuditAnalystAlias {
+  id        String   @id @default(cuid())
+  teamId    String
+  alias     String
+  /// Nome normalizado (minúsculas, sem acento, espaços únicos) — a chave de busca.
+  aliasKey  String
+  memberId  String
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  team   Team       @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  member TeamMember @relation(fields: [memberId], references: [id])
+
+  @@unique([teamId, aliasKey])
 }

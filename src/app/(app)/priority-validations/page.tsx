@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
 import { TriageTabs } from "@/components/priority-validations/triage-tabs"
+import { canSeeAudit } from "@/server/audit/access"
 import { ValidationsWorkspace } from "@/components/priority-validations/validations-workspace"
 import { ContextActions } from "@/components/shell/context-actions"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -90,7 +91,7 @@ export default async function PriorityValidationsPage({
         <ValidationsToolbar filters={filters} members={formData.members} reasons={formData.reasons} centrals={centrals} />
       </ContextActions>
       <PageHeader title={P.title} subtitle={subtitle} />
-      <TriageTabs modules={ctx.modules} />
+      <TriageTabs modules={ctx.modules} audit={await canSeeAudit(ctx)} />
       {writer && formData.levels.length === 0 ? (
         <p className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink">{P.form.noLevels}</p>
       ) : null}

@@ -174,6 +174,9 @@ const SCOPED_MODELS = [
   "scrumMasterDraw",
   // C22
   "apiKey",
+  // C23 (Auditoria de Atendimentos)
+  "auditAccess", "auditConfig", "auditBatch", "auditConversation", "auditMessage", "auditRun", "auditCriterionScore",
+  "auditEvidence", "auditReview", "auditFeedbackSuggestion", "auditAnalystAlias",
 ]
 const GUARDED_METHODS = ["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "update", "updateMany", "delete", "deleteMany"]
 const CALL = new RegExp(`\\b(?:db|tx|dbIncludingDeleted)\\.(${SCOPED_MODELS.join("|")})\\.(${GUARDED_METHODS.join("|")})\\(`, "g")
@@ -245,7 +248,7 @@ function stripComments(source: string): string {
 describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () => {
   const files = sourceFiles(SRC).filter((f) => {
     const r = rel(f)
-    return r.startsWith("server/queries/") || r.startsWith("actions/") || /^server\/[^/]+\.ts$/.test(r)
+    return r.startsWith("server/queries/") || r.startsWith("actions/") || /^server\/[^/]+\.ts$/.test(r) || r.startsWith("server/audit/")
   })
 
   test("existem arquivos para analisar", () => assert.ok(files.length > 40))
@@ -310,8 +313,9 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
           if (!body.includes("teamContextFor(")) violations.push(`${key}: estabelece o contexto sem conferir TeamAccess`)
           continue
         }
-        if (!/requireTeamContext\(\)|requireWriteContext\(\)|requireAdminContext\(\)/.test(body)) violations.push(`${key} sem contexto de time`)
-        if (body.includes("runAction(") && !/requireWriteContext\(\)|requireAdminContext\(\)/.test(body)) {
+        if (!/requireTeamContext\(\)|requireWriteContext\(\)|requireAdminContext\(\)|requireAuditContext\(\)/.test(body)) violations.push(`${key} sem contexto de time`)
+        // C23: requireAuditContext já exige GESTOR (além do módulo e da conta autorizada).
+        if (body.includes("runAction(") && !/requireWriteContext\(\)|requireAdminContext\(\)|requireAuditContext\(\)/.test(body)) {
           violations.push(`${key} escreve sem requireWriteContext/requireAdminContext`)
         }
       }
@@ -321,7 +325,8 @@ describe("estrutural: escopo de time em toda leitura e escrita (sem banco)", () 
 
   test("nenhuma query nem núcleo obtém o contexto por conta própria (recebe no 1º parâmetro)", () => {
     const violations: string[] = []
-    for (const file of files.filter((f) => !rel(f).startsWith("actions/") && !rel(f).endsWith("scope.ts"))) {
+    // server/audit/access.ts é a porta do módulo (C23): monta o contexto como o scope.ts.
+    for (const file of files.filter((f) => !rel(f).startsWith("actions/") && !rel(f).endsWith("scope.ts") && rel(f) !== "server/audit/access.ts")) {
       const source = readFileSync(file, "utf8")
       if (/requireTeamContext\(|requireWriteContext\(|requireUser\(|getCurrentUser\(/.test(source) && !/server\/(access|credentials)\.ts$/.test(rel(file))) {
         violations.push(`${rel(file)}: obtém a sessão/contexto sozinho`)
@@ -514,6 +519,37 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     assert.match(keys, /keyHash: hash\(key\)/)
     assert.match(keys, /timingSafeEqual/)
     assert.ok(!/after: \{[^}]*\bkey\b[,:}]/.test(keys), "a chave não entra na auditoria")
+  })
+
+  test("C23/D47: a Auditoria de Atendimentos só funciona com as três travas (gestor, módulo, conta autorizada)", () => {
+    // Toda action do módulo começa por requireAuditContext.
+    const actions = readFileSync(join(SRC, "actions", "audit.ts"), "utf8")
+    for (const m of actions.matchAll(/export async function (\w+)\(/g)) {
+      const open = actions.indexOf("{", m.index! + m[0].length)
+      const next = actions.indexOf("\nexport ", open)
+      assert.ok(actions.slice(open, next === -1 ? undefined : next).includes("requireAuditContext()"), `actions/audit.ts:${m[1]} sem requireAuditContext`)
+    }
+    // Todo núcleo/consulta exportado do módulo recebe o AuditContext (nunca o TeamContext puro).
+    const dir = join(SRC, "server", "audit")
+    for (const name of readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "access.ts")) {
+      const source = readFileSync(join(dir, name), "utf8")
+      for (const m of source.matchAll(/^export async function (\w+)\(([^)]*)/gm)) {
+        assert.match(m[2]!, /^ctx: AuditContext/, `server/audit/${name}:${m[1]} precisa receber ctx: AuditContext`)
+      }
+    }
+    // Toda página do módulo começa por requireAuditPage (404 sem acesso).
+    for (const file of sourceFiles(join(SRC, "app", "(app)", "audit")).filter((f) => f.endsWith("page.tsx"))) {
+      assert.ok(readFileSync(file, "utf8").includes("requireAuditPage()"), `${rel(file)} sem requireAuditPage`)
+    }
+    // As três travas estão na porta, e o acesso é pela conta (id), nunca por nome.
+    const access = stripComments(readFileSync(join(dir, "access.ts"), "utf8"))
+    assert.match(access, /ctx\.level !== "MANAGER"/)
+    assert.match(access, /hasModule\(ctx, MODULES\.ATTENDANCE_AUDIT\)/)
+    assert.match(access, /auditAccess\.findFirst\(\{ where: \{ teamId: ctx\.teamId, userId: ctx\.userId, revokedAt: null \}/)
+    // O portal do colaborador nunca alcança o módulo.
+    for (const file of ["server/queries/member-portal.ts", "server/member-portal.ts", "actions/member-portal.ts", "server/member-daily.ts"]) {
+      assert.ok(!/audit\//.test(readFileSync(join(SRC, file), "utf8")), `${file} importa a auditoria`)
+    }
   })
 
   test("toda leitura de combinado no portal usa select explícito", () => {

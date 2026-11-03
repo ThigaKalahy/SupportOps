@@ -18,6 +18,8 @@ export const MODULES = {
   AGREEMENT_WHY: "AGREEMENT_WHY",
   /** C19: roleta do scrum master (das 09h às 10h para o time). Sem ele, a escolha é automática. */
   DAILY_ROULETTE: "DAILY_ROULETTE",
+  /** C23: Auditoria de Atendimentos com IA (D47). Além do módulo, exige a conta em AuditAccess. */
+  ATTENDANCE_AUDIT: "ATTENDANCE_AUDIT",
 } as const
 
 export type ModuleKey = (typeof MODULES)[keyof typeof MODULES]

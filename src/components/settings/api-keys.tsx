@@ -111,8 +111,13 @@ function CreateKeyDialog({
   const [copied, setCopied] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
+  // Limpa só ao ABRIR. A tela se atualiza logo depois de gerar (revalidação), e limpar a cada
+  // atualização apagava a chave antes de ela aparecer — e ela só existe neste momento.
+  const wasOpen = React.useRef(false)
   React.useEffect(() => {
-    if (!open) return
+    const opening = open && !wasOpen.current
+    wasOpen.current = open
+    if (!opening) return
     setName("")
     setUserId(owners.length === 1 ? owners[0]!.userId : "")
     setErrors({})

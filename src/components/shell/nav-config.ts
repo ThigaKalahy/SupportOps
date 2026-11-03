@@ -42,7 +42,11 @@ export const mainNav: NavItem[] = [
     counter: "validations",
     module: MODULES.PRIORITY_VALIDATION,
     // Mesmo domínio (qualidade da triagem), visto do outro lado: aba, não item novo (oito é o teto).
-    also: [{ href: "/dev-returns", label: labels.devReturns.title, module: MODULES.DEV_RETURNS }],
+    also: [
+      { href: "/dev-returns", label: labels.devReturns.title, module: MODULES.DEV_RETURNS },
+      // C23: a aba só existe para a conta autorizada; aqui só marca a seção como ativa.
+      { href: "/audit", label: labels.audit.title, module: MODULES.ATTENDANCE_AUDIT },
+    ],
   },
   { href: "/dailies", label: labels.nav.dailies, icon: CalendarCheckIcon, counter: "dailies" },
   { href: "/records", label: labels.nav.records, icon: MessagesSquareIcon, counter: "records" },
