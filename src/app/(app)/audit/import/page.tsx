@@ -14,7 +14,7 @@ export default async function AuditImportPage() {
   await requireAuditPage()
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={labels.audit.import.title} subtitle={labels.audit.phaseC} />
+      <PageHeader title={labels.audit.import.title} subtitle={labels.audit.importNote} />
       <AuditImporter />
     </div>
   )

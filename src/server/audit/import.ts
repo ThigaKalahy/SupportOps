@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 
 import type { AuditConversationStatus, Prisma } from "@prisma/client"
 
+import { buildAnalystMatcher } from "../../lib/audit/analysts.ts"
 import { nameKey, normalizeText, parseConversation } from "../../lib/audit/parser.ts"
 import { labels } from "../../lib/labels.ts"
 import { fieldErrorsOf, type ActionResult } from "../../lib/validators/fields.ts"
@@ -16,8 +17,9 @@ import type { AuditContext } from "./access.ts"
  * - duplicata (mesmo conteúdo, SHA-256, no time) não entra, mas aparece no relatório;
  * - arquivo que o leitor não entende entra como FALHA, com o motivo — nada some calado;
  * - dúvida de quem disse o quê (remetente desconhecido, transferência) vai para REVISÃO;
- * - o analista só é ligado à pessoa do time por apelido cadastrado ou nome completo IGUAL
- *   (sem acento, sem caixa). Nunca por aproximação: sem certeza, "não reconhecido".
+ * - o analista é ligado à pessoa do time por apelido cadastrado, nome completo igual ou
+ *   PRIMEIRO NOME único no time (decisão do usuário: não há homônimos) — `buildAnalystMatcher`.
+ *   Primeiro nome repetido no time fica ambíguo: "não reconhecido", nunca um palpite.
  * Logs e auditoria levam só contagens — nunca a transcrição.
  */
 
@@ -43,20 +45,36 @@ export async function createAuditBatchRecord(ctx: AuditContext, input: unknown):
   return { ok: true, id: batch.id }
 }
 
-/** Pessoas do time pela chave do nome completo e pelos apelidos cadastrados. */
+/** Reconhecimento do analista: apelido, nome completo ou primeiro nome único no time. */
 async function analystIndex(ctx: AuditContext) {
   const [aliases, members] = await Promise.all([
     db.auditAnalystAlias.findMany({ where: { teamId: ctx.teamId }, select: { aliasKey: true, memberId: true } }),
-    db.teamMember.findMany({ where: { teamId: ctx.teamId }, select: { id: true, fullName: true } }),
+    db.teamMember.findMany({ where: { teamId: ctx.teamId }, select: { id: true, fullName: true, preferredName: true } }),
   ])
-  const byName = new Map<string, string | null>()
-  for (const m of members) {
-    const key = nameKey(m.fullName)
-    // Dois com o mesmo nome completo: ambíguo, ninguém é escolhido.
-    byName.set(key, byName.has(key) ? null : m.id)
+  return buildAnalystMatcher(members, aliases)
+}
+
+/**
+ * Reconhece as conversas já importadas que ficaram sem pessoa (importadas antes da regra do
+ * primeiro nome, ou antes de a pessoa ser cadastrada). Não mexe em quem já foi reconhecido.
+ */
+export async function recognizeAnalystsRecord(ctx: AuditContext): Promise<{ ok: true; count: number }> {
+  const recognize = await analystIndex(ctx)
+  const pending = await db.auditConversation.findMany({ where: { teamId: ctx.teamId, memberId: null, analystName: { not: null } }, select: { id: true, analystName: true } })
+  const byMember = new Map<string, string[]>()
+  for (const c of pending) {
+    const memberId = recognize(c.analystName)
+    if (memberId) byMember.set(memberId, [...(byMember.get(memberId) ?? []), c.id])
   }
-  for (const a of aliases) byName.set(a.aliasKey, a.memberId)
-  return (name: string | null) => (name ? (byName.get(nameKey(name)) ?? null) : null)
+  const count = [...byMember.values()].reduce((n, ids) => n + ids.length, 0)
+  if (count === 0) return { ok: true, count: 0 }
+  await db.$transaction(async (tx) => {
+    for (const [memberId, ids] of byMember) {
+      await tx.auditConversation.updateMany({ where: { teamId: ctx.teamId, id: { in: ids }, memberId: null }, data: { memberId } })
+    }
+    await writeAudit({ action: "attendanceAudit.alias.recognize", entity: "AuditConversation", entityId: ctx.teamId, after: { conversations: count } }, auditOf(ctx, tx))
+  })
+  return { ok: true, count }
 }
 
 export async function importAuditFilesRecord(

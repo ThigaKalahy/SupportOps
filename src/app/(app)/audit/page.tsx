@@ -11,6 +11,7 @@ import { formatDateTime } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { requireAuditPage } from "@/server/audit/access"
 import { getAuditConfig } from "@/server/audit/config"
+import { getAuditSpend } from "@/server/audit/evaluate"
 import { listAuditBatches } from "@/server/audit/queries"
 
 const A = labels.audit
@@ -26,8 +27,11 @@ export const metadata: Metadata = {
 export default async function AuditPage() {
   const ctx = await requireAuditPage()
   const [config, batches] = await Promise.all([getAuditConfig(ctx), listAuditBatches(ctx)])
+  const spend = await getAuditSpend(ctx, config)
   const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" })
+  const amount = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
   const S = A.status
+  const alert = spend.alertLevel === 100 ? A.budget.alert100 : spend.alertLevel === 80 ? A.budget.alert80 : spend.alertLevel === 50 ? A.budget.alert50 : null
 
   const rows: [string, string][] = [
     [S.module, S.on],
@@ -35,6 +39,7 @@ export default async function AuditPage() {
     [S.mode, config.simulation ? S.simulation : S.real],
     [S.apiKey, config.apiKeyConfigured ? S.keyOk : S.keyMissing],
     [S.budget, config.monthlyBudgetUsd > 0 ? usd.format(config.monthlyBudgetUsd) : S.budgetZero],
+    [A.budget.title, fill(A.budget.line, { spent: amount.format(spend.monthUsd), budget: amount.format(spend.monthlyBudgetUsd) })],
   ]
 
   return (
@@ -52,7 +57,7 @@ export default async function AuditPage() {
           </Button>
         }
       />
-      <p className="max-w-3xl rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">{A.phaseC}</p>
+      <p className="max-w-3xl rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary">{A.phaseD}</p>
 
       <Section title={A.batches.title} count={batches.length}>
         {batches.length === 0 ? (
@@ -83,6 +88,12 @@ export default async function AuditPage() {
             </div>
           ))}
         </dl>
+        {alert ? (
+          <p className={spend.alertLevel === 100 ? "text-sm text-overdue" : "text-sm text-attention"} role="status">
+            {alert}
+          </p>
+        ) : null}
+        <p className="text-xs text-ink-secondary">{A.budget.note}</p>
       </Section>
 
       <Section

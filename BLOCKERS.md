@@ -95,8 +95,8 @@ Onde consigo:
 Enquanto isso: o critério de aceite do P25 — a suíte de isolamento inteira — fica sem a parte de banco. Os testes estruturais (sem banco) passam; o bloco "banco: portal do colaborador" com os dez critérios está escrito e não rodou. Os testes com banco do C3 ao C13 também não rodaram desde que o branch expirou.
 
 
-## [ ] Auditoria de Atendimentos — insumos para as Fases C e D
+## [ ] Auditoria de Atendimentos — insumos para avaliar de verdade (Fase D)
 Fase: C23 (Auditoria de Atendimentos)
-Preciso de: (1) ~~TXT de exemplo~~ recebidos em 05/11/2026 (Fase C entregue); (2) a variável `OPENAI_API_KEY` cadastrada na Vercel (Production), os preços por milhão de tokens do modelo na sua conta e o orçamento do mês/por lote (Fase D); (3) confirmação de que o envio das conversas à OpenAI está alinhado com contrato, LGPD e política interna.
-Onde consigo: (1) exportar do sistema de atendimento; (2) Vercel › Project › Settings › Environment Variables, e a página de preços da OpenAI da sua conta; (3) jurídico/RH.
-Enquanto isso: o módulo existe desligado, em simulação, com orçamento zero; nada é importado nem avaliado.
+Preciso de: (1) ~~TXT de exemplo~~ recebidos em 05/11/2026 (Fase C entregue); (2) a variável `OPENAI_API_KEY` cadastrada na Vercel (Production) — por decisão do usuário em 05/11/2026, fica para depois: o código da Fase D está pronto e só simula sem ela; (3) os preços por milhão de tokens do modelo (entrada, entrada em cache, saída) na sua conta e o orçamento do mês e por lote, preenchidos em /audit › Configuração; (4) o alinhamento com contrato/LGPD é responsabilidade do usuário e NÃO trava nada no código (o documento do módulo pede a verificação; o mascaramento é ligável/desligável em Configuração); (5) conferir, com a chave, que o modelo `gpt-5.4-nano` existe na conta e aceita Structured Outputs e `reasoning.effort` — sem a chave isso não pôde ser verificado.
+Onde consigo: (2) Vercel › Project › Settings › Environment Variables (e um novo deploy); (3) a página de preços da OpenAI da sua conta; (4) jurídico/RH.
+Enquanto isso: o módulo importa, lê e SIMULA (monta o pedido exato com o mascaramento, estima tokens e custo, grava a execução simulada, sem nota); a avaliação real fica ausente da tela com o motivo "chave não configurada".

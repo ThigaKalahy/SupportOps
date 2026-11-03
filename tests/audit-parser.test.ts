@@ -223,3 +223,27 @@ describe("C23 — leitura de ZIP no navegador (sem biblioteca)", () => {
     assert.match(result.rejected[0]!.reason, /inválido/)
   })
 })
+
+describe("C23 — reconhecimento do analista (primeiro nome único no time)", () => {
+  test("apelido > nome completo > primeiro nome; repetido no time não escolhe ninguém", async () => {
+    const { buildAnalystMatcher } = await import("../src/lib/audit/analysts.ts")
+    const match = buildAnalystMatcher(
+      [
+        { id: "m1", fullName: "Carlos Teste da Silva", preferredName: "Carlos" },
+        { id: "m2", fullName: "Ana Exemplo", preferredName: "Aninha" },
+        { id: "m3", fullName: "Bruno Um", preferredName: "Bruno" },
+        { id: "m4", fullName: "Bruno Dois", preferredName: "Bruno D." },
+      ],
+      [{ aliasKey: "suporte noturno", memberId: "m2" }],
+    )
+    assert.equal(match("Carlos Teste"), "m1", "primeiro nome do nome completo")
+    assert.equal(match("carlos"), "m1")
+    assert.equal(match("Aninha Qualquer"), "m2", "primeiro nome do preferido")
+    assert.equal(match("Ána Exemplo"), "m2", "nome completo sem acento")
+    assert.equal(match("Suporte Noturno"), "m2", "apelido cadastrado")
+    assert.equal(match("Bruno Três"), null, "primeiro nome repetido no time: ninguém")
+    assert.equal(match("Bruno Dois"), "m4", "o nome completo ainda desempata")
+    assert.equal(match("Desconhecido"), null)
+    assert.equal(match(null), null)
+  })
+})

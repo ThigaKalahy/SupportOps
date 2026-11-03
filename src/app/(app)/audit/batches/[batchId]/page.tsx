@@ -2,7 +2,8 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { AnalystAliasRow } from "@/components/audit/analyst-alias"
+import { AnalystAliasRow, RecognizeAnalystsButton } from "@/components/audit/analyst-alias"
+import { AuditRunner } from "@/components/audit/audit-runner"
 import { PageHeader } from "@/components/ui/page-header"
 import { Section } from "@/components/ui/section"
 import { StatusPill } from "@/components/ui/status-pill"
@@ -10,6 +11,7 @@ import { formatDateTime } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import type { Severity } from "@/lib/severity"
 import { requireAuditPage } from "@/server/audit/access"
+import { getAuditRunState } from "@/server/audit/evaluate"
 import { getAuditBatch, listMembersForAudit, listUnrecognizedAnalysts } from "@/server/audit/queries"
 
 const A = labels.audit
@@ -19,15 +21,25 @@ export const metadata: Metadata = {
   title: `${A.title} · ${labels.app.name}`,
 }
 
+/** As Server Actions da avaliação rodam nesta rota: uma conversa por chamada cabe em 60 s. */
+export const maxDuration = 60
+
+const score = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 })
+
 const STATUS_SEVERITY: Record<string, Severity> = { IMPORTED: "neutral", QUEUED: "neutral", PROCESSING: "attention", DONE: "calm", FAILED: "overdue", REVIEW_NEEDED: "attention" }
 const RESULT_SEVERITY: Record<string, Severity> = { imported: "calm", duplicate: "neutral", failed: "overdue", rejected: "overdue" }
 
-/** C23 Fase C — um lote: relatório da importação, conversas e analistas a reconhecer. */
+/** C23 Fases C e D — um lote: avaliação, conversas, analistas a reconhecer e relatório da importação. */
 export default async function AuditBatchPage({ params }: { params: Promise<{ batchId: string }> }) {
   const ctx = await requireAuditPage()
   const { batchId } = await params
-  const [batch, unrecognized, members] = await Promise.all([getAuditBatch(ctx, batchId), listUnrecognizedAnalysts(ctx), listMembersForAudit(ctx)])
-  if (!batch) notFound()
+  const [batch, unrecognized, members, runState] = await Promise.all([
+    getAuditBatch(ctx, batchId),
+    listUnrecognizedAnalysts(ctx),
+    listMembersForAudit(ctx),
+    getAuditRunState(ctx, batchId),
+  ])
+  if (!batch || !runState) notFound()
 
   return (
     <div className="flex flex-col gap-6">
@@ -36,7 +48,11 @@ export default async function AuditBatchPage({ params }: { params: Promise<{ bat
         subtitle={`${formatDateTime(batch.createdAt)} · ${fill(A.batches.counts, { files: batch.fileCount, imported: batch.importedCount, duplicates: batch.duplicateCount, failed: batch.failedCount })}`}
       />
 
-      <Section title={B.unrecognized} count={unrecognized.length}>
+      <Section title={A.run.title}>
+        <AuditRunner batchId={batch.id} state={runState} />
+      </Section>
+
+      <Section title={B.unrecognized} count={unrecognized.length} action={unrecognized.length ? <RecognizeAnalystsButton /> : undefined}>
         {unrecognized.length === 0 ? (
           <p className="text-sm text-ink-secondary">{B.noUnrecognized}</p>
         ) : (
@@ -65,6 +81,7 @@ export default async function AuditBatchPage({ params }: { params: Promise<{ bat
                 </span>
                 {c.lastError ? <span className="block text-xs text-overdue">{c.lastError}</span> : null}
               </Link>
+              {c.finalScore !== null ? <span className="font-mono text-sm text-ink">{score.format(c.finalScore)}</span> : null}
               <StatusPill severity={STATUS_SEVERITY[c.status] ?? "neutral"} label={A.conversationStatus[c.status]} />
             </li>
           ))}

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { linkAnalystAlias } from "@/actions/audit"
+import { linkAnalystAlias, recognizeAnalysts } from "@/actions/audit"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast"
@@ -51,5 +51,27 @@ export function AnalystAliasRow({ name, count, members }: { name: string; count:
       </Button>
       {error ? <span className="basis-full text-xs text-overdue">{error}</span> : null}
     </li>
+  )
+}
+
+/** Reconhece pelo primeiro nome (único no time) as conversas já importadas sem pessoa. */
+export function RecognizeAnalystsButton() {
+  const toast = useToast()
+  const [pending, startTransition] = React.useTransition()
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      loading={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const result = await recognizeAnalysts()
+          if (!result.ok) return toast.show(result.error, { tone: "neutral" })
+          toast.show(result.count ? fill(B.recognized, { count: result.count }) : B.recognizedNone, { tone: result.count ? "calm" : "neutral" })
+        })
+      }
+    >
+      {B.recognize}
+    </Button>
   )
 }

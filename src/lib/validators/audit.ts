@@ -73,3 +73,14 @@ export const auditAliasSchema = z.object({
   alias: z.string().trim().min(1).max(160),
   memberId: z.string().min(1).max(40),
 })
+
+/* ─────────────── Fase D: avaliação ─────────────── */
+
+/** Pôr na fila: um lote, opcionalmente conversas escolhidas, e quantas (o teto é `maxPerRun`). */
+export const queueAuditSchema = z.object({
+  batchId: z.string().min(1).max(40),
+  conversationIds: z.array(z.string().min(1).max(40)).max(AUDIT_MAX_PER_RUN_CAP).optional(),
+  count: z.coerce.number().int().min(1).max(AUDIT_MAX_PER_RUN_CAP),
+})
+
+export const auditBatchRefSchema = z.object({ batchId: z.string().min(1).max(40) })
