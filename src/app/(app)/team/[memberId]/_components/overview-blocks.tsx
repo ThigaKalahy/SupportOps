@@ -11,7 +11,7 @@ import { StatusPill } from "@/components/ui/status-pill"
 import { businessDaysBetween, daysSince, todayBusinessDate } from "@/lib/dates"
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { deadlineSeverity } from "@/lib/severity"
-import type { AlertThresholds } from "@/lib/alert-thresholds"
+import { oneOnOneClockFrom, type AlertThresholds } from "@/lib/alert-thresholds"
 import { oneOnOneCadence } from "@/server/alerts"
 import type { MemberOverview } from "@/server/queries/profile"
 
@@ -287,7 +287,8 @@ export function Rhythm({
   thresholds: AlertThresholds
 }) {
   const today = todayBusinessDate()
-  const oneOnOneDays = lastOneOnOne ? businessDaysBetween(lastOneOnOne, today) : null
+  // C24: com a contagem recomeçada no time, conta a partir dela (o 1:1 em si continua no histórico).
+  const oneOnOneDays = lastOneOnOne ? businessDaysBetween(oneOnOneClockFrom(lastOneOnOne, lastOneOnOne, thresholds), today) : null
   const cadence = oneOnOneCadence(seniorityKey, oneOnOneDays ?? 0, thresholds)
   return (
     <Section title={P.rhythm.title}>

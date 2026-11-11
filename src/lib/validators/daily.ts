@@ -49,6 +49,18 @@ export const dailyReviewSchema = z.object({
   nextCentralId: z.string().max(40).default(""),
 })
 
+/**
+ * C24 — passar o combinado para outra pessoa do time, dentro da daily (decisão do usuário em
+ * 11/11/2026). Independe do desfecho: vale sem desfecho e com Parcial/Não feito reagendado; não
+ * vale com Feito (encerrado) nem com Substituir (o antigo é cancelado). Motivo obrigatório: é o
+ * registro da troca (`AgreementTransfer`), como na tela do combinado.
+ */
+export const dailyTransferSchema = z.object({
+  agreementId: z.string().min(1).max(40),
+  memberId: z.string().min(1).max(40),
+  reason: z.string().trim().min(3, d.transferReasonRequired).max(300, v.tooLong),
+})
+
 export const dailyParticipantSchema = z.object({
   memberId: z.string().min(1),
   /** P21: observações criadas na nota antes de salvar; ganham o vínculo com a daily. */
@@ -76,9 +88,11 @@ function refineDaily(
     date: string
     reviews: z.infer<typeof dailyReviewSchema>[]
     newAgreements: (z.infer<typeof dailyNewAgreementSchema> & { remove?: boolean })[]
+    transfers?: z.infer<typeof dailyTransferSchema>[]
   },
   ctx: z.RefinementCtx,
 ) {
+    refineTransfers(data.reviews, data.transfers ?? [], ctx)
 
     data.reviews.forEach((review, i) => {
       if (review.outcome === "DONE") {
@@ -128,6 +142,23 @@ function refineDaily(
     })
 }
 
+/** C24: uma troca por combinado; nunca com Feito nem com Substituir. */
+export function refineTransfers(
+  reviews: { agreementId: string; outcome: string; action?: string }[],
+  transfers: { agreementId: string }[],
+  ctx: z.RefinementCtx,
+) {
+  const seen = new Set<string>()
+  transfers.forEach((t, i) => {
+    if (seen.has(t.agreementId)) ctx.addIssue({ code: "custom", path: ["transfers", i, "agreementId"], message: v.generic })
+    seen.add(t.agreementId)
+    const review = reviews.find((r) => r.agreementId === t.agreementId)
+    if (review && (review.outcome === "DONE" || (review.action ?? "reschedule") === "replace")) {
+      ctx.addIssue({ code: "custom", path: ["transfers", i, "memberId"], message: d.transferNotHere })
+    }
+  })
+}
+
 /**
  * P26: decisão do gestor sobre uma proposta do time capturada pela daily aberta.
  * Aceitar cria o combinado (origem MEMBER, prazo = data da daily por padrão — D28);
@@ -152,6 +183,7 @@ export const dailySchema = z
     participants: z.array(dailyParticipantSchema),
     newAgreements: z.array(dailyNewAgreementSchema),
     proposals: z.array(dailyProposalDecisionSchema).default([]),
+    transfers: z.array(dailyTransferSchema).max(100).default([]),
   })
   .superRefine((data, ctx) => {
     refineDaily(data, ctx)
@@ -175,6 +207,7 @@ export type DailyInput = z.infer<typeof dailySchema>
 export type DailyReviewInput = z.infer<typeof dailyReviewSchema>
 export type DailyParticipantInput = z.infer<typeof dailyParticipantSchema>
 export type DailyNewAgreementInput = z.infer<typeof dailyNewAgreementSchema>
+export type DailyTransferInput = z.infer<typeof dailyTransferSchema>
 
 /**
  * Edição de uma daily salva (C11), no formato da criação: data, resumo,
@@ -198,6 +231,7 @@ export const editDailySchema = z
     participants: z.array(dailyParticipantSchema),
     reviews: z.array(dailyReviewSchema).default([]),
     newAgreements: z.array(dailyEditRowSchema).default([]),
+    transfers: z.array(dailyTransferSchema).max(100).default([]),
   })
   .superRefine(refineDaily)
 

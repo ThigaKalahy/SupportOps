@@ -119,6 +119,7 @@ import {
   moveCatalogItemRecord,
   saveCatalogItemRecord,
   setCatalogItemActiveRecord,
+  setOneOnOneSinceRecord,
   setThresholdRecord,
 } from "../src/server/settings.ts"
 import { recordTimelineEvents, timelineEventFor } from "../src/server/timeline.ts"
@@ -447,15 +448,23 @@ describe("estrutural: portal do colaborador isolado (D38) — protege o futuro",
     assert.deepEqual(violations, [])
   })
 
-  test("C14/C16: a ponte do colaborador só lê o próprio combinado e as centrais, e grava combinado só depois do travamento", () => {
+  test("C14/C16/C24: a ponte do colaborador só lê o próprio combinado, as centrais e quem pode receber, e grava só depois do travamento", () => {
     const source = readFileSync(join(SRC, "server/member-agreements.ts"), "utf8")
     const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!)
     const allowed = (spec: string) => spec === "@prisma/client" || spec.startsWith("../lib/") || ["./db.ts", "./member-scope.ts", "./timeline.ts"].includes(spec)
     assert.deepEqual(imports.filter((spec) => !allowed(spec)), [], "só banco, contexto do colaborador, timeline e src/lib")
     const code = stripComments(source)
-    // Leituras: só o próprio combinado, as centrais do time e o módulo de centrais.
+    // Leituras: só o próprio combinado, as centrais do time, o módulo de centrais e (C24) nome e
+    // id das pessoas do time, para escolher quem recebe.
     const reads = [...code.matchAll(/\b(?:db|tx)\.(\w+)\.(findMany|findFirst|findUnique|count|aggregate|groupBy)\(/g)]
-    assert.deepEqual([...new Set(reads.map((m) => m[1]))].filter((model) => !["agreement", "central", "teamModule"].includes(model!)), [])
+    assert.deepEqual([...new Set(reads.map((m) => m[1]))].filter((model) => !["agreement", "central", "teamModule", "teamMember"].includes(model!)), [])
+    for (const m of reads.filter((r) => r[1] === "teamMember")) {
+      assert.match(callBody(code, (m.index ?? 0) + m[0].length - 1), /select:\s*\{\s*id: true, preferredName: true\s*\}/, "da pessoa, só id e nome")
+    }
+    // C24: a troca só move combinado da própria pessoa, depois do travamento.
+    const update = code.indexOf("agreement.updateMany(")
+    assert.ok(update > -1 && code.lastIndexOf("getDailyLock(", update) > code.indexOf("export async function transferOwnAgreement"), "travamento antes de trocar")
+    assert.match(callBody(code, update + "agreement.updateMany".length), /memberOwnScope\(ctx\)/, "só o próprio combinado muda de mão")
     for (const m of reads.filter((r) => r[1] === "agreement")) {
       assert.match(callBody(code, (m.index ?? 0) + m[0].length - 1), /memberOwnScope\(ctx\)/, "combinado lido só da própria pessoa")
     }
@@ -974,6 +983,7 @@ const WRITES: Record<string, (ctx: TeamContext, own: TeamFixture) => Promise<unk
   setCatalogItemActiveRecord: (c, o) => setCatalogItemActiveRecord(c, { kind: "central", id: o.central, active: false }),
   deleteCatalogItemRecord: (c, o) => deleteCatalogItemRecord(c, { kind: "central", id: o.central }),
   setThresholdRecord: (c) => setThresholdRecord(c, { key: "dueSoonDays", value: 6 }),
+  setOneOnOneSinceRecord: (c) => setOneOnOneSinceRecord(c, { restart: true }),
   createWatchItemRecord: (c, o) => createWatchItemRecord(c, { title: "x", heat: "LOW", origin: "MANUAL", memberId: o.member }),
   reviewWatchItemRecord: (c, o) => reviewWatchItemRecord(c, { id: o.watch, note: "revisada" }),
   changeWatchHeatRecord: (c, o) => changeWatchHeatRecord(c, { id: o.watch, direction: "down" }),

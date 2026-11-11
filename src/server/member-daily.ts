@@ -29,6 +29,7 @@ export type { ScrumMasterDrawResult }
  *   com impeditivo, motivo e novo prazo; próximo passo depois de Feito (C20, sem ler nem
  *   revisar observação — `conductor`); quem faltou; combinados de hoje. Sem nota, sem
  *   observação, sem substituição, sem resumo nem decisões (o gestor completa depois). Abrir trava o portal do time como a daily do gestor (D41, D43).
+ *   C24: também passa combinados para outra pessoa do time, com o motivo (AgreementTransfer).
  * O registro sai com o nome dele como autor.
  */
 
@@ -225,6 +226,8 @@ export async function saveConductDaily(ctx: MemberContext, input: unknown): Prom
     participants: members.map((m) => ({ memberId: m.id, watchIds: [], present: !absent.has(m.id), note: "", isBlocker: false })),
     newAgreements: data.newAgreements.map((a) => ({ ...a, watchIds: [] })),
     proposals: [],
+    // C24: o scrum master também passa combinados entre pessoas (registrado, com o motivo).
+    transfers: data.transfers,
   }, { conductor: true })
 }
 

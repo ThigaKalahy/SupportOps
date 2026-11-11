@@ -9,6 +9,7 @@ import {
   deleteSelfReport,
   ensureMemberCentral,
   pollPortalState,
+  transferMyAgreement,
   upsertSelfReport,
 } from "@/actions/member-portal"
 import { DueCell } from "@/components/agreements/agreements-table"
@@ -56,6 +57,7 @@ export function PortalLive({
   agreements,
   reasons,
   centrals: initialCentrals = null,
+  colleagues = [],
   header,
   children,
 }: {
@@ -64,6 +66,8 @@ export function PortalLive({
   reasons: { id: string; label: string }[]
   /** C16: centrais ativas do time; null com o módulo desligado (o campo não aparece). */
   centrals?: CentralOption[] | null
+  /** C24: pessoas do time que podem receber um combinado dela (sem ela). */
+  colleagues?: { id: string; name: string }[]
   header: React.ReactNode
   /** Zonas somente leitura (última daily, histórico). */
   children: React.ReactNode
@@ -71,6 +75,8 @@ export function PortalLive({
   const router = useRouter()
   const [locked, setLocked] = React.useState(initialState.locked)
   const [registered, setRegistered] = React.useState(false)
+  // C24: confirmação da troca — o combinado sai da lista, a mensagem fica.
+  const [transferred, setTransferred] = React.useState<string | null>(null)
   const lastClosed = React.useRef(initialState.lastClosedDailyId)
   // Centrais do time + as criadas agora (todos os campos de central enxergam a nova).
   const [centrals, setCentrals] = React.useState<CentralOption[] | null>(initialCentrals)
@@ -133,12 +139,17 @@ export function PortalLive({
       ) : null}
       {header}
       <Section title={L.open.title} count={agreements.length}>
+        {transferred ? (
+          <p role="status" className="text-xs text-calm">
+            {transferred}
+          </p>
+        ) : null}
         {agreements.length === 0 ? (
           <p className="text-sm text-ink-secondary">{L.open.empty}</p>
         ) : (
           <ul className={listClass}>
             {agreements.map((a) => (
-              <ReportRow key={a.id} agreement={a} reasons={reasons} centrals={centralField} locked={locked} onLocked={() => setLocked(true)} />
+              <ReportRow key={a.id} agreement={a} reasons={reasons} centrals={centralField} colleagues={colleagues} locked={locked} onLocked={() => setLocked(true)} onTransferred={setTransferred} />
             ))}
           </ul>
         )}
@@ -173,12 +184,16 @@ function ReportRow({
   agreement,
   reasons,
   centrals,
+  colleagues,
   locked,
   onLocked,
+  onTransferred,
 }: {
   agreement: MyOpenAgreement
   reasons: { id: string; label: string }[]
   centrals: CentralField
+  colleagues: { id: string; name: string }[]
+  onTransferred: (message: string) => void
   locked: boolean
   onLocked: () => void
 }) {
@@ -385,7 +400,84 @@ function ReportRow({
       ) : null}
       {nextAdded && !error ? <p role="status" className="text-xs text-calm">{L.next.added}</p> : null}
       {error ? <p role="alert" className="text-xs text-overdue">{error}</p> : null}
+      {showControls && !editing ? <TransferOwn agreement={agreement} colleagues={colleagues} onLocked={onLocked} onTransferred={onTransferred} /> : null}
     </li>
+  )
+}
+
+/**
+ * C24: passar o próprio combinado para um colega, com o motivo. Fica registrado (a troca, quem
+ * fez e por quê) e o combinado sai da lista dela — prazo e cliente não mudam.
+ */
+function TransferOwn({
+  agreement,
+  colleagues,
+  onLocked,
+  onTransferred,
+}: {
+  agreement: MyOpenAgreement
+  colleagues: { id: string; name: string }[]
+  onLocked: () => void
+  onTransferred: (message: string) => void
+}) {
+  const X = L.transfer
+  const router = useRouter()
+  const [open, setOpen] = React.useState(false)
+  const [memberId, setMemberId] = React.useState("")
+  const [reason, setReason] = React.useState("")
+  const [error, setError] = React.useState<string | null>(null)
+  const [pending, startTransition] = React.useTransition()
+
+  if (colleagues.length === 0) return null
+  if (!open) {
+    return (
+      <button type="button" className="min-h-11 self-start text-xs text-ink-secondary underline-offset-2 hover:text-ink hover:underline" onClick={() => setOpen(true)}>
+        {X.action}
+      </button>
+    )
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+    startTransition(async () => {
+      const result = await transferMyAgreement({ agreementId: agreement.id, memberId, reason })
+      if (!result.ok) {
+        if (result.error === L.locked.refused) onLocked()
+        return setError(("fieldErrors" in result && (result.fieldErrors?.reason ?? result.fieldErrors?.memberId)) || result.error)
+      }
+      onTransferred(fill(X.done, { name: result.name }))
+      // O combinado sai de "Seus combinados", vindo do servidor.
+      router.refresh()
+    })
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-2 rounded-lg border border-line bg-surface-sunken/60 p-3">
+      <p className="text-xs text-ink-secondary">{X.hint}</p>
+      <Select value={memberId} onValueChange={setMemberId}>
+        <SelectTrigger aria-label={`${X.to}: ${agreement.title}`} className="min-h-11 w-full">
+          <SelectValue placeholder={X.choose} />
+        </SelectTrigger>
+        <SelectContent>
+          {colleagues.map((c) => (
+            <SelectItem key={c.id} value={c.id}>
+              {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input value={reason} maxLength={300} autoComplete="off" placeholder={X.reason} aria-label={X.reason} className="min-h-11" onChange={(e) => setReason(e.target.value)} />
+      {error ? <p role="alert" className="text-xs text-overdue">{error}</p> : null}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" className="min-h-11" disabled={pending} onClick={() => (setOpen(false), setError(null))}>
+          {X.cancel}
+        </Button>
+        <Button type="submit" className="min-h-11" loading={pending} disabled={!memberId || reason.trim().length < 3}>
+          {X.confirm}
+        </Button>
+      </div>
+    </form>
   )
 }
 

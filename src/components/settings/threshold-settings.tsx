@@ -2,11 +2,13 @@
 
 import * as React from "react"
 
-import { setThreshold } from "@/actions/settings"
+import { setOneOnOneSince, setThreshold } from "@/actions/settings"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/toast"
 import { isScalarKey } from "@/lib/alert-thresholds"
+import { formatDate } from "@/lib/dates"
 import { fill, labels } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { ThresholdSetting } from "@/server/queries/thresholds"
@@ -23,11 +25,12 @@ function describe(s: ThresholdSetting): { name: string; help: string; unit: stri
  * Enter (auditado); "Voltar ao padrão" apaga o valor próprio. Fora da faixa,
  * o erro aparece na própria linha e nada é gravado.
  */
-export function ThresholdSettings({ settings, canWrite }: { settings: ThresholdSetting[]; canWrite: boolean }) {
+export function ThresholdSettings({ settings, canWrite, oneOnOneSince = null }: { settings: ThresholdSetting[]; canWrite: boolean; oneOnOneSince?: Date | null }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-3xl text-sm text-ink-secondary">{T.direction}</p>
       {canWrite ? null : <p className="text-xs text-ink-secondary">{labels.settings.readOnly}</p>}
+      <OneOnOneClock since={oneOnOneSince} canWrite={canWrite} />
       <div className="rounded-lg border border-line bg-surface">
         {/* Abaixo de 640px, cada linha empilha o alerta e o valor (sem rolagem horizontal). */}
         <table className="w-full text-sm max-sm:block">
@@ -152,5 +155,63 @@ function ThresholdRow({ setting, canWrite }: { setting: ThresholdSetting; canWri
         )}
       </td>
     </tr>
+  )
+}
+
+/**
+ * C24 — de onde contam os dias sem 1:1. "Recomeçar hoje" zera a contagem do time sem apagar
+ * nem inventar 1:1 (confirmação no app); "Contar pelo histórico" volta ao último 1:1 de cada um.
+ */
+function OneOnOneClock({ since, canWrite }: { since: Date | null; canWrite: boolean }) {
+  const C = T.oneOnOneClock
+  const toast = useToast()
+  const [confirming, setConfirming] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [pending, startTransition] = React.useTransition()
+
+  function run(restart: boolean) {
+    setError(null)
+    startTransition(async () => {
+      const result = await setOneOnOneSince({ restart })
+      if (!result.ok) return setError(result.error)
+      setConfirming(false)
+      toast.show(restart ? C.restarted : C.cleared, { tone: "calm" })
+    })
+  }
+
+  return (
+    <div className="flex max-w-3xl flex-col gap-2 rounded-lg border border-line bg-surface px-3 py-3">
+      <p className="text-sm font-medium text-ink">{C.title}</p>
+      <p className="text-sm text-ink-secondary">{since ? fill(C.since, { date: formatDate(since, "business") }) : C.history}</p>
+      {canWrite ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="secondary" onClick={() => setConfirming(true)}>
+            {C.restart}
+          </Button>
+          {since ? (
+            <Button type="button" size="sm" variant="ghost" loading={pending} onClick={() => run(false)}>
+              {C.clear}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {error ? <p className="text-xs text-overdue">{error}</p> : null}
+      <Dialog open={confirming} onOpenChange={(open) => !pending && setConfirming(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{C.confirmTitle}</DialogTitle>
+            <DialogDescription>{C.confirmDescription}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setConfirming(false)}>
+              {C.cancel}
+            </Button>
+            <Button type="button" loading={pending} onClick={() => run(true)}>
+              {C.restart}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

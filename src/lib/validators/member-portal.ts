@@ -5,8 +5,9 @@ import { labels } from "../labels.ts"
 
 /**
  * Escrita do colaborador (P26). O MESMO schema valida o portal (cliente) e a action.
- * Datas em "DD/MM/AAAA". O colaborador relata os próprios combinados e cria novos (C14):
- * nunca muda prazo, status, título ou responsável de combinado existente.
+ * Datas em "DD/MM/AAAA". O colaborador relata os próprios combinados e cria novos (C14);
+ * desde o C24, passa o próprio combinado para alguém do time, com o motivo. Nunca muda
+ * prazo, status ou título de combinado existente.
  */
 
 const v = labels.validation
@@ -86,6 +87,17 @@ export const conductDailySchema = z.object({
     )
     .max(300),
   absent: z.array(z.string().min(1).max(40)).max(200).default([]),
+  /** C24: passar combinados para outra pessoa do time (motivo obrigatório; as regras da daily). */
+  transfers: z
+    .array(
+      z.object({
+        agreementId: z.string().min(1).max(40),
+        memberId: z.string().min(1).max(40),
+        reason: z.string().trim().min(3, labels.dailies.validation.transferReasonRequired).max(300, v.tooLong),
+      }),
+    )
+    .max(100)
+    .default([]),
   newAgreements: z
     .array(
       z.object({
@@ -101,3 +113,10 @@ export const conductDailySchema = z.object({
 })
 
 export type ConductDailyInput = z.infer<typeof conductDailySchema>
+
+/** C24: o colaborador passa o próprio combinado para alguém do time, com o motivo (registrado). */
+export const transferOwnSchema = z.object({
+  agreementId: z.string().min(1).max(40),
+  memberId: z.string().min(1).max(40),
+  reason: z.string().trim().min(3, labels.dailies.validation.transferReasonRequired).max(300, v.tooLong),
+})

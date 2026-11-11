@@ -18,6 +18,8 @@ import type { ConductDaily } from "@/server/member-daily"
 
 const C = labels.conductDaily
 
+/** C24: os rótulos da troca são os da daily do gestor. */
+const T = labels.dailies.review
 type Outcome = "DONE" | "PARTIAL" | "NOT_DONE"
 const OUTCOMES: Outcome[] = ["DONE", "PARTIAL", "NOT_DONE"]
 const SELECTED: Record<Outcome, string> = {
@@ -42,6 +44,10 @@ type Review = {
   nextNote: string
   nextDueDate: string
   nextCentralId: string
+  /** C24: passar para outra pessoa do time, com o motivo. */
+  transferOpen: boolean
+  transferTo: string
+  transferReason: string
 }
 type Row = { key: number; memberId: string; centralId: string; title: string; why: string; dueDate: string }
 
@@ -97,6 +103,9 @@ export function ConductDailyForm({ data }: { data: Mine }) {
           nextNote: "",
           nextDueDate: todayText(),
           nextCentralId: r.centralId ?? "",
+          transferOpen: false,
+          transferTo: "",
+          transferReason: "",
         },
       ]),
     ),
@@ -127,13 +136,19 @@ export function ConductDailyForm({ data }: { data: Mine }) {
   function save() {
     const reviewed = data.reviews.filter((r) => reviews[r.id]?.outcome)
     const filled = rows.filter((r) => r.title.trim() || r.memberId)
+    // C24: troca de pessoa só sem Feito (o combinado continua aberto).
+    const moved = data.reviews.filter((r) => {
+      const state = reviews[r.id]!
+      return state.transferOpen && state.transferTo && state.outcome !== "DONE"
+    })
     setError(null)
     setErrors({})
     startTransition(async () => {
       const result = await saveConductedDaily({
         draftId: data.draftId,
         reviews: reviewed.map((r) => {
-          const { nextOpen, nextTitle, nextNote, nextDueDate, nextCentralId, ...review } = reviews[r.id]!
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { nextOpen, nextTitle, nextNote, nextDueDate, nextCentralId, transferOpen, transferTo, transferReason, ...review } = reviews[r.id]!
           const next = nextOpen && review.outcome === "DONE"
           return {
             agreementId: r.id,
@@ -145,6 +160,7 @@ export function ConductDailyForm({ data }: { data: Mine }) {
           }
         }),
         absent: [...absent],
+        transfers: moved.map((r) => ({ agreementId: r.id, memberId: reviews[r.id]!.transferTo, reason: reviews[r.id]!.transferReason })),
         newAgreements: filled.map(({ memberId, centralId, title, why, dueDate }) => ({ memberId, centralId, title, why, dueDate })),
       })
       if (result.ok) {
@@ -159,6 +175,7 @@ export function ConductDailyForm({ data }: { data: Mine }) {
         const i = Number(index)
         if (list === "reviews" && reviewed[i]) mapped[`${reviewed[i].id}.${field}`] = message
         if (list === "newAgreements" && filled[i]) mapped[`row${filled[i].key}.${field}`] = message
+        if (list === "transfers" && moved[i]) mapped[`${moved[i].id}.transfer.${field}`] = message
       }
       setErrors(mapped)
       setError(Object.keys(mapped).length ? C.invalid : result.error)
@@ -301,6 +318,49 @@ export function ConductDailyForm({ data }: { data: Mine }) {
                             <DatePickerField aria-label={C.newDue} value={r.newDueDate} onChange={(v) => patch(a.id, { newDueDate: v })} min={data.date} />
                             {err("newDueDate") ? <p className="text-xs text-overdue">{err("newDueDate")}</p> : null}
                           </div>
+                        ) : null}
+                        {r.outcome !== "DONE" && data.members.some((m) => m.id !== a.member.id) ? (
+                          r.transferOpen ? (
+                            <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-sunken/60 p-3">
+                              <Select value={r.transferTo} onValueChange={(v) => patch(a.id, { transferTo: v })}>
+                                <SelectTrigger aria-label={`${T.transferTo}: ${a.title}`} className="min-h-11 w-full" aria-invalid={err("transfer.memberId") ? true : undefined}>
+                                  <SelectValue placeholder={T.transferChoose} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {data.members
+                                    .filter((m) => m.id !== a.member.id)
+                                    .map((m) => (
+                                      <SelectItem key={m.id} value={m.id}>
+                                        {m.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                              {err("transfer.memberId") ? <p className="text-xs text-overdue">{err("transfer.memberId")}</p> : null}
+                              <Input
+                                value={r.transferReason}
+                                maxLength={300}
+                                autoComplete="off"
+                                placeholder={T.transferReasonPlaceholder}
+                                aria-label={T.transferReason}
+                                aria-invalid={err("transfer.reason") ? true : undefined}
+                                className="min-h-11"
+                                onChange={(e) => patch(a.id, { transferReason: e.target.value })}
+                              />
+                              {err("transfer.reason") ? <p className="text-xs text-overdue">{err("transfer.reason")}</p> : null}
+                              <Button type="button" variant="ghost" className="min-h-11 self-start" onClick={() => patch(a.id, { transferOpen: false, transferTo: "", transferReason: "" })}>
+                                {T.transferCancel}
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="min-h-11 self-start text-sm text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+                              onClick={() => patch(a.id, { transferOpen: true })}
+                            >
+                              {T.transfer}
+                            </button>
+                          )
                         ) : null}
                       </li>
                     )

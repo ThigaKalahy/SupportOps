@@ -8,6 +8,7 @@ import {
   moveCatalogItemRecord,
   saveCatalogItemRecord,
   setCatalogItemActiveRecord,
+  setOneOnOneSinceRecord,
   setThresholdRecord,
 } from "@/server/settings"
 
@@ -40,6 +41,15 @@ export async function setCatalogItemActive(input: unknown): Promise<ActionResult
 
 export async function deleteCatalogItem(input: unknown): Promise<ActionResult> {
   return runAction("settings", async () => deleteCatalogItemRecord(await requireWriteContext(), input), PATHS)
+}
+
+/** C24: recomeçar (ou voltar ao histórico) a contagem de dias sem 1:1 do time. */
+export async function setOneOnOneSince(input: unknown): Promise<ActionResult> {
+  return runAction("settings", async () => setOneOnOneSinceRecord(await requireWriteContext(), input), [
+    ["/", "layout"],
+    ["/settings", "layout"],
+    ["/team", "layout"],
+  ])
 }
 
 /** Limiar do motor de alertas: muda a home, os contadores, /team e o perfil. */

@@ -385,9 +385,18 @@ export function DailyForm({ form }: { form: DailyFormData }) {
     requestAnimationFrame(() => rowMemberRefs.current[row.key]?.focus())
   }
 
+  /** C24: ordem das trocas no pedido, para levar o erro do servidor à linha certa. */
+  const transferIdsRef = React.useRef<string[]>([])
+
   function buildInput(current: FormState): { input: DailyInput; reviewIds: string[]; rowKeys: string[] } {
     const reviewIds = reviewOrder.filter((id) => current.reviews[id]?.outcome)
     const rows = current.rows.filter((r) => !rowIsEmpty(r) && !r.locked)
+    // C24: troca de pessoa — não vale com Feito nem com Substituir (a linha nem oferece).
+    const transferIds = reviewOrder.filter((id) => {
+      const r = current.reviews[id]
+      return r?.transferOpen && r.transferTo && r.outcome !== "DONE" && !(r.outcome && r.action === "replace")
+    })
+    transferIdsRef.current = transferIds
     return {
       reviewIds,
       rowKeys: rows.map((r) => r.key),
@@ -413,6 +422,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
         }),
         participants: form.members.map((m) => ({ memberId: m.id, ...current.participants[m.id]!, watchIds: current.participants[m.id]!.watchIds ?? [] })),
         draftId: form.draft?.id ?? "",
+        transfers: transferIds.map((id) => ({ agreementId: id, memberId: current.reviews[id]!.transferTo!, reason: current.reviews[id]!.transferReason ?? "" })),
         proposals: Object.entries(current.proposals).flatMap(([id, p]) =>
           p.action ? [{ id, action: p.action, title: p.title, dueDate: p.dueDate, managerNote: p.managerNote }] : [],
         ),
@@ -435,6 +445,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
     for (const [path, message] of Object.entries(raw)) {
       const [section, index, field] = path.split(".")
       if (section === "reviews") out[`review:${reviewIds[Number(index)]}:${field}`] = message
+      else if (section === "transfers") out[`review:${transferIdsRef.current[Number(index)]}:transfer:${field}`] = message
       else if (section === "newAgreements") out[`row:${rowKeys[Number(index)]}:${field}`] = message
       else out[path] = message
     }
@@ -700,7 +711,10 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                           nextTitle: errors[`review:${item.id}:nextTitle`],
                           nextNote: errors[`review:${item.id}:nextNote`],
                           nextDueDate: errors[`review:${item.id}:nextDueDate`],
+                          transferTo: errors[`review:${item.id}:transfer:memberId`],
+                          transferReason: errors[`review:${item.id}:transfer:reason`],
                         }}
+                        transferTargets={form.members.filter((m) => m.id !== group.member.id).map((m) => ({ id: m.id, name: m.preferredName }))}
                         groupRef={(el) => {
                           groups.current[index] = el
                         }}

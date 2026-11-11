@@ -3,11 +3,11 @@ import { Prisma } from "@prisma/client"
 import { CENTRAL_NAME_MAX, centralSlug, cleanCentralName } from "../lib/centrals.ts"
 import { parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { fill, labels } from "../lib/labels.ts"
-import { nextStepSchema, ownAgreementSchema, ownCentralSchema } from "../lib/validators/member-portal.ts"
+import { nextStepSchema, ownAgreementSchema, ownCentralSchema, transferOwnSchema } from "../lib/validators/member-portal.ts"
 
 import { db } from "./db.ts"
 import { getDailyLock, memberAudit, memberOwnScope, type MemberContext } from "./member-scope.ts"
-import { recordTimelineEvents, timelineEventFor } from "./timeline.ts"
+import { moveAgreementEvents, recordTimelineEvents, timelineEventFor } from "./timeline.ts"
 
 /**
  * C14/C16 — o colaborador CRIA os próprios combinados (decisão do usuário em 20/10/2026,
@@ -20,9 +20,17 @@ import { recordTimelineEvents, timelineEventFor } from "./timeline.ts"
  *   está ligado. Nada gerencial (D40) — por isso o próximo passo herda a observação ligada ao
  *   combinado, mas não escreve revisão nela.
  * - Combinado só fora do horário da daily: travamento conferido dentro da transação (D43).
+ *
+ * C24 (decisão do usuário em 11/11/2026, revisa a D42 — "depois de criado, só relata"): o
+ * colaborador PASSA o próprio combinado aberto para outra pessoa do time, com o motivo. É o
+ * mesmo registro da troca do gestor (AgreementTransfer, linhas AGREEMENT_TRANSFER, linha
+ * AGREEMENT acompanhando o dono, auditoria). Para escolher, lê o nome e o id das pessoas
+ * ativas do time — nada além disso (`getTransferTargets`). O relato pendente dele naquele
+ * combinado sai junto (o combinado deixa de ser dele).
  */
 
 export type OwnAgreementResult = { ok: true; id: string } | { ok: false; error: string; fieldErrors?: Record<string, string> }
+export type OwnTransferResult = { ok: true; name: string } | { ok: false; error: string; fieldErrors?: Record<string, string> }
 export type OwnCentralResult = { ok: true; id: string; name: string; existed: boolean } | { ok: false; error: string }
 
 class PortalLockedError extends Error {}
@@ -150,4 +158,66 @@ export async function ensureOwnCentral(ctx: MemberContext, input: unknown): Prom
     }
     throw error
   }
+}
+
+/** C24: quem pode receber um combinado dele — pessoas do time não desligadas, sem ele. Só id e nome. */
+export async function getTransferTargets(ctx: MemberContext): Promise<{ id: string; name: string }[]> {
+  const rows = await db.teamMember.findMany({
+    where: { teamId: ctx.teamId, id: { not: ctx.memberId }, status: { not: "INACTIVE" } },
+    orderBy: { preferredName: "asc" },
+    select: { id: true, preferredName: true },
+  })
+  return rows.map((m) => ({ id: m.id, name: m.preferredName }))
+}
+
+/**
+ * C24: passa o próprio combinado aberto para outra pessoa do time, com o motivo. Prazos e
+ * cliente não mudam (D17). Fora do horário da daily, como toda escrita do portal (D43).
+ */
+export async function transferOwnAgreement(ctx: MemberContext, input: unknown): Promise<OwnTransferResult> {
+  const parsed = transferOwnSchema.safeParse(input)
+  if (!parsed.success) return errorsOf(parsed.error.issues)
+  const { agreementId, memberId, reason } = parsed.data
+  const T = labels.agreements.transferErrors
+  if (memberId === ctx.memberId) return { ok: false, error: T.sameMember, fieldErrors: { memberId: T.sameMember } }
+  const [own, me, to] = await Promise.all([
+    db.agreement.findFirst({
+      where: { ...memberOwnScope(ctx), id: agreementId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS"] } },
+      select: { id: true, title: true },
+    }),
+    db.teamMember.findFirst({ where: { teamId: ctx.teamId, id: ctx.memberId }, select: { id: true, preferredName: true } }),
+    db.teamMember.findFirst({ where: { teamId: ctx.teamId, id: memberId, status: { not: "INACTIVE" } }, select: { id: true, preferredName: true } }),
+  ])
+  if (!own || !me) return { ok: false, error: M.validation.notOpen }
+  if (!to) return { ok: false, error: T.memberUnavailable, fieldErrors: { memberId: T.memberUnavailable } }
+  try {
+    await db.$transaction(async (tx) => {
+      if ((await getDailyLock(ctx.teamId, tx)).locked) throw new PortalLockedError()
+      const moved = await tx.agreement.updateMany({
+        where: { ...memberOwnScope(ctx), id: own.id, status: { in: ["OPEN", "IN_PROGRESS"] } },
+        data: { memberId: to.id },
+      })
+      if (moved.count !== 1) throw new Error("Combinado alterado durante a troca")
+      const transfer = await tx.agreementTransfer.create({
+        data: { teamId: ctx.teamId, agreementId: own.id, fromMemberId: ctx.memberId, toMemberId: to.id, reason, authorUserId: ctx.userId },
+      })
+      // O relato pendente era dele; o combinado agora é de outra pessoa.
+      await tx.agreementSelfReport.deleteMany({ where: { teamId: ctx.teamId, agreementId: own.id, memberId: ctx.memberId, dailyId: null } })
+      await moveAgreementEvents(tx, { teamId: ctx.teamId }, own.id, to.id)
+      await recordTimelineEvents(
+        tx,
+        { teamId: ctx.teamId },
+        timelineEventFor.agreementTransfer({ agreementId: own.id, title: own.title, from: me, to, reason, at: transfer.transferredAt, authorUserId: ctx.userId }),
+      )
+      await memberAudit(
+        ctx,
+        { action: "member.agreement.transfer", entity: "Agreement", entityId: own.id, before: { memberId: ctx.memberId }, after: { memberId: to.id, reason } },
+        tx,
+      )
+    })
+  } catch (error) {
+    if (error instanceof PortalLockedError) return { ok: false, error: M.locked.refused }
+    throw error
+  }
+  return { ok: true, name: to.preferredName }
 }

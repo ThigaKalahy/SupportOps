@@ -68,6 +68,9 @@ type ReviewAgreement = {
   watchItemId: string | null
 }
 type CaseWatch = Map<string, { id: string; heat: WatchHeat; lastReviewedAt: Date }>
+type TransferInput = { agreementId: string; memberId: string; reason: string }
+/** C24: nome de quem passa e de quem recebe, para as linhas da timeline. */
+type People = Map<string, string>
 type Fail = Extract<ActionResult, { ok: false }>
 
 /**
@@ -81,13 +84,16 @@ async function prepare(
   rows: { centralId: string }[],
   /** C20: daily do scrum master — não lê observação nem grava revisão nela (D40, D46). */
   conductor = false,
-): Promise<Fail | { byId: Map<string, ReviewAgreement>; caseWatch: CaseWatch }> {
+  /** C24: combinados passados para outra pessoa nesta daily. */
+  transfers: TransferInput[] = [],
+): Promise<Fail | { byId: Map<string, ReviewAgreement>; caseWatch: CaseWatch; people: People }> {
   const reviewIds = reviews.map((r) => r.agreementId)
+  const transferIds = transfers.map((t) => t.agreementId)
   const reasonIds = [...new Set(reviews.map((r) => r.blockerReasonId).filter(Boolean))]
   const [members, agreements, reasons] = await Promise.all([
     db.teamMember.findMany({ where: { ...teamScope(ctx), id: { in: [...memberIds] } }, select: { id: true } }),
     db.agreement.findMany({
-      where: { ...teamScope(ctx), id: { in: reviewIds } },
+      where: { ...teamScope(ctx), id: { in: [...new Set([...reviewIds, ...transferIds])] } },
       select: {
         id: true,
         memberId: true,
@@ -118,6 +124,22 @@ async function prepare(
   if (reviewIds.some((id) => byId.get(id)?.status !== "OPEN" && byId.get(id)?.status !== "IN_PROGRESS")) {
     return { ok: false, error: labels.dailies.validation.agreementClosed }
   }
+  // C24: troca só de combinado aberto, para outra pessoa do time que não esteja desligada.
+  const people: People = new Map()
+  if (transfers.length) {
+    if (transferIds.some((id) => byId.get(id)?.status !== "OPEN" && byId.get(id)?.status !== "IN_PROGRESS")) {
+      return { ok: false, error: labels.dailies.validation.agreementClosed }
+    }
+    const involved = [...new Set(transfers.flatMap((t) => [t.memberId, byId.get(t.agreementId)!.memberId]))]
+    const found = await db.teamMember.findMany({ where: { ...teamScope(ctx), id: { in: involved } }, select: { id: true, preferredName: true, status: true } })
+    for (const m of found) people.set(m.id, m.preferredName)
+    const T = labels.agreements.transferErrors
+    for (const t of transfers) {
+      const target = found.find((m) => m.id === t.memberId)
+      if (t.memberId === byId.get(t.agreementId)!.memberId) return { ok: false, error: T.sameMember }
+      if (!target || target.status === "INACTIVE") return { ok: false, error: T.memberUnavailable }
+    }
+  }
   // Próximo passo: a observação ATIVA do caso (a ligada ao combinado ou a que nasceu dele).
   const caseWatch: CaseWatch = new Map()
   for (const review of reviews) {
@@ -128,7 +150,57 @@ async function prepare(
     const watch = linked?.status === "ACTIVE" ? linked : origin ? await findWatchForWrite(ctx, origin.id) : null
     if (watch) caseWatch.set(agreement.id, { id: watch.id, heat: watch.heat, lastReviewedAt: watch.lastReviewedAt })
   }
-  return { byId, caseWatch }
+  return { byId, caseWatch, people }
+}
+
+/**
+ * C24 — trocas de responsável feitas na daily, DEPOIS das revisões (o desfecho é de quem
+ * estava com o combinado). O mesmo registro da tela do combinado (C4): o combinado muda de
+ * `memberId`, `AgreementTransfer` com o motivo, a linha AGREEMENT acompanha o dono, uma linha
+ * AGREEMENT_TRANSFER para cada pessoa e a auditoria. Prazos não mudam (D17).
+ */
+async function applyTransfers(
+  tx: Tx,
+  ctx: TeamContext,
+  dailyId: string,
+  transfers: TransferInput[],
+  prepared: { byId: Map<string, ReviewAgreement>; people: People },
+  timeline: TimelineEventInput[],
+) {
+  for (const t of transfers) {
+    const agreement = prepared.byId.get(t.agreementId)!
+    const moved = await tx.agreement.updateMany({
+      where: { ...teamScope(ctx), id: agreement.id, memberId: agreement.memberId, status: { in: ["OPEN", "IN_PROGRESS"] } },
+      data: { memberId: t.memberId },
+    })
+    if (moved.count !== 1) throw new ClosedAgreementError()
+    const transfer = await tx.agreementTransfer.create({
+      data: { ...teamScope(ctx), agreementId: agreement.id, fromMemberId: agreement.memberId, toMemberId: t.memberId, reason: t.reason, authorUserId: ctx.userId },
+    })
+    await moveAgreementEvents(tx, ctx, agreement.id, t.memberId)
+    timeline.push(
+      ...timelineEventFor.agreementTransfer({
+        agreementId: agreement.id,
+        title: agreement.title,
+        from: { id: agreement.memberId, preferredName: prepared.people.get(agreement.memberId) ?? "" },
+        to: { id: t.memberId, preferredName: prepared.people.get(t.memberId) ?? "" },
+        reason: t.reason,
+        at: transfer.transferredAt,
+        authorUserId: ctx.userId,
+      }),
+    )
+    await writeAudit(
+      {
+        action: "agreement.transfer",
+        entity: "Agreement",
+        entityId: agreement.id,
+        before: { memberId: agreement.memberId },
+        after: { memberId: t.memberId, reason: t.reason, via: "daily", dailyId },
+      },
+      auditOf(ctx, tx),
+    )
+  }
+  return transfers.length
 }
 
 /**
@@ -312,7 +384,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown, option
   if (taken) return { ok: false, error: fill(labels.dailies.sameDay.taken, { date: data.date }) }
 
   const memberIds = new Set([...data.participants.map((p) => p.memberId), ...data.newAgreements.map((a) => a.memberId)])
-  const prepared = await prepare(ctx, data.reviews, memberIds, [...data.newAgreements, ...nextCentrals(data.reviews)], options.conductor)
+  const prepared = await prepare(ctx, data.reviews, memberIds, [...data.newAgreements, ...nextCentrals(data.reviews)], options.conductor, data.transfers)
   if ("ok" in prepared) return prepared
 
   // P26: relatos e propostas que a daily aberta capturou.
@@ -361,6 +433,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown, option
         const timeline: TimelineEventInput[] = []
         const reviewedBy = new Map<string, Record<Outcome, number>>()
         const counts = await applyReviews(tx, ctx, daily.id, day, data.reviews, prepared, timeline, reviewedBy, reports)
+        const transferred = await applyTransfers(tx, ctx, daily.id, data.transfers, prepared, timeline)
         await createRows(tx, ctx, daily.id, data.newAgreements, timeline)
         const proposalCounts = await resolveProposals(tx, ctx, daily.id, data.proposals, proposalById, timeline)
         // P21: observações marcadas nas notas e nas linhas desta daily passam a apontar para ela.
@@ -386,6 +459,7 @@ export async function createDailyRecord(ctx: TeamContext, input: unknown, option
               reviewed: data.reviews.length,
               done: data.reviews.filter((r) => r.outcome === "DONE").length,
               ...counts,
+              transferred,
               created: data.newAgreements.length,
               selfReports: reports.size,
               proposals: proposalCounts,
@@ -629,11 +703,14 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
   const reviewedHere = new Set(daily.checkins.map((c) => c.agreementId))
   if (data.reviews.some((r) => reviewedHere.has(r.agreementId))) return { ok: false, error: labels.dailies.edit.alreadyReviewed }
 
+  // C24: o responsável de um combinado criado nesta daily se corrige na própria linha, não por troca.
+  const ownRows = new Set(data.newAgreements.map((r) => r.id).filter(Boolean))
+  if (data.transfers.some((t) => ownRows.has(t.agreementId))) return { ok: false, error: labels.validation.generic }
   const memberIds = new Set([...data.newAgreements.filter((r) => !r.remove).map((r) => r.memberId)])
   const prepared = await prepare(ctx, data.reviews, memberIds, [
     ...data.newAgreements.filter((r) => !r.remove),
     ...nextCentrals(data.reviews),
-  ])
+  ], false, data.transfers)
   if ("ok" in prepared) return prepared
 
   const reviewedBy = new Map<string, Record<Outcome, number>>()
@@ -662,6 +739,7 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
 
         const timeline: TimelineEventInput[] = []
         const counts = await applyReviews(tx, ctx, daily.id, day, data.reviews, prepared, timeline, reviewedBy)
+        const transferred = await applyTransfers(tx, ctx, daily.id, data.transfers, prepared, timeline)
 
         // Combinados criados nela: correções e remoções.
         const rowChanges = { updated: 0, removed: 0, created: newRows.length }
@@ -747,6 +825,7 @@ export async function updateDailyRecord(ctx: TeamContext, input: unknown): Promi
               })),
               reviewed: data.reviews.length,
               ...counts,
+              transferred,
               agreements: rowChanges,
             },
           },

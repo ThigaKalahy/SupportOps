@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client"
 
+import { decodeBusinessDate, encodeBusinessDate, ONE_ON_ONE_SINCE_KEY } from "../lib/alert-thresholds.ts"
 import { centralSlug, cleanCentralName } from "../lib/centrals.ts"
+import { todayBusinessDate } from "../lib/dates.ts"
 import { fill, labels } from "../lib/labels.ts"
 import { MODULES } from "../lib/modules.ts"
 import { fieldErrorsOf, type ActionResult } from "../lib/validators/fields.ts"
@@ -380,6 +382,37 @@ export async function setThresholdRecord(ctx: TeamContext, input: unknown): Prom
         entityId: key,
         before: { value: setting.value, custom: setting.custom },
         after: { value: reset ? setting.defaultValue : value, custom: !reset },
+      },
+      auditOf(ctx, tx),
+    )
+  })
+  return { ok: true }
+}
+
+/**
+ * C24 — recomeçar a contagem de dias sem 1:1 do time (decisão do usuário em 11/11/2026, no
+ * Suporte): a contagem passa a correr a partir de hoje para quem não teve 1:1 depois disso.
+ * Nenhum 1:1 é apagado ou inventado (D23); "voltar ao histórico" apaga a data. Auditado.
+ */
+export async function setOneOnOneSinceRecord(ctx: TeamContext, input: unknown): Promise<ActionResult> {
+  requireManager(ctx)
+  const restart = typeof input === "object" && input !== null && (input as { restart?: unknown }).restart === true
+  const where = { teamId_key: { teamId: ctx.teamId, key: ONE_ON_ONE_SINCE_KEY } }
+  const before = await db.alertThreshold.findUnique({ where, select: { value: true } })
+  const value = encodeBusinessDate(todayBusinessDate())
+  await db.$transaction(async (tx) => {
+    if (restart) {
+      await tx.alertThreshold.upsert({ where, create: { ...teamScope(ctx), organizationId: ctx.organizationId, key: ONE_ON_ONE_SINCE_KEY, value }, update: { value } })
+    } else {
+      await tx.alertThreshold.deleteMany({ where: { ...teamScope(ctx), key: ONE_ON_ONE_SINCE_KEY } })
+    }
+    await writeAudit(
+      {
+        action: "settings.alertThreshold.update",
+        entity: "AlertThreshold",
+        entityId: ONE_ON_ONE_SINCE_KEY,
+        before: { since: before ? decodeBusinessDate(before.value) : null },
+        after: { since: restart ? todayBusinessDate() : null },
       },
       auditOf(ctx, tx),
     )

@@ -438,6 +438,18 @@ export const labels = {
       cancel: "Cancelar",
       failed: "Não foi possível salvar. Tente de novo.",
     },
+    /** C24: passar o próprio combinado para alguém do time, com o motivo (fica registrado). */
+    transfer: {
+      action: "Passar para um colega",
+      hint: "O combinado vai para a pessoa escolhida, com prazo e cliente iguais. A troca e o motivo ficam registrados.",
+      to: "Para quem",
+      choose: "Escolha a pessoa",
+      reason: "Por que passa para essa pessoa",
+      confirm: "Passar o combinado",
+      cancel: "Cancelar",
+      done: "Combinado passado para {name}.",
+      none: "Não há outra pessoa ativa no time para receber.",
+    },
     /** C16: próximo passo depois de um Feito — entra como combinado novo, com o mesmo cliente. */
     next: {
       action: "Próximo passo",
@@ -1491,6 +1503,13 @@ export const labels = {
       alreadyReviewed: "Um combinado já tinha sido revisado nesta daily. Recarregue a página.",
     },
     review: {
+      transfer: "Passar para outra pessoa",
+      transferTo: "Passar para",
+      transferChoose: "Escolha a pessoa",
+      transferReason: "Motivo da troca",
+      transferReasonPlaceholder: "Por que passa para essa pessoa",
+      transferCancel: "Não passar",
+      transferring: "Vai para {name} ao salvar a daily",
       title: "Revisão dos combinados",
       direction: "Criados na daily anterior e em aberto com prazo até o dia da daily.",
       emptyTitle: "Nada para revisar",
@@ -1610,6 +1629,8 @@ export const labels = {
       replacementRequired: "Informe o novo combinado.",
       nextTitleRequired: "Informe o próximo combinado.",
       nextNoteRequired: "Diga em uma linha o que mudou.",
+      transferReasonRequired: "Diga em uma linha por que o combinado muda de pessoa.",
+      transferNotHere: "Combinado feito ou substituído não muda de pessoa.",
       agreementClosed: "Um dos combinados revisados já foi encerrado em outra tela. Recarregue a página.",
       rowIncomplete: "Preencha responsável, combinado e prazo, ou deixe a linha vazia.",
     },
@@ -2537,6 +2558,18 @@ export const labels = {
       },
     },
     thresholds: {
+      oneOnOneClock: {
+        title: "Contagem de dias sem 1:1",
+        history: "Conta a partir do último 1:1 de cada pessoa (ou da entrada no time).",
+        since: "Recomeçada em {date}: conta a partir daí, ou do 1:1 de cada pessoa depois dessa data.",
+        restart: "Recomeçar a contagem hoje",
+        clear: "Contar pelo histórico",
+        confirmTitle: "Recomeçar a contagem de 1:1",
+        confirmDescription: "Os dias sem 1:1 passam a contar a partir de hoje para todo o time. Nenhum 1:1 é apagado: o histórico continua no perfil de cada pessoa.",
+        cancel: "Cancelar",
+        restarted: "Contagem de 1:1 recomeçada hoje",
+        cleared: "Contagem de 1:1 voltou ao histórico",
+      },
       direction:
         "Quando cada alerta da tela Hoje dispara. Os alertas não são gravados: mudar um limiar muda a lista, os contadores, a coluna de atenção da equipe e o perfil na hora.",
       tableLabel: "Limiares do motor de alertas",

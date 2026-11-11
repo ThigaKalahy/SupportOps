@@ -1,5 +1,5 @@
 import { makeRate, makeTrend, percent, type Rate, type Trend } from "../lib/adherence.ts"
-import { DEFAULT_THRESHOLDS, oneOnOneLimit, type AlertThresholds } from "../lib/alert-thresholds.ts"
+import { DEFAULT_THRESHOLDS, oneOnOneClockFrom, oneOnOneLimit, type AlertThresholds } from "../lib/alert-thresholds.ts"
 import { businessDaysBetween, formatDate, isBusinessDay, todayBusinessDate, toSaoPaulo, toUrlDate } from "../lib/dates.ts"
 import { DEV_RETURN_ALERTS } from "../lib/dev-returns.ts"
 import { coldHighDays, reviewState as watchReviewState, showsOnHome, stalledDays } from "../lib/watch.ts"
@@ -150,12 +150,12 @@ export function memberAttention(facts: MemberFacts, today: Date, t: AlertThresho
   if (facts.away) {
     // Afastado ou de férias: a cadência de 1:1 não corre (o mesmo que a home faz).
   } else if (facts.lastOneOnOne === null) {
-    const days = businessDaysBetween(facts.joinedAt, today)
+    const days = businessDaysBetween(oneOnOneClockFrom(null, facts.joinedAt, t), today)
     if (days > oneOnOneCadence(facts.seniorityKey, days, t).limit) {
       reasons.push({ severity: "attention", strong: true, text: fill(labels.attention.noOneOnOne, { days }) })
     }
   } else {
-    const days = businessDaysBetween(facts.lastOneOnOne, today)
+    const days = businessDaysBetween(oneOnOneClockFrom(facts.lastOneOnOne, facts.joinedAt, t), today)
     const cadence = oneOnOneCadence(facts.seniorityKey, days, t)
     if (days > cadence.limit) {
       reasons.push({
@@ -385,7 +385,7 @@ export function deriveAlerts(facts: AlertFacts, today: Date, t: AlertThresholds,
       })
       continue
     }
-    const oneOnOneDays = businessDaysBetween(m.lastOneOnOne ?? m.joinedAt, today)
+    const oneOnOneDays = businessDaysBetween(oneOnOneClockFrom(m.lastOneOnOne, m.joinedAt, t), today)
     const cadence = oneOnOneCadence(m.seniorityKey, oneOnOneDays, t)
     if (oneOnOneDays > cadence.limit) {
       alerts.push({

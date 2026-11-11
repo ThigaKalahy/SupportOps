@@ -35,6 +35,10 @@ export interface ReviewState {
   nextDueDate: string
   /** Central do próximo passo (C12): começa com a do combinado feito. */
   nextCentralId: string
+  /** C24: passar para outra pessoa do time (opcionais: rascunhos antigos não têm). */
+  transferOpen?: boolean
+  transferTo?: string
+  transferReason?: string
 }
 
 /** Porquê e caso por trás do combinado, abaixo do título. */
@@ -89,6 +93,7 @@ export function ReviewRow({
   groupRef,
   onDone,
   watch,
+  transferTargets,
   centrals,
   showCase = false,
   report,
@@ -111,6 +116,8 @@ export function ReviewRow({
   onDone: () => void
   /** P21: "Colocar em observação", mostrado só em Parcial / Não feito (o momento de maior valor). */
   watch?: (blockerText: string) => React.ReactNode
+  /** C24: pessoas do time que podem receber o combinado (sem o dono). Vazio: a opção não aparece. */
+  transferTargets?: { id: string; name: string }[]
 }) {
   const blockerRef = React.useRef<HTMLInputElement>(null)
   const nextRef = React.useRef<HTMLInputElement>(null)
@@ -420,6 +427,83 @@ export function ReviewRow({
           </fieldset>
         </div>
       ) : null}
+      <TransferControl item={item} state={state} onChange={onChange} targets={transferTargets} errors={errors} idBase={idBase} />
     </li>
+  )
+}
+
+/**
+ * C24 — passar o combinado para outra pessoa, na própria linha da revisão. Vale sem desfecho e
+ * com Parcial/Não feito reagendado; some com Feito e com Substituir. Grava ao salvar a daily,
+ * com o motivo (o mesmo registro da tela do combinado).
+ */
+function TransferControl({
+  item,
+  state,
+  onChange,
+  targets = [],
+  errors,
+  idBase,
+}: {
+  item: ReviewItem
+  state: ReviewState
+  onChange: (patch: Partial<ReviewState>) => void
+  targets?: { id: string; name: string }[]
+  errors: Record<string, string | undefined>
+  idBase: string
+}) {
+  if (targets.length === 0 || state.outcome === "DONE" || (state.outcome && state.action === "replace")) return null
+  if (!state.transferOpen) {
+    return (
+      <div className="pl-0 sm:pl-1">
+        <button
+          type="button"
+          tabIndex={-1}
+          className="text-xs text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+          onClick={() => onChange({ transferOpen: true })}
+        >
+          {R.transfer}
+        </button>
+      </div>
+    )
+  }
+  const name = targets.find((t) => t.id === state.transferTo)?.name
+  return (
+    <div className="flex flex-col gap-2 rounded-sm border border-line bg-surface-sunken/60 p-2">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="flex flex-col gap-1">
+          <Select value={state.transferTo ?? ""} onValueChange={(v) => onChange({ transferTo: v })}>
+            <SelectTrigger aria-label={`${R.transferTo}: ${item.title}`} className="h-8 w-48" aria-invalid={Boolean(errors.transferTo)}>
+              <SelectValue placeholder={R.transferChoose} />
+            </SelectTrigger>
+            <SelectContent>
+              {targets.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FieldError id={`${idBase}-tto-error`} message={errors.transferTo} />
+        </div>
+        <div className="flex min-w-48 flex-1 flex-col gap-1">
+          <Input
+            aria-label={R.transferReason}
+            value={state.transferReason ?? ""}
+            maxLength={300}
+            autoComplete="off"
+            placeholder={R.transferReasonPlaceholder}
+            className="h-8"
+            aria-invalid={Boolean(errors.transferReason)}
+            onChange={(e) => onChange({ transferReason: e.target.value })}
+          />
+          <FieldError id={`${idBase}-treason-error`} message={errors.transferReason} />
+        </div>
+        <Button type="button" size="sm" variant="secondary" onClick={() => onChange({ transferOpen: false, transferTo: "", transferReason: "" })}>
+          {R.transferCancel}
+        </Button>
+      </div>
+      {name ? <p className="text-xs text-ink-secondary">{fill(R.transferring, { name })}</p> : null}
+    </div>
   )
 }

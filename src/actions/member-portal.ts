@@ -1,7 +1,15 @@
 "use server"
 
 import { labels } from "../lib/labels.ts"
-import { createNextStep, createOwnAgreement, ensureOwnCentral, type OwnAgreementResult, type OwnCentralResult } from "../server/member-agreements.ts"
+import {
+  createNextStep,
+  createOwnAgreement,
+  ensureOwnCentral,
+  transferOwnAgreement,
+  type OwnAgreementResult,
+  type OwnCentralResult,
+  type OwnTransferResult,
+} from "../server/member-agreements.ts"
 import { discardConductDaily, NotConductorError, openConductDaily, saveConductDaily, spinRouletteAsMember } from "../server/member-daily.ts"
 import type { ScrumMasterDrawResult } from "../server/member-daily.ts"
 import { deleteSelfReportCore, upsertSelfReportCore, type MemberWriteResult } from "../server/member-portal.ts"
@@ -14,10 +22,10 @@ import { getMyPortalState, type MyPortalState } from "../server/queries/member-p
  * do colaborador (`requireMemberContext`) e entrega ao núcleo — src/server/member-portal.ts
  * (relato) ou src/server/member-agreements.ts (criar o próprio combinado, C14) —, que confere
  * o travamento antes de escrever (D43). Só estas escrevem: relato, combinado novo, próximo
- * passo e central nova.
+ * passo, central nova e, desde o C24, passar o próprio combinado para alguém do time.
  */
 
-type PortalResult = MemberWriteResult | OwnAgreementResult | OwnCentralResult | ScrumMasterDrawResult | { ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string> }
+type PortalResult = MemberWriteResult | OwnAgreementResult | OwnCentralResult | OwnTransferResult | ScrumMasterDrawResult | { ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string> }
 
 async function asMember<R extends PortalResult>(
   write: (ctx: Awaited<ReturnType<typeof requireMemberContext>>) => Promise<R>,
@@ -47,6 +55,11 @@ export async function createAgreement(input: unknown): Promise<OwnAgreementResul
 /** C16: próximo passo depois de um Feito — combinado novo dele, com as heranças do de origem. */
 export async function createNextStepAgreement(input: unknown): Promise<OwnAgreementResult> {
   return asMember((ctx) => createNextStep(ctx, input))
+}
+
+/** C24: passa o próprio combinado para outra pessoa do time, com o motivo (registrado). */
+export async function transferMyAgreement(input: unknown): Promise<OwnTransferResult> {
+  return asMember((ctx) => transferOwnAgreement(ctx, input))
 }
 
 /** C16: central pelo nome (a existente ou uma nova, sem duplicar). Formato do CentralCombobox. */

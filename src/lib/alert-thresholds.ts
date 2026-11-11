@@ -36,6 +36,12 @@ export interface AlertThresholds {
   watchHighDueDays: number
   watchMediumDueDays: number
   watchLowDueDays: number
+  /**
+   * C24: a contagem de dias sem 1:1 começa nesta data de negócio (ou no último 1:1 depois
+   * dela). Recomeçar a contagem não apaga nem inventa 1:1 (D23): só muda de onde se conta.
+   * Nulo = desde o último 1:1 de cada pessoa (ou a entrada no time).
+   */
+  oneOnOneSince: Date | null
 }
 
 export const DEFAULT_THRESHOLDS: AlertThresholds = {
@@ -56,9 +62,10 @@ export const DEFAULT_THRESHOLDS: AlertThresholds = {
   watchHighDueDays: 1,
   watchMediumDueDays: 5,
   watchLowDueDays: 10,
+  oneOnOneSince: null,
 }
 
-type ScalarKey = Exclude<keyof AlertThresholds, "oneOnOneDays">
+type ScalarKey = Exclude<keyof AlertThresholds, "oneOnOneDays" | "oneOnOneSince">
 
 /** Chaves escalares com os limites aceitos no /settings. */
 export const THRESHOLD_LIMITS: Record<ScalarKey, { min: number; max: number }> = {
@@ -81,6 +88,30 @@ export const THRESHOLD_LIMITS: Record<ScalarKey, { min: number; max: number }> =
 
 export const ONE_ON_ONE_LIMITS = { min: 7, max: 120 } as const
 
+/** C24: chave do início da contagem de 1:1; o valor é a data como AAAAMMDD (ex.: 20261111). */
+export const ONE_ON_ONE_SINCE_KEY = "oneOnOneSince"
+
+export function encodeBusinessDate(date: Date): number {
+  return date.getUTCFullYear() * 10_000 + (date.getUTCMonth() + 1) * 100 + date.getUTCDate()
+}
+
+export function decodeBusinessDate(value: number): Date | null {
+  const y = Math.floor(value / 10_000)
+  const m = Math.floor((value % 10_000) / 100)
+  const d = value % 100
+  if (y < 2000 || m < 1 || m > 12 || d < 1 || d > 31) return null
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
+/**
+ * C24: de onde contam os dias sem 1:1 — o último 1:1 (ou a entrada no time, sem nenhum), mas
+ * nunca antes do início da contagem do time.
+ */
+export function oneOnOneClockFrom(lastOneOnOne: Date | null, joinedAt: Date, t: Pick<AlertThresholds, "oneOnOneSince">): Date {
+  const base = lastOneOnOne ?? joinedAt
+  return t.oneOnOneSince && t.oneOnOneSince > base ? t.oneOnOneSince : base
+}
+
 /** Prefixo da chave de cadência por senioridade: "oneOnOneDays.JUNIOR". */
 export const ONE_ON_ONE_PREFIX = "oneOnOneDays."
 
@@ -93,6 +124,7 @@ export function resolveThresholds(rows: { key: string; value: number }[]): Alert
   const t: AlertThresholds = { ...DEFAULT_THRESHOLDS, oneOnOneDays: { ...DEFAULT_THRESHOLDS.oneOnOneDays } }
   for (const { key, value } of rows) {
     if (key.startsWith(ONE_ON_ONE_PREFIX)) t.oneOnOneDays[key.slice(ONE_ON_ONE_PREFIX.length)] = value
+    else if (key === ONE_ON_ONE_SINCE_KEY) t.oneOnOneSince = decodeBusinessDate(value)
     else if (isScalarKey(key)) t[key] = value
   }
   return t

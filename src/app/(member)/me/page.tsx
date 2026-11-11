@@ -11,6 +11,7 @@ import { formatDateLong, todayBusinessDate } from "@/lib/dates"
 import { labels } from "@/lib/labels"
 import { getCurrentUser } from "@/server/access"
 import { hasChosenOwnPassword } from "@/server/account"
+import { getTransferTargets } from "@/server/member-agreements"
 import { MemberAccessError, requireMemberContext, type MemberContext } from "@/server/member-scope"
 import {
   getMyAgreementHistory,
@@ -64,7 +65,7 @@ export default async function MemberHomePage() {
     scrumMaster = await getMyScrumMaster(ctx)
   }
 
-  const [open, last, history, reasons, centrals, state, ownPassword] = await Promise.all([
+  const [open, last, history, reasons, centrals, state, ownPassword, colleagues] = await Promise.all([
     getMyOpenAgreements(ctx),
     getMyLastDailyRecord(ctx),
     getMyAgreementHistory(ctx, 20),
@@ -72,6 +73,7 @@ export default async function MemberHomePage() {
     getMyCentrals(ctx),
     getMyPortalState(ctx),
     hasChosenOwnPassword(ctx.userId),
+    getTransferTargets(ctx),
   ])
 
   // P26: a parte viva (relato, propostas, travamento) recomeça quando chega uma daily nova.
@@ -82,6 +84,7 @@ export default async function MemberHomePage() {
       agreements={open}
       reasons={reasons}
       centrals={centrals}
+      colleagues={colleagues}
       header={
         <>
           <PortalHeader name={ctx.preferredName} ownPassword={ownPassword} />
