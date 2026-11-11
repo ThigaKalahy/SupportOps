@@ -283,7 +283,12 @@ export function DailyForm({ form }: { form: DailyFormData }) {
     () => form.review.flatMap((g) => g.items.filter((i) => !i.reviewed).map((i) => i.id)),
     [form.review],
   )
-  const memberName = React.useMemo(() => new Map(form.members.map((m) => [m.id, m.preferredName])), [form.members])
+  // C25: quem recebe combinado — as pessoas da presença e, depois delas, os gestores do time.
+  const responsibles = React.useMemo(
+    () => [...form.members, ...form.managers.filter((g) => !form.members.some((m) => m.id === g.id)).map((g) => ({ ...g, manager: true }))],
+    [form.members, form.managers],
+  )
+  const memberName = React.useMemo(() => new Map(responsibles.map((m) => [m.id, m.preferredName])), [responsibles])
   // Centrais ativas + as criadas nesta daily (o combobox de uma linha cria; as outras linhas já enxergam).
   const [centrals, setCentrals] = React.useState<CentralOption[]>(form.centrals)
   // P21: Alt+O na nota abre o "Colocar em observação" daquela pessoa.
@@ -714,7 +719,7 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                           transferTo: errors[`review:${item.id}:transfer:memberId`],
                           transferReason: errors[`review:${item.id}:transfer:reason`],
                         }}
-                        transferTargets={form.members.filter((m) => m.id !== group.member.id).map((m) => ({ id: m.id, name: m.preferredName }))}
+                        transferTargets={responsibles.filter((m) => m.id !== group.member.id).map((m) => ({ id: m.id, name: responsibleLabel(m) }))}
                         groupRef={(el) => {
                           groups.current[index] = el
                         }}
@@ -908,9 +913,9 @@ export function DailyForm({ form }: { form: DailyFormData }) {
                       <SelectValue placeholder={L.newAgreements.memberPlaceholder} />
                     </SelectTrigger>
                     <SelectContent>
-                      {form.members.map((m) => (
+                      {responsibles.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
-                          {m.preferredName}
+                          {responsibleLabel(m)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1162,4 +1167,9 @@ function ProposalsBlock({
       </ul>
     </div>
   )
+}
+
+/** C25: o gestor aparece com a marca "(gestor)" onde se escolhe o responsável. */
+function responsibleLabel(m: { preferredName: string; manager?: boolean }): string {
+  return m.manager ? `${m.preferredName} (${labels.managerSeats.tag})` : m.preferredName
 }

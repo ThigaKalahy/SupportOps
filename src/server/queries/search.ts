@@ -92,6 +92,7 @@ export async function searchAll(
                  m."joinedAt" AS "date", NULL AS "visibility", count(*) OVER ()::int AS "total"
           FROM "TeamMember" m
           WHERE ${teamSql(ctx, "m")}
+            AND m."managerUserId" IS NULL
             AND (public.immutable_unaccent(m."preferredName") ILIKE public.immutable_unaccent(${like})
               OR public.immutable_unaccent(m."fullName") ILIKE public.immutable_unaccent(${like}))
           ORDER BY m."deletedAt" NULLS FIRST, m."preferredName"

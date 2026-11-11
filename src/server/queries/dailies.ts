@@ -6,6 +6,7 @@ import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { MODULES } from "../../lib/modules.ts"
 import { rouletteWindowOpen } from "../../lib/scrum-master.ts"
 import { db } from "../db.ts"
+import { listManagerSeats } from "../manager-seats.ts"
 import { listActiveCentrals } from "./centrals.ts"
 import { activeWatchByLink } from "./watch.ts"
 import { hasModule, teamScope, type TeamContext } from "../scope.ts"
@@ -155,7 +156,7 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
     select: { id: true, date: true },
   })
 
-  const [agreements, members, reasons, sameDay, centrals] = await Promise.all([
+  const [agreements, members, reasons, sameDay, centrals, managers] = await Promise.all([
     db.agreement.findMany({
       where: editing
         ? {
@@ -214,6 +215,8 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
     }),
     // Módulo de centrais desligado (D32): a daily não oferece o campo.
     hasModule(ctx, MODULES.CENTRALS) ? listActiveCentrals(ctx) : Promise.resolve([]),
+    // C25: gestores do time — recebem combinado (Seção 3, troca), sem entrar na presença.
+    listManagerSeats(ctx.teamId),
   ])
 
   // O caso por trás de cada combinado: a observação ligada (C7) ou a que nasceu dele. Vem para todo
@@ -277,6 +280,7 @@ export async function getDailyForm(ctx: TeamContext, requestedDate: Date = today
           .map((p) => ({ id: p.memberId, preferredName: p.member.preferredName }))
           .sort((a, b) => a.preferredName.localeCompare(b.preferredName))
       : members,
+    managers,
     reasons,
     sameDay,
     centrals,

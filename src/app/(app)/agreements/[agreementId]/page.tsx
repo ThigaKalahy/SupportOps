@@ -92,9 +92,16 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
         title={agreement.title}
         subtitle={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link href={`/team/${agreement.member.id}`} className="font-medium text-ink hover:underline">
-              {agreement.member.preferredName}
-            </Link>
+            {agreement.member.managerUserId ? (
+              // C25: gestor não tem perfil de pessoa.
+              <span className="font-medium text-ink">
+                {agreement.member.preferredName} <span className="text-ink-secondary">({labels.managerSeats.tag})</span>
+              </span>
+            ) : (
+              <Link href={`/team/${agreement.member.id}`} className="font-medium text-ink hover:underline">
+                {agreement.member.preferredName}
+              </Link>
+            )}
             <span aria-hidden>·</span>
             <AgreementStatusCell status={agreement.status} />
             {agreement.open && agreement.deadline.stage !== "on-track" ? (

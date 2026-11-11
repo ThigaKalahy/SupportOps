@@ -18,6 +18,7 @@ import {
 
 export async function createAgreement(input: unknown): Promise<ActionResult | { ok: true; count: number }> {
   return runAction("agreements", async () => createAgreementRecord(await requireWriteContext(), input), [
+    "/",
     "/team",
     "/agreements",
     [`/team/${memberIdOf(input)}`, "layout"],
@@ -27,6 +28,8 @@ export async function createAgreement(input: unknown): Promise<ActionResult | { 
 export async function completeAgreement(input: unknown): Promise<ActionResult> {
   const id = memberIdOf(input, "id")
   return runAction("agreements", async () => completeAgreementRecord(await requireWriteContext(), input), [
+    // C25: a home mostra "Seus combinados".
+    "/",
     "/agreements",
     `/agreements/${id}`,
     ["/team", "layout"],

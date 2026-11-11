@@ -3,6 +3,7 @@ import Link from "next/link"
 
 import { ScrumMasterCard } from "@/components/dailies/scrum-master-card"
 import { AlertList } from "@/components/today/alert-list"
+import { MyAgreements } from "@/components/today/my-agreements"
 import { TodayActions } from "@/components/today/today-actions"
 import { DateStamp } from "@/components/ui/date-stamp"
 import { PageHeader } from "@/components/ui/page-header"
@@ -14,7 +15,7 @@ import { businessDaysBetween, formatDate, formatWeekday, todayBusinessDate } fro
 import { enumLabel, fill, labels, plural } from "@/lib/labels"
 import { MODULES } from "@/lib/modules"
 import { canWrite, hasModule, requireTeamContext } from "@/server/scope"
-import { listAgreementMembers } from "@/server/queries/agreements"
+import { getMyAgreements, listAgreementMembers } from "@/server/queries/agreements"
 import { getScrumMasterToday } from "@/server/queries/dailies"
 import { ensureAutoScrumMaster } from "@/server/scrum-master"
 import { getTodayPanel } from "@/server/queries/today"
@@ -41,11 +42,13 @@ export default async function TodayPage() {
   const writer = canWrite(ctx)
   // C19: times sem a roleta têm o scrum master escolhido no primeiro acesso do dia útil.
   await ensureAutoScrumMaster({ teamId: ctx.teamId, organizationId: ctx.organizationId, roulette: hasModule(ctx, MODULES.DAILY_ROULETTE) })
-  const [{ alerts, watch }, panel, members, scrumMaster] = await Promise.all([
+  const [{ alerts, watch }, panel, members, scrumMaster, mine] = await Promise.all([
     loadAlerts(),
     getTodayPanel(ctx, today),
     writer ? listAgreementMembers(ctx) : Promise.resolve([]),
     getScrumMasterToday(ctx),
+    // C25: os combinados do próprio gestor (só quem gerencia tem lugar de gestor).
+    writer ? getMyAgreements(ctx, today) : Promise.resolve(null),
   ])
   const rate = panel.rhythm.adherence
   const sinceDaily = panel.rhythm.lastDaily ? businessDaysBetween(panel.rhythm.lastDaily, today) : null
@@ -68,6 +71,7 @@ export default async function TodayPage() {
 
         <div className="flex min-w-0 flex-col gap-8">
           <ScrumMasterCard data={scrumMaster} canWrite={writer} />
+          {mine ? <MyAgreements data={mine} canWrite={writer} /> : null}
           <Section title={T.composition} count={panel.total}>
             <SegmentedBar
               label={fill(T.compositionLabel, {

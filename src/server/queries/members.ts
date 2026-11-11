@@ -131,6 +131,7 @@ export async function listTeamMembers(
     FROM "TeamMember" m
     JOIN "Seniority" s ON s."id" = m."seniorityId"
     WHERE ${teamSql(ctx, "m")}
+      AND m."managerUserId" IS NULL -- C25: lugar de gestor não é pessoa do time
       ${
         filters.id
           ? Prisma.sql`AND m."id" = ${filters.id}`

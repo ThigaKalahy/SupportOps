@@ -133,7 +133,8 @@ function addDays(date: Date, days: number): Date {
 /** Fatos de UM time — o do contexto. O motor nunca olha mais de um time numa chamada. */
 export async function getAlertFacts(ctx: TeamContext, today: Date, t: AlertThresholds): Promise<AlertFacts> {
   const scope = teamScope(ctx)
-  const people = { status: { not: "INACTIVE" as const } }
+  // C25: lugar de gestor fica fora dos alertas (os combinados dele estão no bloco "Seus combinados").
+  const people = { status: { not: "INACTIVE" as const }, managerUserId: null }
   const windows = trendWindows(today)
 
   const recurringFrom = addDays(today, -(DEV_RETURN_ALERTS.recurringWindowDays - 1))

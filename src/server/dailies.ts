@@ -2,6 +2,7 @@ import type { AgreementOrigin, AgreementPriority, AgreementStatus, WatchHeat } f
 
 import { parseDisplayDate } from "../lib/dates.ts"
 import { fill, labels } from "../lib/labels.ts"
+import { withManagerSeats } from "../lib/manager-seats.ts"
 import { MODULES } from "../lib/modules.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import { dailySchema, draftRefSchema, editDailySchema, openDailySchema, type DailyInput } from "../lib/validators/daily.ts"
@@ -91,7 +92,7 @@ async function prepare(
   const transferIds = transfers.map((t) => t.agreementId)
   const reasonIds = [...new Set(reviews.map((r) => r.blockerReasonId).filter(Boolean))]
   const [members, agreements, reasons] = await Promise.all([
-    db.teamMember.findMany({ where: { ...teamScope(ctx), id: { in: [...memberIds] } }, select: { id: true } }),
+    db.teamMember.findMany({ where: { ...teamScope(ctx), ...withManagerSeats, id: { in: [...memberIds] } }, select: { id: true } }),
     db.agreement.findMany({
       where: { ...teamScope(ctx), id: { in: [...new Set([...reviewIds, ...transferIds])] } },
       select: {
@@ -131,7 +132,7 @@ async function prepare(
       return { ok: false, error: labels.dailies.validation.agreementClosed }
     }
     const involved = [...new Set(transfers.flatMap((t) => [t.memberId, byId.get(t.agreementId)!.memberId]))]
-    const found = await db.teamMember.findMany({ where: { ...teamScope(ctx), id: { in: involved } }, select: { id: true, preferredName: true, status: true } })
+    const found = await db.teamMember.findMany({ where: { ...teamScope(ctx), ...withManagerSeats, id: { in: involved } }, select: { id: true, preferredName: true, status: true } })
     for (const m of found) people.set(m.id, m.preferredName)
     const T = labels.agreements.transferErrors
     for (const t of transfers) {

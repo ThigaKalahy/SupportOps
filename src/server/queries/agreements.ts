@@ -8,6 +8,8 @@ import {
 } from "../../lib/agreement-filters.ts"
 import { centralWhere } from "../../lib/centrals.ts"
 import { businessDaysBetween, todayBusinessDate } from "../../lib/dates.ts"
+import { labels } from "../../lib/labels.ts"
+import { withManagerSeats } from "../../lib/manager-seats.ts"
 import { deadlineSeverity, type DeadlineSeverity } from "../../lib/severity.ts"
 import { db } from "../db.ts"
 import { MODULES } from "../../lib/modules.ts"
@@ -93,7 +95,7 @@ export async function listAgreements(
       status: true,
       completedAt: true,
       central: { select: { id: true, name: true } },
-      member: { select: { id: true, preferredName: true, fullName: true, seniority: { select: { label: true } } } },
+      member: { select: { id: true, preferredName: true, fullName: true, managerUserId: true, seniority: { select: { label: true } } } },
       _count: { select: { checkins: { where: { newDueDate: { not: null } } } } },
     },
   })
@@ -108,7 +110,8 @@ export async function listAgreements(
         id: a.member.id,
         preferredName: a.member.preferredName,
         fullName: a.member.fullName,
-        seniorityLabel: a.member.seniority.label,
+        // C25: gestor (lugar de gestor) aparece como "Gestor", sem senioridade.
+        seniorityLabel: a.member.managerUserId ? labels.managerSeats.position : a.member.seniority.label,
       },
       origin: a.origin,
       createdAt: a.createdAt,
@@ -131,14 +134,20 @@ export async function listAgreements(
   return { rows: all.filter((r) => inView(r, filters.view)).sort(compare), counts }
 }
 
-/** Pessoas ativas para filtros e para o responsável do combinado. */
-export async function listAgreementMembers(ctx: TeamContext) {
+/**
+ * Pessoas ativas para filtros e para o responsável do combinado. C25: com `managers`, também
+ * os gestores do time (lugar de gestor, `isManager`), depois das pessoas — só onde se escolhe
+ * ou filtra o responsável de um combinado.
+ */
+export async function listAgreementMembers(ctx: TeamContext, { managers = false }: { managers?: boolean } = {}) {
   const members = await db.teamMember.findMany({
-    where: { ...teamScope(ctx), status: { not: "INACTIVE" } },
+    where: { ...teamScope(ctx), ...(managers ? withManagerSeats : {}), status: { not: "INACTIVE" } },
     orderBy: { preferredName: "asc" },
-    select: { id: true, preferredName: true, seniority: { select: { key: true, label: true, order: true } } },
+    select: { id: true, preferredName: true, managerUserId: true, seniority: { select: { key: true, label: true, order: true } } },
   })
-  return members.map((m) => ({ id: m.id, preferredName: m.preferredName, seniorityKey: m.seniority.key }))
+  return members
+    .map((m) => ({ id: m.id, preferredName: m.preferredName, seniorityKey: m.seniority.key, isManager: m.managerUserId !== null }))
+    .sort((a, b) => Number(a.isManager) - Number(b.isManager))
 }
 
 export type AgreementMemberOption = Awaited<ReturnType<typeof listAgreementMembers>>[number]
@@ -158,7 +167,7 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
   const agreement = await db.agreement.findFirst({
     where: { ...teamScope(ctx), id },
     include: {
-      member: { select: { id: true, preferredName: true, fullName: true } },
+      member: { select: { id: true, preferredName: true, fullName: true, managerUserId: true } },
       author: { select: { name: true } },
       sourceDaily: { select: { id: true, date: true } },
       replaces: { select: { id: true, title: true, status: true } },
@@ -250,3 +259,45 @@ export async function getAgreementDetail(ctx: TeamContext, id: string) {
 }
 
 export type AgreementDetail = NonNullable<Awaited<ReturnType<typeof getAgreementDetail>>>
+
+export const MY_AGREEMENTS_LIMIT = 8
+
+/**
+ * C25 — "Seus combinados" na home do gestor: os combinados em aberto de quem está logado, no
+ * time ativo. O responsável é o lugar de gestor dele (`managerUserId`) ou, quando o gestor
+ * também é pessoa do time, a própria pessoa (`userId`). Sem nenhum dos dois, null (o bloco
+ * não aparece). Prazo mais próximo primeiro, com a severidade graduada.
+ */
+export async function getMyAgreements(ctx: TeamContext, today = todayBusinessDate()) {
+  const owner = await db.teamMember.findFirst({
+    where: { ...teamScope(ctx), ...withManagerSeats, status: { not: "INACTIVE" }, OR: [{ managerUserId: ctx.userId }, { userId: ctx.userId }] },
+    // Pessoa do time vem antes do lugar de gestor (quem é as duas coisas recebe como pessoa).
+    orderBy: { managerUserId: { sort: "asc", nulls: "first" } },
+    select: { id: true },
+  })
+  if (!owner) return null
+  const where = { ...teamScope(ctx), memberId: owner.id, status: { in: ["OPEN" as const, "IN_PROGRESS" as const] } }
+  const [rows, total] = await Promise.all([
+    db.agreement.findMany({
+      where,
+      orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+      take: MY_AGREEMENTS_LIMIT,
+      select: { id: true, title: true, dueDate: true, central: { select: { name: true } } },
+    }),
+    db.agreement.count({ where }),
+  ])
+  return {
+    memberId: owner.id,
+    total,
+    rows: rows.map((a) => ({
+      id: a.id,
+      title: a.title,
+      dueDate: a.dueDate,
+      central: a.central?.name ?? null,
+      open: true,
+      deadline: deadlineSeverity(a.dueDate, { resolved: false, today }),
+    })),
+  }
+}
+
+export type MyAgreements = NonNullable<Awaited<ReturnType<typeof getMyAgreements>>>

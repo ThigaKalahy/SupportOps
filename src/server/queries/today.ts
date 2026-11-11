@@ -61,7 +61,8 @@ function addDays(date: Date, days: number): Date {
 
 export async function getTodayPanel(ctx: TeamContext, today: Date): Promise<TodayPanel> {
   const scope = teamScope(ctx)
-  const people = { status: { not: "INACTIVE" as const } }
+  // C25: lugar de gestor fica fora do painel do time (os combinados dele têm bloco próprio).
+  const people = { status: { not: "INACTIVE" as const }, managerUserId: null }
   const month = monthStart(today)
   const until = addDays(today, UPCOMING_DAYS)
   const member = { select: { id: true, preferredName: true } } as const
@@ -122,7 +123,7 @@ export async function getTodayPanel(ctx: TeamContext, today: Date): Promise<Toda
       select: { id: true, description: true, dueDate: true, plan: { select: { member } } },
     }),
     db.timelineEvent.findMany({
-      where: { ...scope, member: { deletedAt: null }, ...visibilityFilter(ctx) },
+      where: { ...scope, member: { deletedAt: null, managerUserId: null }, ...visibilityFilter(ctx) },
       orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       take: RECENT_EVENTS,
       select: { id: true, type: true, occurredAt: true, title: true, member },

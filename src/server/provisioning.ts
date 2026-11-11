@@ -5,6 +5,7 @@ import { DEFAULT_BLOCKER_REASONS, DEFAULT_SENIORITIES, DEFAULT_WATCH_CADENCES } 
 import { normalizeEmail } from "./allowlist.ts"
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
+import { syncManagerSeats } from "./manager-seats.ts"
 import { generatePassword, hashPassword } from "./password.ts"
 
 /**
@@ -141,6 +142,9 @@ export async function createTeam(
     await tx.blockerReason.createMany({ data: DEFAULT_BLOCKER_REASONS.map((b, i) => ({ ...base, ...b, order: i + 1 })) })
     await tx.alertThreshold.createMany({ data: Object.entries(DEFAULT_WATCH_CADENCES).map(([key, value]) => ({ ...base, key, value })) })
 
+    // C25: o gestor recebe combinados (lugar de gestor), sem virar pessoa do time.
+    await syncManagerSeats(tx, teamId, { organizationId, userId: adminUserId })
+
     if (!existingManager) {
       await writeAudit(
         { action: "user.create", entity: "User", entityId: manager.id, after: { email: managerEmail, name: managerName, via: "team:create" } },
@@ -201,6 +205,7 @@ export async function grantAccess(
       },
       { organizationId: actor.organizationId, teamId: team.id, userId: actor.adminUserId, tx },
     )
+    await syncManagerSeats(tx, team.id, { organizationId: actor.organizationId, userId: actor.adminUserId })
     return reopened ? "granted" : "changed"
   })
 }
@@ -219,6 +224,7 @@ export async function revokeAccess(
       { action: "team.access.revoke", entity: "TeamAccess", entityId: access.id, before: { email: user.email, level: access.level }, after: { revoked: true, via: "cli" } },
       { organizationId: actor.organizationId, teamId: team.id, userId: actor.adminUserId, tx },
     )
+    await syncManagerSeats(tx, team.id, { organizationId: actor.organizationId, userId: actor.adminUserId })
     return "revoked"
   })
 }

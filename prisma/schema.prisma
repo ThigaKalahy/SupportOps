@@ -233,6 +233,8 @@ model User {
   openedDailies       Daily[]              @relation("DailyOpenedBy")
   /// P25: a pessoa do time ligada a esta conta (portal do colaborador, D37).
   teamMember          TeamMember?
+  /// C25: os lugares de gestor desta conta (um por time que gerencia).
+  managerSeats        TeamMember[]         @relation("ManagerSeat")
   agreements          Agreement[]
   agreementCheckins   AgreementCheckin[]
   oneOnOnes           OneOnOne[]
@@ -464,6 +466,11 @@ model TeamMember {
   managerSummary String?
   /// P25: login do colaborador. Opcional e único — a pessoa existe sem conta; o login é anexo (D37).
   userId         String?      @unique
+  /// C25: "lugar do gestor" — linha que só existe para o gestor (TeamAccess MANAGER) poder ser
+  /// responsável por combinado (Agreement.memberId). Não é pessoa do time: o cliente `db` a
+  /// esconde de toda leitura de TeamMember que não peça `managerUserId` no where (Equipe,
+  /// presença, alertas, 1:1, PDI, cumprimento, busca, portal). Nulo = pessoa do time.
+  managerUserId  String?
   createdAt      DateTime     @default(now()) @db.Timestamptz
   updatedAt      DateTime     @updatedAt @db.Timestamptz
   deletedAt      DateTime?    @db.Timestamptz
@@ -471,6 +478,7 @@ model TeamMember {
   team      Team      @relation(fields: [teamId], references: [id])
   seniority Seniority @relation(fields: [seniorityId], references: [id])
   user      User?     @relation(fields: [userId], references: [id])
+  manager   User?     @relation("ManagerSeat", fields: [managerUserId], references: [id])
 
   traits                 MemberTrait[]
   changes                MemberChange[]
@@ -505,6 +513,7 @@ model TeamMember {
   auditFeedbacks     AuditFeedbackSuggestion[]
   auditAliases       AuditAnalystAlias[]
 
+  @@unique([teamId, managerUserId])
   @@index([teamId, status])
   @@index([seniorityId])
   @@index([userId])

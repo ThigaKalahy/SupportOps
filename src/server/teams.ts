@@ -3,6 +3,7 @@ import { fieldErrorsOf, type ActionResult } from "../lib/validators/fields.ts"
 import { grantTeamAccessSchema, revokeTeamAccessSchema, setTeamModuleSchema } from "../lib/validators/teams.ts"
 import { writeAudit } from "./audit.ts"
 import { db } from "./db.ts"
+import { syncManagerSeats } from "./manager-seats.ts"
 import { requirePlatformAdmin, type TeamContext } from "./scope.ts"
 
 /**
@@ -87,6 +88,8 @@ export async function grantTeamAccessRecord(ctx: TeamContext, input: unknown): P
       },
       { organizationId: ctx.organizationId, teamId, userId: ctx.userId, tx },
     )
+    // C25: gestor ganha (ou perde) o lugar de gestor para receber combinados.
+    await syncManagerSeats(tx, teamId, { organizationId: ctx.organizationId, userId: ctx.userId })
   })
   return { ok: true }
 }
@@ -109,6 +112,7 @@ export async function revokeTeamAccessRecord(ctx: TeamContext, input: unknown): 
       { action: "team.access.revoke", entity: "TeamAccess", entityId: access.id, before: { userId, level: access.level }, after: { revoked: true } },
       { organizationId: ctx.organizationId, teamId, userId: ctx.userId, tx },
     )
+    await syncManagerSeats(tx, teamId, { organizationId: ctx.organizationId, userId: ctx.userId })
     return true
   })
   return revoked ? { ok: true } : { ok: false, error: labels.validation.generic }

@@ -17,6 +17,15 @@ export const labels = {
     name: "Manager Ops",
     description: "Registro de gestão de times",
   },
+  /** C25: lugar de gestor — o gestor como responsável de combinado (não é pessoa do time). */
+  managerSeats: {
+    position: "Gestor",
+    tag: "gestor",
+    homeTitle: "Seus combinados",
+    homeEmpty: "Nenhum combinado em aberto com você.",
+    homeMore: "Ver todos os seus combinados",
+    complete: "Concluir",
+  },
   common: {
     save: "Salvar",
     cancel: "Cancelar",

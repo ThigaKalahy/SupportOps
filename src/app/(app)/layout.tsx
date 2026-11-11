@@ -45,14 +45,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const cookieStore = await cookies()
   const collapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === SIDEBAR_COLLAPSED_VALUE
   const [members, alerts, thresholds, centrals, { teams, activeTeam }] = await Promise.all([
-    listAgreementMembers(ctx),
+    listAgreementMembers(ctx, { managers: true }),
     loadAlerts(),
     loadThresholds(),
     !hasModule(ctx, MODULES.CENTRALS) ? null : writes ? listActiveCentrals(ctx) : [],
     loadTeams(),
   ])
-  const people = members.map((m) => ({ id: m.id, preferredName: m.preferredName }))
-  const agreementMembers = writes ? people : null
+  // C25: responsável de combinado inclui os gestores; a paleta (1:1, feedback, perfil) só pessoas.
+  const people = members.filter((m) => !m.isManager).map((m) => ({ id: m.id, preferredName: m.preferredName }))
+  const agreementMembers = writes
+    ? members.map((m) => ({ id: m.id, preferredName: m.isManager ? `${m.preferredName} (${labels.managerSeats.tag})` : m.preferredName }))
+    : null
 
   return (
     <AppShell

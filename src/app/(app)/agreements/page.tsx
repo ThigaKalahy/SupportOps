@@ -34,7 +34,7 @@ export default async function AgreementsPage({
   const filters = parseAgreementFilters(raw)
   const [{ rows, counts }, members, catalogs, centrals] = await Promise.all([
     listAgreements(ctx, filters),
-    listAgreementMembers(ctx),
+    listAgreementMembers(ctx, { managers: true }),
     getMemberFormCatalogs(ctx),
     hasModule(ctx, MODULES.CENTRALS) ? listCentralsForFilter(ctx) : [],
   ])

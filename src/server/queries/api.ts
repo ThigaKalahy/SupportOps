@@ -2,6 +2,7 @@ import type { AgreementOrigin, AgreementPriority, AgreementStatus, Prisma } from
 
 import { toBusinessDateKey } from "../../lib/dates.ts"
 import { labels } from "../../lib/labels.ts"
+import { withManagerSeats } from "../../lib/manager-seats.ts"
 import { MODULES } from "../../lib/modules.ts"
 import { db } from "../db.ts"
 import { hasModule, teamScope, type TeamContext } from "../scope.ts"
@@ -106,11 +107,12 @@ export async function getAgreementForApi(ctx: TeamContext, id: string): Promise<
 /** Pessoas do time, para escolher o responsável ao criar (ativas e em desligamento). */
 export async function listMembersForApi(ctx: TeamContext) {
   const rows = await db.teamMember.findMany({
-    where: { ...teamScope(ctx), status: { in: ["ACTIVE", "OFFBOARDING"] } },
+    // C25: os gestores do time também recebem combinados (`manager: true`).
+    where: { ...teamScope(ctx), ...withManagerSeats, status: { in: ["ACTIVE", "OFFBOARDING"] } },
     orderBy: { preferredName: "asc" },
-    select: { id: true, preferredName: true, fullName: true, email: true, status: true },
+    select: { id: true, preferredName: true, fullName: true, email: true, status: true, managerUserId: true },
   })
-  return rows.map((m) => ({ id: m.id, name: m.preferredName, fullName: m.fullName, email: m.email, status: m.status }))
+  return rows.map((m) => ({ id: m.id, name: m.preferredName, fullName: m.fullName, email: m.email, status: m.status, manager: m.managerUserId !== null }))
 }
 
 /** Centrais ativas do time (só com o módulo); sem o módulo, lista vazia. */
@@ -131,7 +133,7 @@ export async function resolveMemberForApi(ctx: TeamContext, memberId: unknown, m
   const email = typeof memberEmail === "string" && memberEmail.trim() ? memberEmail.trim().toLowerCase() : undefined
   if (!email) return { ok: true, memberId: id }
   const found = await db.teamMember.findMany({
-    where: { ...teamScope(ctx), email: { equals: email, mode: "insensitive" } },
+    where: { ...teamScope(ctx), ...withManagerSeats, status: { not: "INACTIVE" }, email: { equals: email, mode: "insensitive" } },
     select: { id: true },
     take: 2,
   })

@@ -2,6 +2,7 @@ import type { AgreementStatus, Prisma, WatchHeat, WatchOrigin, WatchStatus, Visi
 
 import type { AlertThresholds } from "../../lib/alert-thresholds.ts"
 import type { DailyReportWatch } from "../../lib/daily-report.ts"
+import { withManagerSeats } from "../../lib/manager-seats.ts"
 import { MODULES } from "../../lib/modules.ts"
 import type { WatchFilters, WatchTab } from "../../lib/watch-filters.ts"
 import { todayBusinessDate } from "../../lib/dates.ts"
@@ -54,9 +55,12 @@ export async function findActiveWatchForLink(ctx: TeamContext, data: Partial<Rec
 export async function resolveWatchLinks(ctx: TeamContext, data: Record<WatchLinkKey | "memberId" | "centralId", string>) {
   const scope = teamScope(ctx)
   const checks = await Promise.all([
-    data.memberId ? db.teamMember.findFirst({ where: { ...scope, id: data.memberId }, select: { id: true } }) : null,
+    // C25: o gestor (lugar de gestor) é aceito como vínculo, mas a observação não fica "sobre" ele.
+    data.memberId ? db.teamMember.findFirst({ where: { ...scope, ...withManagerSeats, id: data.memberId }, select: { id: true, managerUserId: true } }) : null,
     data.centralId ? db.central.findFirst({ where: { ...scope, id: data.centralId }, select: { id: true } }) : null,
-    data.agreementId ? db.agreement.findFirst({ where: { ...scope, id: data.agreementId }, select: { memberId: true, centralId: true } }) : null,
+    data.agreementId
+      ? db.agreement.findFirst({ where: { ...scope, id: data.agreementId }, select: { memberId: true, centralId: true, member: { select: { managerUserId: true } } } })
+      : null,
     data.dailyId ? db.daily.findFirst({ where: { ...scope, id: data.dailyId }, select: { id: true } }) : null,
     data.priorityValidationId
       ? db.priorityValidation.findFirst({ where: { ...scope, id: data.priorityValidationId }, select: { memberId: true, centralId: true } })
@@ -75,7 +79,10 @@ export async function resolveWatchLinks(ctx: TeamContext, data: Record<WatchLink
   if (wanted.some((id, i) => id && !checks[i])) return null
   const [member, central, agreement, , validation, devReturn, oneOnOne, feedback] = checks
   return {
-    memberId: member?.id ?? agreement?.memberId ?? validation?.memberId ?? devReturn?.memberId ?? oneOnOne?.memberId ?? feedback?.memberId ?? null,
+    memberId:
+      (member && !member.managerUserId ? member.id : null) ??
+      (agreement && !agreement.member.managerUserId ? agreement.memberId : null) ??
+      validation?.memberId ?? devReturn?.memberId ?? oneOnOne?.memberId ?? feedback?.memberId ?? null,
     centralId: central?.id ?? agreement?.centralId ?? validation?.centralId ?? devReturn?.centralId ?? null,
   }
 }

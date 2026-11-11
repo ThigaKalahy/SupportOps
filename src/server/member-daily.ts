@@ -2,6 +2,7 @@ import type { CheckinOutcome } from "@prisma/client"
 
 import { dailyReviewHorizon, formatDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
+import { onlyManagerSeats } from "../lib/manager-seats.ts"
 import { MODULES } from "../lib/modules.ts"
 import { rouletteWindowOpen } from "../lib/scrum-master.ts"
 import { vacationCovering } from "../lib/vacations.ts"
@@ -92,6 +93,8 @@ export type ConductDaily =
       draftId: string
       reviews: ConductReview[]
       members: { id: string; name: string }[]
+      /** C25: gestores do time — recebem combinado (hoje e troca), fora da presença. */
+      managers: { id: string; name: string }[]
       reasons: { id: string; label: string }[]
       centrals: { id: string; name: string }[] | null
       whyEnabled: boolean
@@ -148,6 +151,11 @@ export async function getConductDaily(ctx: MemberContext, now: Date = new Date()
     db.blockerReason.findMany({ where: { teamId, isActive: true }, orderBy: { order: "asc" }, select: { id: true, label: true } }),
   ])
   const on = new Set(modules.map((m) => m.moduleKey))
+  const managers = await db.teamMember.findMany({
+    where: { teamId, ...onlyManagerSeats, status: "ACTIVE" },
+    orderBy: { preferredName: "asc" },
+    select: { id: true, preferredName: true },
+  })
   const centrals = on.has(MODULES.CENTRALS)
     ? await db.central.findMany({ where: { teamId, isActive: true, deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } })
     : null
@@ -170,6 +178,7 @@ export async function getConductDaily(ctx: MemberContext, now: Date = new Date()
       }))
       .sort((a, b) => a.member.name.localeCompare(b.member.name, "pt-BR")),
     members: members.map((m) => ({ id: m.id, name: m.preferredName })),
+    managers: managers.map((m) => ({ id: m.id, name: `${m.preferredName} (${labels.managerSeats.tag})` })),
     reasons,
     centrals,
     whyEnabled: on.has(MODULES.AGREEMENT_WHY),

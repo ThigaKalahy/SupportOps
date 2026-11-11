@@ -58,8 +58,14 @@ function withSoftDelete(base: PrismaClient) {
             return query(args)
           }
           const current = (args ?? {}) as { where?: Record<string, unknown> }
-          if (current.where && "deletedAt" in current.where) return query(args)
-          return query({ ...current, where: { ...current.where, deletedAt: null } } as typeof args)
+          // C25: lugar de gestor não é pessoa do time — some de toda leitura de TeamMember que
+          // não peça `managerUserId` no where (ver `withManagerSeats` em src/lib/manager-seats.ts).
+          const where =
+            model === "TeamMember" && !(current.where && "managerUserId" in current.where)
+              ? { ...current.where, managerUserId: null }
+              : current.where
+          if (where && "deletedAt" in where) return query({ ...current, where } as typeof args)
+          return query({ ...current, where: { ...where, deletedAt: null } } as typeof args)
         },
       },
     },

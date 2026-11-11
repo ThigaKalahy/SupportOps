@@ -44,8 +44,9 @@ export interface MemberProfile {
 
 export async function getMemberProfile(ctx: TeamContext, memberId: string): Promise<MemberProfile | null> {
   // Perfil de pessoa desativada continua acessível (histórico), por isso sem o filtro de soft delete.
+  // C25: lugar de gestor não tem perfil (não é pessoa do time).
   const member = await dbIncludingDeleted.teamMember.findFirst({
-    where: { id: memberId, ...teamScope(ctx) },
+    where: { id: memberId, ...teamScope(ctx), managerUserId: null },
     include: {
       seniority: { select: { key: true, label: true } },
       team: { select: { manager: { select: { name: true } } } },

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 import { CENTRAL_NAME_MAX, centralSlug, cleanCentralName } from "../lib/centrals.ts"
 import { parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { fill, labels } from "../lib/labels.ts"
+import { onlyManagerSeats, withManagerSeats } from "../lib/manager-seats.ts"
 import { nextStepSchema, ownAgreementSchema, ownCentralSchema, transferOwnSchema } from "../lib/validators/member-portal.ts"
 
 import { db } from "./db.ts"
@@ -162,12 +163,23 @@ export async function ensureOwnCentral(ctx: MemberContext, input: unknown): Prom
 
 /** C24: quem pode receber um combinado dele — pessoas do time não desligadas, sem ele. Só id e nome. */
 export async function getTransferTargets(ctx: MemberContext): Promise<{ id: string; name: string }[]> {
-  const rows = await db.teamMember.findMany({
-    where: { teamId: ctx.teamId, id: { not: ctx.memberId }, status: { not: "INACTIVE" } },
-    orderBy: { preferredName: "asc" },
-    select: { id: true, preferredName: true },
-  })
-  return rows.map((m) => ({ id: m.id, name: m.preferredName }))
+  const [rows, managers] = await Promise.all([
+    db.teamMember.findMany({
+      where: { teamId: ctx.teamId, id: { not: ctx.memberId }, status: { not: "INACTIVE" } },
+      orderBy: { preferredName: "asc" },
+      select: { id: true, preferredName: true },
+    }),
+    // C25: os gestores do time também recebem (lugar de gestor), marcados como gestor.
+    db.teamMember.findMany({
+      where: { teamId: ctx.teamId, ...onlyManagerSeats, status: "ACTIVE" },
+      orderBy: { preferredName: "asc" },
+      select: { id: true, preferredName: true },
+    }),
+  ])
+  return [
+    ...rows.map((m) => ({ id: m.id, name: m.preferredName })),
+    ...managers.map((m) => ({ id: m.id, name: `${m.preferredName} (${labels.managerSeats.tag})` })),
+  ]
 }
 
 /**
@@ -186,7 +198,7 @@ export async function transferOwnAgreement(ctx: MemberContext, input: unknown): 
       select: { id: true, title: true },
     }),
     db.teamMember.findFirst({ where: { teamId: ctx.teamId, id: ctx.memberId }, select: { id: true, preferredName: true } }),
-    db.teamMember.findFirst({ where: { teamId: ctx.teamId, id: memberId, status: { not: "INACTIVE" } }, select: { id: true, preferredName: true } }),
+    db.teamMember.findFirst({ where: { teamId: ctx.teamId, ...withManagerSeats, id: memberId, status: { not: "INACTIVE" } }, select: { id: true, preferredName: true } }),
   ])
   if (!own || !me) return { ok: false, error: M.validation.notOpen }
   if (!to) return { ok: false, error: T.memberUnavailable, fieldErrors: { memberId: T.memberUnavailable } }

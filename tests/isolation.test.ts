@@ -777,6 +777,7 @@ const QUERIES: Record<string, Invoke> = {
   // agreements.ts
   listAgreements: (c) => agreements.listAgreements(c, parseAgreementFilters(new URLSearchParams("view=all"))),
   listAgreementMembers: (c) => agreements.listAgreementMembers(c),
+  getMyAgreements: (c) => agreements.getMyAgreements(c),
   getAgreementDetail: async (c, own, other) => [await agreements.getAgreementDetail(c, own.agreement), await agreements.getAgreementDetail(c, other.agreement)],
   // alerts.ts
   getAlertFacts: async (c) => alertsQ.getAlertFacts(c, todayBusinessDate(), await thresholds.getThresholds(c)),

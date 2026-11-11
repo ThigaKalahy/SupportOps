@@ -87,6 +87,8 @@ export function OpenConductButton() {
  * uma vez, pelo núcleo da daily. Notas, substituições e observações ficam com o gestor.
  */
 export function ConductDailyForm({ data }: { data: Mine }) {
+  // C25: quem recebe combinado — as pessoas da presença e os gestores do time.
+  const responsibles = [...data.members, ...data.managers]
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
   const [reviews, setReviews] = React.useState<Record<string, Review>>(() =>
@@ -319,7 +321,7 @@ export function ConductDailyForm({ data }: { data: Mine }) {
                             {err("newDueDate") ? <p className="text-xs text-overdue">{err("newDueDate")}</p> : null}
                           </div>
                         ) : null}
-                        {r.outcome !== "DONE" && data.members.some((m) => m.id !== a.member.id) ? (
+                        {r.outcome !== "DONE" && responsibles.some((m) => m.id !== a.member.id) ? (
                           r.transferOpen ? (
                             <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-sunken/60 p-3">
                               <Select value={r.transferTo} onValueChange={(v) => patch(a.id, { transferTo: v })}>
@@ -327,7 +329,7 @@ export function ConductDailyForm({ data }: { data: Mine }) {
                                   <SelectValue placeholder={T.transferChoose} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {data.members
+                                  {responsibles
                                     .filter((m) => m.id !== a.member.id)
                                     .map((m) => (
                                       <SelectItem key={m.id} value={m.id}>
@@ -416,7 +418,7 @@ export function ConductDailyForm({ data }: { data: Mine }) {
                       <SelectValue placeholder={C.personPlaceholder} />
                     </SelectTrigger>
                     <SelectContent>
-                      {data.members.map((m) => (
+                      {responsibles.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.name}
                         </SelectItem>

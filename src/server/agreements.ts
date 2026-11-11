@@ -1,5 +1,6 @@
 import { parseDisplayDate, todayBusinessDate } from "../lib/dates.ts"
 import { labels } from "../lib/labels.ts"
+import { withManagerSeats } from "../lib/manager-seats.ts"
 import { fieldErrorsOf, textOrNull, type ActionResult } from "../lib/validators/fields.ts"
 import { pendingWatchIdsOf } from "../lib/validators/watch.ts"
 import { vacationCovering } from "../lib/vacations.ts"
@@ -51,7 +52,7 @@ export async function createAgreementRecord(
   const members = await db.teamMember.findMany({
     where: all
       ? { ...teamScope(ctx), status: { in: ["ACTIVE", "OFFBOARDING"] }, vacations: { none: vacationCovering(ctx.teamId, due) } }
-      : { ...teamScope(ctx), id: data.memberId },
+      : { ...teamScope(ctx), ...withManagerSeats, id: data.memberId },
     select: { id: true },
     orderBy: { preferredName: "asc" },
   })
@@ -239,7 +240,7 @@ export async function transferAgreementRecord(ctx: TeamContext, input: unknown):
   const T = labels.agreements.transferErrors
   if (memberId === before.member.id) return { ok: false, error: T.sameMember, fieldErrors: { memberId: T.sameMember } }
   const to = await db.teamMember.findFirst({
-    where: { id: memberId, ...teamScope(ctx), status: { not: "INACTIVE" } },
+    where: { id: memberId, ...teamScope(ctx), ...withManagerSeats, status: { not: "INACTIVE" } },
     select: { id: true, preferredName: true },
   })
   if (!to) return { ok: false, error: T.memberUnavailable, fieldErrors: { memberId: T.memberUnavailable } }
